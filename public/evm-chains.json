@@ -1,0 +1,139 @@
+{
+  "chains": [
+    {
+      "key": "ethereum",
+      "name": "Ethereum",
+      "chainId": 1,
+      "chainIdHex": "0x1",
+      "cctpDomain": 0,
+      "rpcUrls": ["https://mainnet.gateway.tenderly.co"],
+      "explorer": {
+        "baseUrl": "https://etherscan.io",
+        "txPath": "tx",
+        "addressPath": "address"
+      },
+      "nativeCurrency": {
+        "name": "Ether",
+        "symbol": "ETH",
+        "decimals": 18
+      },
+      "contracts": {
+        "usdc": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "tokenMessenger": "0xBd3fa81B58Ba92a82136038B25aDec7066af3155"
+      },
+      "gasless": {
+        "enabled": true,
+        "zeroExChainId": 1,
+        "zeroExBaseUrl": "https://api.0x.org"
+      },
+      "estimatedTimes": {
+        "deposit": "18 - 20 minutes",
+        "send": "2 - 4 minutes"
+      },
+      "logo": "/ethereum-logo.svg",
+      "testnet": false
+    },
+    {
+      "key": "base",
+      "name": "Base",
+      "chainId": 8453,
+      "chainIdHex": "0x2105",
+      "cctpDomain": 6,
+      "rpcUrls": ["https://mainnet.base.org"],
+      "explorer": {
+        "baseUrl": "https://basescan.org",
+        "txPath": "tx",
+        "addressPath": "address"
+      },
+      "nativeCurrency": {
+        "name": "Ether",
+        "symbol": "ETH",
+        "decimals": 18
+      },
+      "contracts": {
+        "usdc": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "tokenMessenger": "0x1682Ae6375C4E4A97e4B583BC394c861A46D8962"
+      },
+      "gasless": {
+        "enabled": true,
+        "zeroExChainId": 8453,
+        "zeroExBaseUrl": "https://api.0x.org"
+      },
+      "estimatedTimes": {
+        "deposit": "18 - 20 minutes",
+        "send": "2 - 4 minutes"
+      },
+      "logo": "/base-logo.svg",
+      "testnet": false
+    },
+    {
+      "key": "avalanche",
+      "name": "Avalanche",
+      "chainId": 43114,
+      "chainIdHex": "0xa86a",
+      "cctpDomain": 1,
+      "rpcUrls": ["https://api.avax.network/ext/bc/C/rpc"],
+      "explorer": {
+        "baseUrl": "https://subnets.avax.network",
+        "txPath": "c-chain/tx",
+        "addressPath": "c-chain/address"
+      },
+      "nativeCurrency": {
+        "name": "Avax",
+        "symbol": "AVAX",
+        "decimals": 18
+      },
+      "contracts": {
+        "usdc": "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
+        "tokenMessenger": "0x6B25532e1060CE10cc3B0A99e5683b91BFDe6982"
+      },
+      "gasless": {
+        "enabled": true,
+        "zeroExChainId": 43114,
+        "zeroExBaseUrl": "https://api.0x.org"
+      },
+      "estimatedTimes": {
+        "deposit": "2 - 3 minutes",
+        "send": "2 - 4 minutes"
+      },
+      "logo": "/avax-logo.svg",
+      "testnet": false
+    },
+    {
+      "key": "polygon",
+      "name": "Polygon",
+      "chainId": 137,
+      "chainIdHex": "0x89",
+      "cctpDomain": 7,
+      "rpcUrls": ["https://rpc-mainnet.polygon.technology"],
+      "explorer": {
+        "baseUrl": "https://polygonscan.com",
+        "txPath": "tx",
+        "addressPath": "address"
+      },
+      "nativeCurrency": {
+        "name": "Pol",
+        "symbol": "POL",
+        "decimals": 18
+      },
+      "contracts": {
+        "usdc": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+        "tokenMessenger": "0x9daF8c91AEFAE50b9c0E69629D3F6Ca40cA3B3FE"
+      },
+      "gasless": {
+        "enabled": true,
+        "zeroExChainId": 137,
+        "zeroExBaseUrl": "https://api.0x.org"
+      },
+      "estimatedTimes": {
+        "deposit": "2 - 3 minutes",
+        "send": "2 - 4 minutes"
+      },
+      "logo": "/polygon-logo.svg",
+      "testnet": false
+    }
+  ],
+  "defaults": {
+    "selectedChainKey": "base"
+  }
+}

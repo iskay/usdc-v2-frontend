@@ -1,0 +1,88 @@
+import { useMemo } from 'react'
+import { Button } from '@/components/common/Button'
+import { useWallet } from '@/hooks/useWallet'
+
+export function Navbar() {
+  const {
+    state,
+    connectMetaMask,
+    connectNamada,
+    disconnectMetaMask,
+    disconnectNamada,
+    isMetaMaskAvailable,
+  } = useWallet()
+
+  const truncatedMetaMaskAddress = useMemo(() => {
+    if (!state.metaMask.account) return undefined
+    return `${state.metaMask.account.slice(0, 6)}...${state.metaMask.account.slice(-4)}`
+  }, [state.metaMask.account])
+
+  const truncatedNamadaAddress = useMemo(() => {
+    if (!state.namada.account) return undefined
+    return `${state.namada.account.slice(0, 8)}...${state.namada.account.slice(-6)}`
+  }, [state.namada.account])
+
+  const isMetaMaskConnecting = state.metaMask.isConnecting
+  const isNamadaConnecting = state.namada.isConnecting
+
+  return (
+    <header className="flex items-center justify-between border-b border-border bg-background/80 px-6 py-4 backdrop-blur">
+      <div className="space-y-1">
+        <p className="text-sm uppercase tracking-widest text-muted-foreground">Borderless Private USDC</p>
+      </div>
+      <div className="flex items-center gap-3">
+        {/* MetaMask Connection Button */}
+        <Button
+          onClick={() => {
+            if (state.metaMask.isConnected) {
+              void disconnectMetaMask()
+            } else {
+              void connectMetaMask()
+            }
+          }}
+          disabled={!isMetaMaskAvailable || isMetaMaskConnecting}
+          variant={state.metaMask.isConnected ? 'secondary' : 'ghost'}
+          className="gap-2 px-3 py-1.5 text-xs"
+        >
+          {isMetaMaskConnecting ? (
+            <>Connecting...</>
+          ) : state.metaMask.isConnected && truncatedMetaMaskAddress ? (
+            <>
+              <span className="text-xs">MetaMask</span>
+              <span className="font-mono text-xs">{truncatedMetaMaskAddress}</span>
+            </>
+          ) : (
+            <>Connect MetaMask</>
+          )}
+        </Button>
+
+        {/* Namada Keychain Connection Button */}
+        <Button
+          onClick={() => {
+            if (state.namada.isConnected) {
+              void disconnectNamada()
+            } else {
+              void connectNamada()
+            }
+          }}
+          disabled={isNamadaConnecting}
+          variant={state.namada.isConnected ? 'secondary' : 'ghost'}
+          className="gap-2 px-3 py-1.5 text-xs"
+        >
+          {isNamadaConnecting ? (
+            <>Connecting...</>
+          ) : state.namada.isConnected && truncatedNamadaAddress ? (
+            <>
+              <span className="text-xs">Namada</span>
+              <span className="font-mono text-xs">{truncatedNamadaAddress}</span>
+            </>
+          ) : (
+            <>Connect Namada</>
+          )}
+        </Button>
+
+        {/* TODO: Add chain selector, settings menu, and shielded sync controls. */}
+      </div>
+    </header>
+  )
+}
