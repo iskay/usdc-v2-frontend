@@ -69,13 +69,6 @@ export function SendPayment() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">fee: ${fee}</span>
-            <button
-              type="button"
-              className="text-red-500 hover:text-red-600"
-              aria-label="Remove fee"
-            >
-              <X className="h-4 w-4" />
-            </button>
           </div>
           <div>
             <span className="text-sm font-medium">total: ${total}</span>

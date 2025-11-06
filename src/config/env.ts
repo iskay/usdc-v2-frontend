@@ -12,8 +12,11 @@ function readEnvVar(key: EnvKey, required = false): string | undefined {
 export const env = {
   backendUrl: () => readEnvVar('VITE_BACKEND_URL'),
   nobleRpc: () => readEnvVar('VITE_NOBLE_RPC'),
-  namadaRpc: () => readEnvVar('VITE_NAMADA_RPC'),
+  namadaRpc: () => readEnvVar('VITE_NAMADA_RPC_URL') || readEnvVar('VITE_NAMADA_RPC') || 'https://rpc.testnet.siuuu.click',
   namadaChainId: () => readEnvVar('VITE_NAMADA_CHAIN_ID', true),
+  namadaToken: () => readEnvVar('VITE_NAMADA_NAM_TOKEN') || 'tnam1q9gr66cvu4hrzm0sd5kmlnjje82gs3xlfg3v6nu7',
+  namadaMaspIndexerUrl: () => readEnvVar('VITE_NAMADA_MASP_INDEXER_URL') || 'https://masp.testnet.siuuu.click',
+  namadaDbName: () => readEnvVar('VITE_NAMADA_DB_NAME') || 'usdcdelivery',
   sharedWorkerPath: () => readEnvVar('VITE_SHIELDED_WORKER_PATH'),
 }
 
