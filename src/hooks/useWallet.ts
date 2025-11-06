@@ -12,6 +12,7 @@ import {
 } from '@/services/wallet/walletService'
 import { onWalletEvent, offWalletEvent } from '@/services/wallet/walletEvents'
 import { useToast } from '@/hooks/useToast'
+import { requestBalanceRefresh } from '@/services/balance/balanceService'
 
 function formatAddress(address: string, startLength = 6, endLength = 4): string {
   if (address.length <= startLength + endLength) return address
@@ -162,6 +163,8 @@ export function useWallet() {
           description: `Account: ${formatAddress(account, 8, 6)}`,
           level: 'success',
         })
+        // Trigger immediate balance refresh when transparent address becomes available
+        void requestBalanceRefresh({ trigger: 'manual' })
       }
     }
 
@@ -252,13 +255,15 @@ export function useWallet() {
     }))
     try {
       const connection = await connectNamadaService()
+      const transparentAddress = connection.namada?.transparentAddress
+      
       setWalletState((state) => ({
         ...state,
         namada: {
           ...state.namada,
           isConnecting: false,
           isConnected: true,
-          account: connection.namada?.transparentAddress,
+          account: transparentAddress,
           shieldedAccount: connection.namada?.shieldedAddress,
           alias: connection.namada?.accountAlias,
           viewingKey: connection.namada?.viewingKey,
@@ -266,6 +271,12 @@ export function useWallet() {
         lastUpdated: connection.connectedAt,
       }))
       setWalletError(undefined)
+      
+      // Trigger immediate balance refresh when transparent address becomes available
+      if (transparentAddress) {
+        void requestBalanceRefresh({ trigger: 'manual' })
+      }
+      
       // Success toast will be shown by the event handler
     } catch (error) {
       console.error('Namada connection failed', error)

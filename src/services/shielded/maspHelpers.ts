@@ -1,0 +1,148 @@
+import type { Sdk } from '@namada/sdk-multicore'
+import type { NamadaKeychainAccount } from '@/services/wallet/namadaKeychain'
+import type { ShieldedViewingKey } from '@/types/shielded'
+import { env } from '@/config/env'
+
+/**
+ * Fetch block height by timestamp from the Namada indexer.
+ * This is used to convert account creation timestamps to block heights for birthday optimization.
+ */
+export async function fetchBlockHeightByTimestamp(timestamp: number): Promise<number> {
+  try {
+    const indexerUrl = env.namadaIndexerUrl()
+    if (!indexerUrl) {
+      throw new Error('Indexer URL not configured')
+    }
+
+    // Convert timestamp to seconds (if it's in milliseconds)
+    const timestampSeconds = timestamp > 1000000000000 ? Math.floor(timestamp / 1000) : timestamp
+
+    const response = await fetch(`${indexerUrl}/block/height/by_timestamp/${timestampSeconds}`)
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error('Block not found for timestamp')
+      }
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    const data = (await response.json()) as { height?: number }
+    const height = data?.height
+
+    if (typeof height !== 'number' || height < 0) {
+      throw new Error('Invalid height returned from indexer')
+    }
+
+    return height
+  } catch (error) {
+    console.warn('[MaspHelpers] Failed to fetch block height by timestamp:', error)
+    throw error
+  }
+}
+
+/**
+ * Calculate the birthday (block height) for a given account.
+ * For generated keys, converts the creation timestamp to block height.
+ * For imported keys, returns 0 (full sync required).
+ */
+export async function calculateBirthday(account: NamadaKeychainAccount): Promise<number> {
+  // For imported keys or accounts without timestamp, always sync from genesis
+  if (account.source !== 'generated' || !account.timestamp) {
+    return 0
+  }
+
+  try {
+    const height = await fetchBlockHeightByTimestamp(account.timestamp)
+    console.info(`[MaspHelpers] Account ${account.address?.slice(0, 12)}... birthday: block ${height}`)
+    return height
+  } catch (error) {
+    console.warn(
+      `[MaspHelpers] Failed to fetch block height for account ${account.address?.slice(0, 12)}..., falling back to height 0:`,
+      error,
+    )
+    return 0
+  }
+}
+
+/**
+ * Normalize a NamadaKeychainAccount to a ShieldedViewingKey.
+ * Extracts the viewing key and calculates the birthday.
+ */
+export async function normalizeViewingKey(
+  account: NamadaKeychainAccount,
+): Promise<ShieldedViewingKey> {
+  if (!account.viewingKey) {
+    throw new Error(`Account ${account.address} does not have a viewing key`)
+  }
+
+  const birthday = await calculateBirthday(account)
+
+  return {
+    key: account.viewingKey,
+    birthday,
+  }
+}
+
+/**
+ * Normalize multiple accounts to viewing keys.
+ */
+export async function normalizeViewingKeys(
+  accounts: NamadaKeychainAccount[],
+): Promise<ShieldedViewingKey[]> {
+  const results = await Promise.all(
+    accounts.map((account) => {
+      if (!account.viewingKey) {
+        console.warn(`[MaspHelpers] Skipping account ${account.address} - no viewing key`)
+        return null
+      }
+      return normalizeViewingKey(account).catch((error) => {
+        console.warn(`[MaspHelpers] Failed to normalize viewing key for ${account.address}:`, error)
+        return null
+      })
+    }),
+  )
+
+  return results.filter((vk): vk is ShieldedViewingKey => vk !== null)
+}
+
+export interface EnsureMaspReadyOptions {
+  sdk: Sdk
+  chainId: string
+  paramsUrl?: string
+}
+
+/**
+ * Ensure MASP parameters are ready for shielded operations.
+ * Checks if params exist, fetches and stores if missing, then loads them.
+ */
+export async function ensureMaspReady({
+  sdk,
+  chainId,
+  paramsUrl,
+}: EnsureMaspReadyOptions): Promise<void> {
+  const masp = sdk.masp
+  const has = await masp.hasMaspParams()
+  if (!has) {
+    if (paramsUrl) {
+      await masp.fetchAndStoreMaspParams(paramsUrl)
+    } else {
+      throw new Error('MASP params not available and paramsUrl not provided')
+    }
+  }
+  await masp.loadMaspParams('', chainId)
+}
+
+/**
+ * Check if MASP parameters are available.
+ */
+export async function hasMaspParams(sdk: Sdk): Promise<boolean> {
+  return await sdk.masp.hasMaspParams()
+}
+
+/**
+ * Clear the shielded context for a given chain.
+ */
+export async function clearShieldedContext(sdk: Sdk, chainId: string): Promise<void> {
+  await sdk.masp.clearShieldedContext(chainId)
+}
+

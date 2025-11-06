@@ -1,9 +1,11 @@
 import { jotaiStore } from '@/store/jotaiStore'
 import { balanceAtom, balanceErrorAtom, balanceSyncAtom } from '@/atoms/balanceAtom'
+import { walletAtom } from '@/atoms/walletAtom'
 import {
   triggerShieldedBalanceRefresh,
   type ShieldedBalanceOptions,
 } from '@/services/balance/shieldedBalanceService'
+import { getNamadaUSDCBalance } from '@/services/namada/namadaBalanceService'
 
 const DEFAULT_POLL_INTERVAL_MS = 10_000
 
@@ -20,8 +22,7 @@ let inflightRefresh: Promise<void> | null = null
 
 /**
  * Triggers a balance refresh and updates Jotai atoms with the fetched values.
- * The actual fetching logic is stubbed for now and should be replaced once the
- * wallet + SDK integrations are implemented.
+ * Fetches transparent USDC balance from the Namada indexer endpoint.
  */
 export async function refreshBalances(options: BalanceRefreshOptions = {}): Promise<void> {
   if (inflightRefresh) {
@@ -36,9 +37,13 @@ export async function refreshBalances(options: BalanceRefreshOptions = {}): Prom
 
   inflightRefresh = (async () => {
     try {
+      // Get the transparent address from wallet state
+      const walletState = store.get(walletAtom)
+      const transparentAddress = walletState.namada?.account
+
       const [evmBalance, transparentBalance] = await Promise.all([
         fetchEvmBalanceStub(options.chainKey),
-        fetchNamadaTransparentBalanceStub(),
+        fetchNamadaTransparentBalance(transparentAddress),
       ])
 
       const completedAt = Date.now()
@@ -130,13 +135,50 @@ async function fetchEvmBalanceStub(chainKey?: string): Promise<{
   }
 }
 
-async function fetchNamadaTransparentBalanceStub(): Promise<{
+/**
+ * Fetch Namada transparent USDC balance from the indexer endpoint.
+ * @param transparentAddress - The Namada transparent address to query, or undefined if not connected
+ * @returns USDC transparent balance formatted as string, or '--' if not available
+ */
+async function fetchNamadaTransparentBalance(
+  transparentAddress?: string
+): Promise<{
   usdcTransparent: string
 }> {
-  // TODO: Replace with Namada transparent balance HTTP fetch.
-  console.info('[BalanceService] Fetching Namada transparent balance (stub)')
-  return {
-    usdcTransparent: '--',
+  if (!transparentAddress) {
+    console.info('[BalanceService] No transparent address available, skipping balance fetch')
+    return {
+      usdcTransparent: '--',
+    }
+  }
+
+  try {
+    const result = await getNamadaUSDCBalance(transparentAddress)
+    if (!result) {
+      console.warn('[BalanceService] Failed to fetch Namada transparent balance', {
+        transparentAddress,
+      })
+      return {
+        usdcTransparent: '--',
+      }
+    }
+
+    console.info('[BalanceService] Fetched Namada transparent balance', {
+      transparentAddress,
+      balance: result.formattedBalance,
+    })
+
+    return {
+      usdcTransparent: result.formattedBalance,
+    }
+  } catch (error) {
+    console.error('[BalanceService] Error fetching Namada transparent balance', {
+      transparentAddress,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return {
+      usdcTransparent: '--',
+    }
   }
 }
 
