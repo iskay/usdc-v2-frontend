@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSetAtom } from 'jotai'
-import { DollarSign } from 'lucide-react'
+import { DollarSign, Loader2 } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { DepositConfirmationModal } from '@/components/deposit/DepositConfirmationModal'
@@ -26,7 +26,7 @@ export function Deposit() {
   const navigate = useNavigate()
   const { notify } = useToast()
   const { state: walletState } = useWallet()
-  const { state: balanceState, refresh } = useBalance()
+  const { state: balanceState, refresh, sync: balanceSync } = useBalance()
   const setPreferredChainKey = useSetAtom(preferredChainKeyAtom)
 
   // Form state
@@ -43,8 +43,14 @@ export function Deposit() {
     chainId?: number
   }>({})
 
+  // Determine if EVM balance is currently being fetched
+  const isEvmBalanceLoading =
+    balanceSync.status === 'refreshing' && walletState.metaMask.isConnected
+
   // Get live EVM balance from balance state
-  const availableBalance = balanceState.evm.usdc !== '--' ? balanceState.evm.usdc : '0.000000'
+  // Show '--' when balance is '--' or when loading, otherwise show actual balance
+  const availableBalance =
+    balanceState.evm.usdc !== '--' ? balanceState.evm.usdc : '--'
 
   // Store refresh function in ref to avoid dependency issues
   const refreshRef = useRef(refresh)
@@ -300,7 +306,12 @@ export function Deposit() {
               inputMode="decimal"
               disabled={isSubmitting}
             />
-            <span className="text-sm text-muted-foreground">of ${availableBalance}</span>
+            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              of ${availableBalance}
+              {isEvmBalanceLoading && (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              )}
+            </span>
           </div>
         </div>
 
