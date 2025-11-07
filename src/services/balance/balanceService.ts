@@ -1,11 +1,14 @@
 import { jotaiStore } from '@/store/jotaiStore'
 import { balanceAtom, balanceErrorAtom, balanceSyncAtom } from '@/atoms/balanceAtom'
 import { walletAtom } from '@/atoms/walletAtom'
+import { chainConfigAtom } from '@/atoms/appAtom'
 import {
   triggerShieldedBalanceRefresh,
   type ShieldedBalanceOptions,
 } from '@/services/balance/shieldedBalanceService'
 import { getNamadaUSDCBalance } from '@/services/namada/namadaBalanceService'
+import { fetchEvmUsdcBalance } from '@/services/balance/evmBalanceService'
+import { findChainByChainId, getDefaultChainKey } from '@/config/chains'
 
 const DEFAULT_POLL_INTERVAL_MS = 10_000
 
@@ -37,14 +40,44 @@ export async function refreshBalances(options: BalanceRefreshOptions = {}): Prom
 
   inflightRefresh = (async () => {
     try {
-      // Get the transparent address from wallet state
+      // Get wallet state
       const walletState = store.get(walletAtom)
       const transparentAddress = walletState.namada?.account
+      const metaMaskAddress = walletState.metaMask?.account
+      const chainConfig = store.get(chainConfigAtom)
 
-      const [evmBalance, transparentBalance] = await Promise.all([
-        fetchEvmBalanceStub(options.chainKey),
-        fetchNamadaTransparentBalance(transparentAddress),
-      ])
+      // Determine chain key: use provided option, or derive from chainId, or use default
+      let chainKey = options.chainKey
+      if (!chainKey && walletState.metaMask.chainId && chainConfig) {
+        const chain = findChainByChainId(chainConfig, walletState.metaMask.chainId)
+        chainKey = chain?.key
+      }
+      if (!chainKey && chainConfig) {
+        chainKey = getDefaultChainKey(chainConfig)
+      }
+
+      // Only fetch EVM balance if MetaMask is connected and we have an address and chain key
+      let evmBalance: { usdc: string; chainKey?: string } = { usdc: '--', chainKey }
+      if (walletState.metaMask.isConnected && metaMaskAddress && chainKey) {
+        try {
+          const balance = await fetchEvmUsdcBalance(chainKey, metaMaskAddress)
+          evmBalance = { usdc: balance, chainKey }
+        } catch (error) {
+          console.error('[BalanceService] Failed to fetch EVM balance', {
+            chainKey,
+            error: error instanceof Error ? error.message : String(error),
+          })
+          evmBalance = { usdc: '--', chainKey }
+        }
+      } else {
+        console.debug('[BalanceService] Skipping EVM balance fetch', {
+          isConnected: walletState.metaMask.isConnected,
+          hasAddress: !!metaMaskAddress,
+          chainKey,
+        })
+      }
+
+      const transparentBalance = await fetchNamadaTransparentBalance(transparentAddress)
 
       const completedAt = Date.now()
 
@@ -128,17 +161,6 @@ export function requestBalanceRefresh(options: BalanceRefreshOptions = {}): Prom
   return refreshBalances({ ...options, trigger: options.trigger ?? 'manual' })
 }
 
-async function fetchEvmBalanceStub(chainKey?: string): Promise<{
-  usdc: string
-  chainKey?: string
-}> {
-  // TODO: Replace with actual EVM wallet balance retrieval using walletService + RPC provider.
-  console.info('[BalanceService] Fetching EVM balance (stub)', { chainKey })
-  return {
-    usdc: '--',
-    chainKey,
-  }
-}
 
 /**
  * Fetch Namada transparent USDC balance from the indexer endpoint.

@@ -54,3 +54,25 @@ export interface EvmChainsFile {
 export function findChainByKey(file: EvmChainsFile | undefined, key: string): EvmChainConfig | undefined {
   return file?.chains.find((chain) => chain.key === key)
 }
+
+/**
+ * Find a chain by chain ID (numeric).
+ * @param file - The chains configuration file
+ * @param chainId - The numeric chain ID
+ * @returns The chain configuration, or undefined if not found
+ */
+export function findChainByChainId(
+  file: EvmChainsFile | undefined,
+  chainId: number
+): EvmChainConfig | undefined {
+  return file?.chains.find((chain) => chain.chainId === chainId)
+}
+
+/**
+ * Get the default chain key from the chains configuration.
+ * @param file - The chains configuration file
+ * @returns The default chain key, or undefined if not set
+ */
+export function getDefaultChainKey(file: EvmChainsFile | undefined): string | undefined {
+  return file?.defaults?.selectedChainKey
+}
