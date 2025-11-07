@@ -1,7 +1,7 @@
 import { jotaiStore } from '@/store/jotaiStore'
 import { balanceAtom, balanceErrorAtom, balanceSyncAtom } from '@/atoms/balanceAtom'
 import { walletAtom } from '@/atoms/walletAtom'
-import { chainConfigAtom } from '@/atoms/appAtom'
+import { chainConfigAtom, preferredChainKeyAtom } from '@/atoms/appAtom'
 import {
   triggerShieldedBalanceRefresh,
   type ShieldedBalanceOptions,
@@ -46,8 +46,14 @@ export async function refreshBalances(options: BalanceRefreshOptions = {}): Prom
       const metaMaskAddress = walletState.metaMask?.account
       const chainConfig = store.get(chainConfigAtom)
 
-      // Determine chain key: use provided option, or derive from chainId, or use default
+      // Determine chain key: use provided option, or preferred from atom, or derive from chainId, or use default
       let chainKey = options.chainKey
+      if (!chainKey) {
+        const preferredChainKey = store.get(preferredChainKeyAtom)
+        if (preferredChainKey) {
+          chainKey = preferredChainKey
+        }
+      }
       if (!chainKey && walletState.metaMask.chainId && chainConfig) {
         const chain = findChainByChainId(chainConfig, walletState.metaMask.chainId)
         chainKey = chain?.key

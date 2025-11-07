@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Clock, Loader2 } from 'lucide-react'
-import type { EvmChainConfig, EvmChainsFile } from '@/config/chains'
+import type { EvmChainsFile } from '@/config/chains'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 
 export interface ChainSelectProps {

@@ -1,47 +1,62 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react'
-import { DollarSign, Clock, Circle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { useSetAtom } from 'jotai'
+import { DollarSign } from 'lucide-react'
 import { Button } from '@/components/common/Button'
+import { ChainSelect } from '@/components/common/ChainSelect'
+import { DepositConfirmationModal } from '@/components/deposit/DepositConfirmationModal'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
+import { useToast } from '@/hooks/useToast'
 import { RequireMetaMaskConnection } from '@/components/wallet/RequireMetaMaskConnection'
+import { validateDepositForm } from '@/utils/depositValidation'
+import { fetchEstimatedEvmFee } from '@/services/deposit/evmFeeEstimatorService'
+import {
+  buildDepositTransaction,
+  signDepositTransaction,
+  broadcastDepositTransaction,
+  saveDepositMetadata,
+  postDepositToBackend,
+  type DepositTransactionDetails,
+} from '@/services/deposit/depositService'
+import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
+import { preferredChainKeyAtom } from '@/atoms/appAtom'
 
 export function Deposit() {
+  const navigate = useNavigate()
+  const { notify } = useToast()
   const { state: walletState } = useWallet()
   const { state: balanceState, refresh } = useBalance()
-  const [amount, setAmount] = useState('123.00')
-  const [fromAddress, setFromAddress] = useState(walletState.metaMask.account ?? '')
-  const [selectedChain, setSelectedChain] = useState('Base')
-  const [estimatedTime, setEstimatedTime] = useState('~20 mins')
-  
+  const setPreferredChainKey = useSetAtom(preferredChainKeyAtom)
+
+  // Form state
+  const [amount, setAmount] = useState('')
+  const [toAddress, setToAddress] = useState('')
+  const [selectedChain, setSelectedChain] = useState('base')
+  const [estimatedFee, setEstimatedFee] = useState('0.12')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false)
+
   // Track last refresh values to prevent unnecessary refreshes
   const lastRefreshRef = useRef<{
     account?: string
     chainId?: number
   }>({})
-  
+
   // Get live EVM balance from balance state
   const availableBalance = balanceState.evm.usdc !== '--' ? balanceState.evm.usdc : '0.000000'
-  
-  // Update fromAddress when wallet account changes
-  useEffect(() => {
-    if (walletState.metaMask.account) {
-      setFromAddress(walletState.metaMask.account)
-    }
-  }, [walletState.metaMask.account])
-  
+
   // Store refresh function in ref to avoid dependency issues
   const refreshRef = useRef(refresh)
   refreshRef.current = refresh
-  
+
   // Refresh balance when wallet connects or chain changes (only if values actually changed)
-  // Note: Balance polling service already refreshes periodically, so we only need to refresh
-  // when the account or chainId actually changes, not on every render
   useEffect(() => {
     const currentAccount = walletState.metaMask.account
     const currentChainId = walletState.metaMask.chainId
     const lastAccount = lastRefreshRef.current.account
     const lastChainId = lastRefreshRef.current.chainId
-    
+
     // Only refresh if account or chainId actually changed
     if (
       walletState.metaMask.isConnected &&
@@ -60,76 +75,310 @@ export function Deposit() {
     walletState.metaMask.account,
     walletState.metaMask.chainId,
   ])
-  const fee = '0.12'
-  const total = (parseFloat(amount) + parseFloat(fee)).toFixed(2)
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
+  // Load default chain from config
+  useEffect(() => {
+    let mounted = true
+
+    async function loadDefaultChain() {
+      try {
+        const config = await fetchEvmChainsConfig()
+        if (mounted && config.defaults?.selectedChainKey) {
+          setSelectedChain(config.defaults.selectedChainKey)
+        }
+      } catch (error) {
+        console.error('[Deposit] Failed to load default chain:', error)
+      }
+    }
+
+    void loadDefaultChain()
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  // Fetch estimated fee when chain or amount changes
+  useEffect(() => {
+    if (!selectedChain || !amount) {
+      setEstimatedFee('0.12')
+      return
+    }
+
+    let mounted = true
+
+    async function loadFee() {
+      try {
+        const fee = await fetchEstimatedEvmFee(selectedChain, amount)
+        if (mounted) {
+          setEstimatedFee(fee)
+        }
+      } catch (error) {
+        console.error('[Deposit] Failed to fetch fee:', error)
+        if (mounted) {
+          setEstimatedFee('0.12') // Fallback to default
+        }
+      }
+    }
+
+    void loadFee()
+
+    return () => {
+      mounted = false
+    }
+  }, [selectedChain, amount])
+
+  // Get chain name for display
+  const [chainName, setChainName] = useState('')
+  useEffect(() => {
+    let mounted = true
+
+    async function loadChainName() {
+      try {
+        const config = await fetchEvmChainsConfig()
+        if (mounted) {
+          const chain = config.chains.find((c) => c.key === selectedChain)
+          setChainName(chain?.name ?? selectedChain)
+        }
+      } catch (error) {
+        console.error('[Deposit] Failed to load chain name:', error)
+        if (mounted) {
+          setChainName(selectedChain)
+        }
+      }
+    }
+
+    void loadChainName()
+
+    return () => {
+      mounted = false
+    }
+  }, [selectedChain])
+
+  // Set preferred chain key when selectedChain changes (for polling to use)
+  useEffect(() => {
+    if (selectedChain) {
+      setPreferredChainKey(selectedChain)
+    }
+  }, [selectedChain, setPreferredChainKey])
+
+  // Refresh balance when selectedChain changes (for dropdown selection)
+  useEffect(() => {
+    if (walletState.metaMask.isConnected && walletState.metaMask.account && selectedChain) {
+      // Refresh balance with the selected chain key
+      void refreshRef.current({ chainKey: selectedChain })
+    }
+  }, [selectedChain, walletState.metaMask.isConnected, walletState.metaMask.account])
+
+  // Form validation
+  const validation = validateDepositForm(amount, availableBalance, estimatedFee, toAddress)
+  const total = (parseFloat(amount || '0') + parseFloat(estimatedFee)).toFixed(2)
+
+  // Handle form submission
+  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
-    // TODO: Connect wallet service deposit orchestration with backend status polling.
+
+    // Validate form
+    if (!validation.isValid) {
+      if (validation.amountError) {
+        notify({ title: 'Invalid Amount', description: validation.amountError, level: 'error' })
+      }
+      if (validation.addressError) {
+        notify({ title: 'Invalid Address', description: validation.addressError, level: 'error' })
+      }
+      return
+    }
+
+    // Show confirmation modal
+    setShowConfirmationModal(true)
+  }
+
+  // Handle confirmation and submit transaction
+  async function handleConfirmDeposit(): Promise<void> {
+    setShowConfirmationModal(false)
+    setIsSubmitting(true)
+
+    try {
+      // Build transaction details
+      const transactionDetails: DepositTransactionDetails = {
+        amount,
+        fee: estimatedFee,
+        total,
+        destinationAddress: toAddress,
+        chainName,
+      }
+
+      // Build transaction
+      notify({ title: 'Building transaction...', level: 'info' })
+      const tx = await buildDepositTransaction({
+        amount,
+        destinationAddress: toAddress,
+        sourceChain: selectedChain,
+      })
+
+      // Sign transaction
+      notify({ title: 'Signing transaction...', level: 'info' })
+      const signedTx = await signDepositTransaction(tx)
+
+      // Broadcast transaction
+      notify({ title: 'Broadcasting transaction...', level: 'info' })
+      const txHash = await broadcastDepositTransaction(signedTx)
+
+      // Save metadata
+      await saveDepositMetadata(txHash, transactionDetails)
+
+      // Post to backend
+      await postDepositToBackend(txHash, transactionDetails)
+
+      // Show success toast
+      notify({
+        title: 'Deposit Submitted',
+        description: `Transaction ${txHash.slice(0, 10)}... submitted successfully`,
+        level: 'success',
+      })
+
+      // Navigate to Dashboard
+      navigate('/dashboard')
+    } catch (error) {
+      console.error('[Deposit] Deposit submission failed:', error)
+      const message = error instanceof Error ? error.message : 'Failed to submit deposit'
+      notify({
+        title: 'Deposit Failed',
+        description: message,
+        level: 'error',
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Handle Auto Fill for Namada address
+  function handleAutoFill() {
+    // Get Namada address from wallet state
+    const namadaAddress = walletState.namada.account
+    if (namadaAddress) {
+      setToAddress(namadaAddress)
+      notify({
+        title: 'Address Auto-filled',
+        description: 'Namada address populated from connected wallet',
+        level: 'info',
+      })
+    } else {
+      notify({
+        title: 'Namada Not Connected',
+        description: 'Please connect your Namada Keychain to use Auto Fill',
+        level: 'error',
+      })
+    }
+  }
+
+  // Transaction details for confirmation modal
+  const transactionDetails: DepositTransactionDetails = {
+    amount,
+    fee: estimatedFee,
+    total,
+    destinationAddress: toAddress,
+    chainName,
   }
 
   return (
     <RequireMetaMaskConnection message="Please connect your MetaMask wallet to deposit USDC. EVM deposits require a connected wallet.">
       <div className="flex flex-col gap-6 p-24">
+        {/* Amount Display Section */}
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500">
+            <DollarSign className="h-5 w-5 text-white" />
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-bold">$</span>
+            <input
+              type="text"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-32 border-none bg-transparent p-0 text-3xl font-bold focus:outline-none focus:ring-0"
+              placeholder="0.00"
+              inputMode="decimal"
+              disabled={isSubmitting}
+            />
+            <span className="text-sm text-muted-foreground">of ${availableBalance}</span>
+          </div>
+        </div>
 
-      {/* Amount Display Section */}
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500">
-          <DollarSign className="h-5 w-5 text-white" />
-        </div>
-        <div className="flex items-baseline gap-2">
-          <span className="text-3xl font-bold">$</span>
-          <input
-            type="text"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="w-32 border-none bg-transparent p-0 text-3xl font-bold focus:outline-none focus:ring-0"
-            placeholder="0.00"
-            inputMode="decimal"
+        {/* Validation error for amount */}
+        {validation.amountError && (
+          <div className="text-sm text-destructive">{validation.amountError}</div>
+        )}
+
+        <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
+          {/* To Namada Address Section */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-baseline justify-between">
+              <label className="text-sm font-medium text-muted-foreground">To Namada address</label>
+              <button
+                type="button"
+                onClick={handleAutoFill}
+                disabled={!walletState.namada.isConnected || isSubmitting}
+                className={`text-sm text-muted-foreground hover:text-foreground ${
+                  !walletState.namada.isConnected || isSubmitting
+                    ? 'opacity-50 cursor-not-allowed'
+                    : ''
+                }`}
+              >
+                Auto Fill
+              </button>
+            </div>
+            <input
+              type="text"
+              value={toAddress}
+              onChange={(e) => setToAddress(e.target.value)}
+              className="rounded-lg border border-input bg-background px-4 py-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              placeholder="tnam..."
+              disabled={isSubmitting}
+            />
+            {/* Validation error for address */}
+            {validation.addressError && (
+              <div className="text-sm text-destructive">{validation.addressError}</div>
+            )}
+          </div>
+
+          {/* Chain Select Component */}
+          <ChainSelect
+            value={selectedChain}
+            onChange={setSelectedChain}
+            disabled={isSubmitting}
+            showEstimatedTime={true}
+            timeType="deposit"
           />
-          <span className="text-sm text-muted-foreground">of ${availableBalance}</span>
-        </div>
+
+          {/* Fee and Total Summary */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">fee: ${estimatedFee}</span>
+            </div>
+            <div>
+              <span className="text-sm font-medium">total: ${total}</span>
+            </div>
+          </div>
+
+          {/* Action Button */}
+          <Button
+            type="submit"
+            variant="primary"
+            className="w-full py-6 text-lg"
+            disabled={!validation.isValid || isSubmitting}
+          >
+            {isSubmitting ? 'Processing...' : 'Deposit now'}
+          </Button>
+        </form>
+
+        {/* Confirmation Modal */}
+        <DepositConfirmationModal
+          open={showConfirmationModal}
+          onClose={() => setShowConfirmationModal(false)}
+          onConfirm={handleConfirmDeposit}
+          transactionDetails={transactionDetails}
+        />
       </div>
-
-      <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
-        {/* From Address Section */}
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-muted-foreground">from</label>
-          <input
-            type="text"
-            value={fromAddress}
-            onChange={(e) => setFromAddress(e.target.value)}
-            className="rounded-lg border border-input bg-background px-4 py-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            placeholder="0x..."
-          />
-        </div>
-
-        {/* Network/Time Information Section */}
-        <div className="flex items-center justify-center gap-3 rounded-lg border border-input bg-muted/40 px-4 py-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-blue-500">
-            <Circle className="h-4 w-4 text-blue-500" />
-          </div>
-          <span className="font-medium">{selectedChain}</span>
-          <Clock className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">{estimatedTime}</span>
-        </div>
-
-        {/* Fee and Total Summary */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">fee: ${fee}</span>
-          </div>
-          <div>
-            <span className="text-sm font-medium">total: ${total}</span>
-          </div>
-        </div>
-
-        {/* Action Button */}
-        <Button type="submit" variant="primary" className="w-full py-6 text-lg">
-          Deposit now
-        </Button>
-      </form>
-    </div>
     </RequireMetaMaskConnection>
   )
 }

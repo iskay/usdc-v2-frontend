@@ -8,3 +8,8 @@ export interface AppInitState {
 
 export const appInitAtom = atom<AppInitState>({ status: 'idle' })
 export const chainConfigAtom = atom<EvmChainsFile | undefined>(undefined)
+
+// Store the preferred chain key for balance fetching (set by Deposit page)
+// This allows the Deposit page to communicate its selected chain to the global balance service,
+// which polling can then use instead of falling back to MetaMask chainId or default chain
+export const preferredChainKeyAtom = atom<string | undefined>(undefined)

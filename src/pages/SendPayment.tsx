@@ -7,6 +7,7 @@ import { ChainSelect } from '@/components/common/ChainSelect'
 import { PaymentConfirmationModal } from '@/components/payment/PaymentConfirmationModal'
 import { useBalance } from '@/hooks/useBalance'
 import { useShieldedSync } from '@/hooks/useShieldedSync'
+import { useWallet } from '@/hooks/useWallet'
 import { useToast } from '@/hooks/useToast'
 import { useAtomValue } from 'jotai'
 import { balanceSyncAtom } from '@/atoms/balanceAtom'
@@ -25,6 +26,7 @@ import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 export function SendPayment() {
   const navigate = useNavigate()
   const { notify } = useToast()
+  const { state: walletState } = useWallet()
 
   // Form state
   const [amount, setAmount] = useState('')
@@ -145,6 +147,26 @@ export function SendPayment() {
     setShowConfirmationModal(true)
   }
 
+  // Handle Auto Fill for EVM address
+  function handleAutoFill() {
+    // Get EVM address from MetaMask wallet state
+    const evmAddress = walletState.metaMask.account
+    if (evmAddress) {
+      setToAddress(evmAddress)
+      notify({
+        title: 'Address Auto-filled',
+        description: 'EVM address populated from connected MetaMask wallet',
+        level: 'info',
+      })
+    } else {
+      notify({
+        title: 'MetaMask Not Connected',
+        description: 'Please connect your MetaMask wallet to use Auto Fill',
+        level: 'error',
+      })
+    }
+  }
+
   // Handle confirmation and submit transaction
   async function handleConfirmPayment(): Promise<void> {
     setShowConfirmationModal(false)
@@ -252,7 +274,21 @@ export function SendPayment() {
         <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
           {/* To Address Section */}
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-muted-foreground">to</label>
+            <div className="flex items-baseline justify-between">
+              <label className="text-sm font-medium text-muted-foreground">to</label>
+              <button
+                type="button"
+                onClick={handleAutoFill}
+                disabled={!walletState.metaMask.isConnected || isSubmitting}
+                className={`text-sm text-muted-foreground hover:text-foreground ${
+                  !walletState.metaMask.isConnected || isSubmitting
+                    ? 'opacity-50 cursor-not-allowed'
+                    : ''
+                }`}
+              >
+                Auto Fill
+              </button>
+            </div>
             <input
               type="text"
               value={toAddress}
