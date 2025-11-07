@@ -196,10 +196,10 @@ async function fetchNamadaTransparentBalance(
       }
     }
 
-    console.info('[BalanceService] Fetched Namada transparent balance', {
-      transparentAddress,
-      balance: result.formattedBalance,
-    })
+    // console.info('[BalanceService] Fetched Namada transparent balance', {
+    //   transparentAddress,
+    //   balance: result.formattedBalance,
+    // })
 
     return {
       usdcTransparent: result.formattedBalance,

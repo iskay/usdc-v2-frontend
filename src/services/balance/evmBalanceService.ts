@@ -10,10 +10,10 @@ import { findChainByKey } from '@/config/chains'
  */
 export function getUsdcContractAddress(chainKey: string): string | undefined {
   const chainConfig = jotaiStore.get(chainConfigAtom)
-  if (!chainConfig) {
-    console.warn('[EvmBalanceService] Chain config not loaded yet', { chainKey })
-    return undefined
-  }
+  // if (!chainConfig) {
+  //   console.warn('[EvmBalanceService] Chain config not loaded yet', { chainKey })
+  //   return undefined
+  // }
 
   const chain = findChainByKey(chainConfig, chainKey)
   if (!chain) {
@@ -75,12 +75,12 @@ export async function fetchEvmUsdcBalance(
       return '--'
     }
 
-    console.info('[EvmBalanceService] Fetching USDC balance', {
-      chainKey,
-      address: `${address.slice(0, 6)}...${address.slice(-4)}`,
-      usdcAddress,
-      rpcUrl,
-    })
+    // console.info('[EvmBalanceService] Fetching USDC balance', {
+    //   chainKey,
+    //   address: `${address.slice(0, 6)}...${address.slice(-4)}`,
+    //   usdcAddress,
+    //   rpcUrl,
+    // })
 
     // Create provider and contract
     const provider = new ethers.JsonRpcProvider(rpcUrl)
@@ -98,11 +98,11 @@ export async function fetchEvmUsdcBalance(
     // Use toFixed(6) to ensure consistent formatting
     const formattedBalance = Number.parseFloat(formatted).toFixed(6)
 
-    console.info('[EvmBalanceService] Fetched USDC balance', {
-      chainKey,
-      address: `${address.slice(0, 6)}...${address.slice(-4)}`,
-      balance: formattedBalance,
-    })
+    // console.info('[EvmBalanceService] Fetched USDC balance', {
+    //   chainKey,
+    //   address: `${address.slice(0, 6)}...${address.slice(-4)}`,
+    //   balance: formattedBalance,
+    // })
 
     return formattedBalance
   } catch (error) {

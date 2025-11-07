@@ -227,8 +227,8 @@ export function Deposit() {
       // Save metadata
       await saveDepositMetadata(txHash, transactionDetails)
 
-      // Post to backend
-      await postDepositToBackend(txHash, transactionDetails)
+      // Post to backend (pass transaction for additional metadata)
+      await postDepositToBackend(txHash, transactionDetails, signedTx)
 
       // Show success toast
       notify({
