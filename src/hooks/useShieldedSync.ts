@@ -8,8 +8,7 @@ import {
   getShieldedSyncStatus,
   type ShieldedSyncListeners,
 } from '@/services/shielded/shieldedService'
-import { normalizeViewingKey } from '@/services/shielded/maspHelpers'
-import { fetchDefaultNamadaAccount, fetchNamadaAccounts } from '@/services/wallet/namadaKeychain'
+import { resolveViewingKeyForSync } from '@/services/shielded/maspHelpers'
 import { NAMADA_CHAIN_ID } from '@/config/constants'
 import { computeShieldedBalancesAfterSync } from '@/services/balance/shieldedBalanceService'
 import type { ShieldedSyncProgress, ShieldedSyncResult } from '@/types/shielded'
@@ -93,29 +92,12 @@ export function useShieldedSync() {
         throw new Error('Namada wallet not connected')
       }
 
-      // Try to get viewing key from wallet state first
-      let account: Awaited<ReturnType<typeof fetchDefaultNamadaAccount>> | undefined
-      
-      if (walletState.namada.viewingKey) {
-        // If viewing key is in wallet state, try to get the default account
-        account = await fetchDefaultNamadaAccount()
-        if (!account || !account.viewingKey) {
-          // Fallback: search all accounts for one with viewing key
-          const accounts = await fetchNamadaAccounts()
-          account = accounts.find((a) => typeof a?.viewingKey === 'string' && a.viewingKey.length > 0)
-        }
-      } else {
-        // Search all accounts for one with viewing key
-        const accounts = await fetchNamadaAccounts()
-        account = accounts.find((a) => typeof a?.viewingKey === 'string' && a.viewingKey.length > 0)
-      }
+      // Resolve viewing key using shared helper
+      const viewingKey = await resolveViewingKeyForSync(walletState)
 
-      if (!account || !account.viewingKey) {
+      if (!viewingKey) {
         throw new Error('No Namada account with viewing key found. Please ensure your account has a viewing key.')
       }
-
-      // Normalize viewing key (calculate birthday)
-      const viewingKey = await normalizeViewingKey(account)
 
       // Update state to show syncing
       setShieldedState((state) => ({

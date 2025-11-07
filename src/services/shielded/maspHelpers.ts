@@ -146,3 +146,43 @@ export async function clearShieldedContext(sdk: Sdk, chainId: string): Promise<v
   await sdk.masp.clearShieldedContext(chainId)
 }
 
+/**
+ * Resolve viewing key from wallet state and accounts.
+ * This is a shared helper used by both useShieldedSync and triggerShieldedBalanceRefresh.
+ * @param walletState - The wallet state from walletAtom
+ * @returns Normalized viewing key or null if not found
+ */
+export async function resolveViewingKeyForSync(
+  walletState: { namada: { isConnected: boolean; viewingKey?: string } },
+): Promise<ShieldedViewingKey | null> {
+  if (!walletState.namada.isConnected) {
+    return null
+  }
+
+  const { fetchDefaultNamadaAccount, fetchNamadaAccounts } = await import('@/services/wallet/namadaKeychain')
+
+  // Try to get viewing key from wallet state first
+  let account: Awaited<ReturnType<typeof fetchDefaultNamadaAccount>> | undefined
+
+  if (walletState.namada.viewingKey) {
+    // If viewing key is in wallet state, try to get the default account
+    account = await fetchDefaultNamadaAccount()
+    if (!account || !account.viewingKey) {
+      // Fallback: search all accounts for one with viewing key
+      const accounts = await fetchNamadaAccounts()
+      account = accounts.find((a) => typeof a?.viewingKey === 'string' && a.viewingKey.length > 0)
+    }
+  } else {
+    // Search all accounts for one with viewing key
+    const accounts = await fetchNamadaAccounts()
+    account = accounts.find((a) => typeof a?.viewingKey === 'string' && a.viewingKey.length > 0)
+  }
+
+  if (!account || !account.viewingKey) {
+    return null
+  }
+
+  // Normalize viewing key (calculate birthday)
+  return await normalizeViewingKey(account)
+}
+

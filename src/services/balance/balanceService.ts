@@ -67,7 +67,12 @@ export async function refreshBalances(options: BalanceRefreshOptions = {}): Prom
         lastSuccessAt: completedAt,
       }))
 
-      void triggerShieldedBalanceRefresh(options.shielded)
+      // Only trigger shielded balance refresh if Namada wallet is connected
+      if (walletState.namada.isConnected) {
+        void triggerShieldedBalanceRefresh(options.shielded)
+      } else {
+        console.debug('[BalanceService] Skipping shielded balance refresh - Namada wallet not connected')
+      }
     } catch (error) {
       console.error('Balance refresh failed', error)
       const message = error instanceof Error ? error.message : 'Unknown balance refresh error'
