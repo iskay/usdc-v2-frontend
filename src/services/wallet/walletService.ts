@@ -192,11 +192,32 @@ async function resolveNamadaAccount(): Promise<NamadaResolvedAccount | undefined
   const candidate: NamadaKeychainAccount | undefined = defaultAccount ?? accounts[0]
   if (!candidate) return undefined
 
+  // Find the child account with payment address starting with 'z' (for shielding transactions)
+  // This is different from pseudoExtendedKey which is used for gas spending
+  let shieldedPaymentAddress: string | undefined
+  try {
+    const allAccounts = Array.isArray(accounts) ? accounts : []
+    const parent = allAccounts.find((a) => a?.address === candidate.address)
+    if (parent?.id) {
+      const child = allAccounts.find(
+        (a) =>
+          a?.parentId === parent.id &&
+          typeof a?.address === 'string' &&
+          String(a?.type || '').toLowerCase().includes('shielded'),
+      )
+      if (child?.address && String(child.address).startsWith('z')) {
+        shieldedPaymentAddress = child.address
+      }
+    }
+  } catch (error) {
+    console.warn('[WalletService] Failed to find shielded payment address:', error)
+  }
+
   return {
     transparentAddress: candidate.address,
-    shieldedAddress: candidate.pseudoExtendedKey,
+    shieldedAddress: shieldedPaymentAddress, // Payment address starting with 'z'
     accountAlias: candidate.alias,
-    viewingKey: candidate.viewingKey,
+    viewingKey: candidate.viewingKey, // Keep viewingKey for sync/balance
   }
 }
 

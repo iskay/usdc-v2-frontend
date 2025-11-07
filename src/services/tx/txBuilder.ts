@@ -3,6 +3,12 @@ import { fetchNobleForwardingAddress } from '@/services/deposit/nobleForwardingS
 import { encodeBech32ToBytes32 } from '@/services/evm/evmUtils'
 import { env } from '@/config/env'
 import { logger } from '@/utils/logger'
+import {
+  prepareShieldingParams,
+  buildShieldingTransaction,
+  type ShieldingParams,
+} from '@/services/shielded/shieldingService'
+import type { EncodedTxData, ShieldingTransactionData } from '@/types/shielded'
 
 export interface BuildTxParams {
   amount: string
@@ -89,6 +95,112 @@ export async function buildDepositTx(params: BuildTxParams): Promise<TrackedTran
   } catch (error) {
     console.error('[TxBuilder] Failed to build deposit transaction', {
       params,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    throw error
+  }
+}
+
+export interface BuildShieldingTxParams {
+  transparent: string
+  shielded: string
+  amountInBase: string
+  tokenAddress?: string
+  memo?: string
+  publicKey?: string
+}
+
+export interface ShieldingTxData {
+  transparent: string
+  shielded: string
+  tokenAddress: string
+  amountInBase: string
+  gasToken: string
+  chainId: string
+  memo?: string
+  encodedTxData?: EncodedTxData
+}
+
+/**
+ * Builds a shielding transaction (transparent → shielded).
+ */
+export async function buildShieldingTx(
+  params: BuildShieldingTxParams,
+): Promise<TrackedTransaction & { shieldingData?: ShieldingTxData }> {
+  logger.info('[TxBuilder] 🏗️  Building shielding transaction', {
+    transparent: params.transparent.slice(0, 12) + '...',
+    shielded: params.shielded.slice(0, 12) + '...',
+    amountInBase: params.amountInBase,
+  })
+
+  try {
+    // Prepare shielding parameters
+    logger.debug('[TxBuilder] Preparing shielding parameters...')
+    const shieldingParams = await prepareShieldingParams({
+      transparent: params.transparent,
+      shielded: params.shielded,
+      amountInBase: params.amountInBase,
+      tokenAddress: params.tokenAddress,
+      memo: params.memo,
+      publicKey: params.publicKey,
+    })
+
+    logger.debug('[TxBuilder] Shielding parameters prepared', {
+      transparent: shieldingParams.transparent.slice(0, 12) + '...',
+      shielded: shieldingParams.shielded.slice(0, 12) + '...',
+      tokenAddress: shieldingParams.tokenAddress.slice(0, 12) + '...',
+      amountInBase: shieldingParams.amountInBase,
+      gasToken: shieldingParams.gas.gasToken.slice(0, 12) + '...',
+    })
+
+    // Build the transaction
+    logger.info('[TxBuilder] 🔨 Building shielding transaction via worker...')
+    const encodedTxData = await buildShieldingTransaction(shieldingParams)
+
+    logger.info('[TxBuilder] ✅ Shielding transaction built successfully', {
+      txCount: encodedTxData.txs.length,
+      hasRevealPk: encodedTxData.txs.some((tx) => tx.innerTxHashes.length > 1),
+    })
+
+    const shieldingData: ShieldingTxData = {
+      transparent: shieldingParams.transparent,
+      shielded: shieldingParams.shielded,
+      tokenAddress: shieldingParams.tokenAddress,
+      amountInBase: shieldingParams.amountInBase,
+      gasToken: shieldingParams.gas.gasToken,
+      chainId: shieldingParams.chain.chainId,
+      memo: shieldingParams.memo,
+      encodedTxData,
+    }
+
+    const txId = crypto.randomUUID()
+    logger.info('[TxBuilder] ✅ Shielding transaction built and tracked', {
+      txId,
+      shieldingData: {
+        transparent: shieldingData.transparent.slice(0, 12) + '...',
+        shielded: shieldingData.shielded.slice(0, 12) + '...',
+        tokenAddress: shieldingData.tokenAddress.slice(0, 12) + '...',
+        amountInBase: shieldingData.amountInBase,
+        gasToken: shieldingData.gasToken.slice(0, 12) + '...',
+        chainId: shieldingData.chainId,
+      },
+    })
+
+    return {
+      id: txId,
+      createdAt: Date.now(),
+      chain: shieldingParams.chain.chainId,
+      direction: 'send', // Shielding is a type of send operation
+      status: 'building',
+      shieldingData,
+    }
+  } catch (error) {
+    logger.error('[TxBuilder] Failed to build shielding transaction', {
+      params: {
+        transparent: params.transparent.slice(0, 12) + '...',
+        shielded: params.shielded.slice(0, 12) + '...',
+        amountInBase: params.amountInBase,
+      },
       error: error instanceof Error ? error.message : String(error),
     })
     throw error

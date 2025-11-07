@@ -58,9 +58,86 @@ export interface ShieldedWorkerErrorPayload {
   recoverable?: boolean
 }
 
+export interface GasConfig {
+  gasToken: string
+  gasLimit: string
+  gasPriceInMinDenom: string
+}
+
+export interface ChainSettings {
+  chainId: string
+  nativeTokenAddress: string
+}
+
+export interface ShieldingParams {
+  transparent: string
+  shielded: string
+  tokenAddress: string
+  amountInBase: string
+  gas: GasConfig
+  chain: ChainSettings
+  publicKey?: string
+  memo?: string
+}
+
+export interface ShieldingBuildPayload {
+  account: {
+    address: string
+    publicKey: string
+    type?: string
+  }
+  gasConfig: GasConfig
+  chain: ChainSettings
+  fromTransparent: string
+  toShielded: string
+  tokenAddress: string
+  amountInBase: string
+  memo?: string
+}
+
+export interface ShieldingTransactionData {
+  transparent: string
+  shielded: string
+  tokenAddress: string
+  amountInBase: string
+  gasToken: string
+  chainId: string
+  memo?: string
+}
+
+// EncodedTxData from SDK (matches mockup structure)
+export interface EncodedTxData<T = unknown> {
+  type: string
+  txs: Array<{
+    args: unknown
+    hash: string
+    bytes: Uint8Array
+    signingData: unknown
+    innerTxHashes: string[]
+    memos: (number[] | null)[]
+  }>
+  wrapperTxProps: {
+    token: string
+    feeAmount: string
+    gasLimit: string
+    chainId: string
+    publicKey: string
+    memo?: string
+  }
+  meta?: {
+    props: T[]
+  }
+}
+
+export interface ShieldingBuildResult {
+  encodedTxData: EncodedTxData
+  txHash?: string
+}
+
 export type ShieldedWorkerRequest =
   | { type: 'init'; payload: ShieldedWorkerInitPayload }
   | { type: 'sync'; payload: ShieldedWorkerSyncPayload }
+  | { type: 'build-shielding'; payload: ShieldingBuildPayload }
   | { type: 'stop' }
   | { type: 'dispose' }
 
@@ -76,6 +153,7 @@ export type ShieldedWorkerMessage =
   | { type: 'ready'; payload?: { chainId?: string } }
   | { type: 'progress'; payload: ShieldedSyncProgress }
   | { type: 'complete'; payload: ShieldedSyncResult }
+  | { type: 'build-shielding-done'; payload: EncodedTxData }
   | { type: 'error'; payload: ShieldedWorkerErrorPayload }
   | { type: 'log'; payload: ShieldedWorkerLogPayload }
 

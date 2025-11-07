@@ -2,7 +2,15 @@
 
 import { initSdk } from '@namada/sdk-multicore/inline'
 import { SdkEvents, ProgressBarNames } from '@namada/sdk-multicore'
-import type { Sdk } from '@namada/sdk-multicore'
+import type {
+  Sdk,
+  WrapperTxMsgValue,
+  ShieldingTransferMsgValue,
+  ShieldedTransferDataMsgValue,
+  TxMsgValue,
+  TxProps,
+} from '@namada/sdk-multicore'
+import BigNumber from 'bignumber.js'
 import type {
   ShieldedWorkerRequest,
   ShieldedWorkerMessage,
@@ -12,6 +20,10 @@ import type {
   ShieldedSyncResult,
   ShieldedWorkerErrorPayload,
   ShieldedWorkerLogPayload,
+  ShieldingBuildPayload,
+  GasConfig,
+  ChainSettings,
+  EncodedTxData,
 } from '@/types/shielded'
 import { ensureMaspReady } from './maspHelpers'
 
@@ -233,6 +245,250 @@ function handleStop(): void {
 }
 
 /**
+ * Get transaction props for wrapper transaction.
+ */
+function getTxProps(
+  account: { address: string; publicKey: string; type?: string },
+  gasConfig: GasConfig,
+  chain: ChainSettings,
+  memo?: string,
+): WrapperTxMsgValue {
+  return {
+    token: gasConfig.gasToken,
+    feeAmount: new BigNumber(gasConfig.gasPriceInMinDenom),
+    gasLimit: new BigNumber(gasConfig.gasLimit),
+    chainId: chain.chainId,
+    publicKey: account.publicKey,
+    memo,
+  }
+}
+
+/**
+ * Check if public key is revealed on chain.
+ */
+async function isPublicKeyRevealed(address: string): Promise<boolean> {
+  if (!sdk) return false
+  try {
+    if (!address || address.trim() === '') {
+      return false
+    }
+    const revealed = await sdk.rpc.queryPublicKey(address)
+    return Boolean(revealed)
+  } catch (error) {
+    log('warn', 'Failed to check public key reveal status', { error: String(error) })
+    return false
+  }
+}
+
+/**
+ * Generic buildTx function for creating transactions.
+ */
+async function buildTx<T>(
+  account: { address: string; publicKey: string; type?: string },
+  gasConfig: GasConfig,
+  chain: ChainSettings,
+  queryProps: T[],
+  txFn: (wrapperTxProps: WrapperTxMsgValue, props: T) => Promise<TxProps>,
+  memo?: string,
+  shouldRevealPk = true,
+): Promise<EncodedTxData<T>> {
+  if (!sdk) {
+    throw new Error('SDK not initialized')
+  }
+
+  const txs: TxProps[] = []
+  const wrapperTxProps = getTxProps(account, gasConfig, chain, memo)
+
+  // Check if RevealPK is needed
+  if (shouldRevealPk) {
+    log('info', 'Checking if public key reveal is needed', {
+      address: account.address.slice(0, 12) + '...',
+      publicKey: account.publicKey ? account.publicKey.slice(0, 16) + '...' : 'EMPTY',
+    })
+    
+    const publicKeyRevealed = await isPublicKeyRevealed(account.address)
+    log('info', 'Public key revealed status', {
+      address: account.address.slice(0, 12) + '...',
+      isRevealed: publicKeyRevealed,
+    })
+    
+    if (!publicKeyRevealed) {
+      log('info', 'Public key not revealed, building RevealPK transaction', {
+        address: account.address.slice(0, 12) + '...',
+      })
+      log('info', 'WrapperTxProps for RevealPK', {
+        token: wrapperTxProps.token,
+        feeAmount: wrapperTxProps.feeAmount?.toString(),
+        gasLimit: wrapperTxProps.gasLimit?.toString(),
+        chainId: wrapperTxProps.chainId,
+        publicKey: wrapperTxProps.publicKey ? wrapperTxProps.publicKey.slice(0, 16) + '...' : 'EMPTY',
+        memo: wrapperTxProps.memo,
+      })
+      
+      try {
+        const revealPkTx = await sdk.tx.buildRevealPk(wrapperTxProps)
+        txs.push(revealPkTx)
+        log('info', 'RevealPK transaction built successfully')
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        const errorStack = error instanceof Error ? error.stack : undefined
+        log('error', 'Failed to build RevealPK transaction', {
+          error: errorMessage,
+          errorStack,
+          address: account.address.slice(0, 12) + '...',
+        })
+        throw error
+      }
+    }
+  }
+
+  // Build the main transaction(s)
+  // Use .apply() to ensure the function is called with the correct 'this' context (sdk.tx)
+  for (const props of queryProps) {
+    const tx = await txFn.apply(sdk.tx, [wrapperTxProps, props])
+    txs.push(tx)
+  }
+
+  // Batch transactions
+  const txProps = [sdk.tx.buildBatch(txs)]
+
+  return {
+    type: 'shielding-transfer',
+    txs: txProps.map(({ args, hash, bytes, signingData }) => {
+      const innerTxHashes = sdk.tx.getInnerTxMeta(bytes)
+      return {
+        args,
+        hash,
+        bytes,
+        signingData,
+        innerTxHashes: innerTxHashes.map(([hash]: [string, unknown]) => hash),
+        memos: innerTxHashes.map(([, memo]: [string, unknown]) => memo),
+      }
+    }),
+    wrapperTxProps: {
+      token: wrapperTxProps.token,
+      feeAmount: wrapperTxProps.feeAmount.toString(),
+      gasLimit: wrapperTxProps.gasLimit.toString(),
+      chainId: wrapperTxProps.chainId,
+      publicKey: wrapperTxProps.publicKey,
+      memo: wrapperTxProps.memo,
+    },
+    meta: {
+      props: queryProps,
+    },
+  }
+}
+
+/**
+ * Handle build-shielding request.
+ */
+async function handleBuildShielding(payload: ShieldingBuildPayload): Promise<void> {
+  if (!sdk || !isInitialized) {
+    postError('SDK not initialized', 'SDK_NOT_INITIALIZED', undefined, true)
+    return
+  }
+
+  try {
+    const { account, gasConfig, chain, fromTransparent, toShielded, tokenAddress, amountInBase, memo } = payload
+
+    // Log sanitized inputs
+    log('info', 'Building shielding transaction', {
+      account: {
+        address: account.address.slice(0, 12) + '...',
+        publicKey: account.publicKey ? account.publicKey.slice(0, 16) + '...' : 'EMPTY',
+        type: account.type,
+      },
+      gasConfig: {
+        token: gasConfig.gasToken,
+        gasLimit: gasConfig.gasLimit,
+        gasPrice: gasConfig.gasPriceInMinDenom,
+      },
+      chain,
+      fromTransparent: fromTransparent.slice(0, 12) + '...',
+      toShielded: toShielded.slice(0, 12) + '...',
+      tokenAddress,
+      amountInBase,
+      memo: memo ? `[${memo.length} chars]` : undefined,
+    })
+
+    // Ensure MASP params are loaded
+    try {
+      await sdk.masp.loadMaspParams('', chain.chainId)
+    } catch (error) {
+      log('warn', 'Failed to load MASP params, continuing anyway', { error: String(error) })
+    }
+
+    // Create shielding props
+    const shieldingProps: ShieldingTransferMsgValue = {
+      target: toShielded,
+      data: [
+        {
+          source: fromTransparent,
+          token: tokenAddress,
+          amount: new BigNumber(amountInBase),
+        } as ShieldedTransferDataMsgValue,
+      ],
+    }
+
+    // Build transaction
+    log('info', 'Building shielding transfer transaction', {
+      account: {
+        address: account.address.slice(0, 12) + '...',
+        publicKey: account.publicKey ? account.publicKey.slice(0, 16) + '...' : 'EMPTY',
+        type: account.type,
+      },
+      shieldingProps: {
+        target: shieldingProps.target.slice(0, 12) + '...',
+        dataCount: shieldingProps.data.length,
+        amount: shieldingProps.data[0]?.amount?.toString(),
+      },
+    })
+
+    const encodedTxData = await buildTx<ShieldingTransferMsgValue>(
+      account,
+      gasConfig,
+      chain,
+      [shieldingProps],
+      sdk.tx.buildShieldingTransfer,
+      memo,
+      true, // shouldRevealPk
+    )
+
+    log('info', 'Shielding transaction built successfully', {
+      txCount: encodedTxData.txs.length,
+      hasRevealPk: encodedTxData.txs.some((tx) => tx.innerTxHashes.length > 1),
+      txHashes: encodedTxData.txs.map((tx) => tx.hash.slice(0, 16) + '...'),
+    })
+
+    post({ type: 'build-shielding-done', payload: encodedTxData })
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorStack = error instanceof Error ? error.stack : undefined
+    const errorCause = error instanceof Error ? error.cause : undefined
+    
+    log('error', 'Failed to build shielding transaction', {
+      error: errorMessage,
+      errorStack,
+      errorCause: errorCause ? String(errorCause) : undefined,
+      payload: {
+        account: payload.account.address.slice(0, 12) + '...',
+        fromTransparent: payload.fromTransparent.slice(0, 12) + '...',
+        toShielded: payload.toShielded.slice(0, 12) + '...',
+        tokenAddress: payload.tokenAddress.slice(0, 12) + '...',
+        amountInBase: payload.amountInBase,
+      },
+    })
+    
+    // Include the underlying error message in the error payload
+    const detailedMessage = errorStack
+      ? `${errorMessage}\n\nStack trace:\n${errorStack}`
+      : errorMessage
+    
+    postError(detailedMessage, 'BUILD_SHIELDING_ERROR', error, true)
+  }
+}
+
+/**
  * Handle dispose request.
  */
 function handleDispose(): void {
@@ -255,6 +511,9 @@ self.onmessage = (event: MessageEvent<ShieldedWorkerRequest>) => {
       break
     case 'sync':
       void handleSync(request.payload)
+      break
+    case 'build-shielding':
+      void handleBuildShielding(request.payload)
       break
     case 'stop':
       handleStop()

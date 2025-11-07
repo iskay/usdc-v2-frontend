@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Shield, BookOpen, HelpCircle, RefreshCw, Loader2 } from 'lucide-react'
 import { Button } from '@/components/common/Button'
@@ -5,6 +6,7 @@ import { TxInProgressList } from '@/components/tx/TxInProgressList'
 import { TxHistoryList } from '@/components/tx/TxHistoryList'
 import { RequireNamadaConnection } from '@/components/wallet/RequireNamadaConnection'
 import { ShieldedSyncProgress } from '@/components/shielded/ShieldedSyncProgress'
+import { ShieldingModal } from '@/components/shielded/ShieldingModal'
 import { useBalance } from '@/hooks/useBalance'
 import { useShieldedSync } from '@/hooks/useShieldedSync'
 import { useAtomValue } from 'jotai'
@@ -15,6 +17,7 @@ export function Dashboard() {
   const { state: balanceState } = useBalance()
   const { startSync, isReady, state: shieldedState } = useShieldedSync()
   const balanceSyncState = useAtomValue(balanceSyncAtom)
+  const [isShieldingModalOpen, setIsShieldingModalOpen] = useState(false)
   
   // Get balances from the balance state
   const shieldedBalance = balanceState.namada.usdcShielded
@@ -52,7 +55,13 @@ export function Dashboard() {
                   <Loader2 className="h-5 w-5 animate-spin text-blue-500" aria-label="Loading shielded balance" />
                 )}
               </div>
-              <Button variant="ghost" className="gap-2">
+              <Button
+                variant="ghost"
+                className="gap-2"
+                onClick={() => setIsShieldingModalOpen(true)}
+                disabled={isShieldedBalanceLoading || parseFloat(transparentBalance || '0') <= 0}
+                title={parseFloat(transparentBalance || '0') <= 0 ? 'No transparent balance to shield' : 'Shield USDC'}
+              >
                 <span className="text-lg">+</span>
                 <span>shield</span>
               </Button>
@@ -132,6 +141,12 @@ export function Dashboard() {
             <HelpCircle className="h-5 w-5" />
           </button>
         </div>
+
+        {/* Shielding Modal */}
+        <ShieldingModal
+          open={isShieldingModalOpen}
+          onClose={() => setIsShieldingModalOpen(false)}
+        />
       </div>
     </RequireNamadaConnection>
   )
