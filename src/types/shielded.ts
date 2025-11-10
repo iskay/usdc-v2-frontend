@@ -121,7 +121,7 @@ export interface EncodedTxData<T = unknown> {
     feeAmount: string
     gasLimit: string
     chainId: string
-    publicKey: string
+    publicKey?: string
     memo?: string
   }
   meta?: {
@@ -134,12 +134,12 @@ export interface ShieldingBuildResult {
   txHash?: string
 }
 
-export type ShieldedWorkerRequest =
-  | { type: 'init'; payload: ShieldedWorkerInitPayload }
-  | { type: 'sync'; payload: ShieldedWorkerSyncPayload }
-  | { type: 'build-shielding'; payload: ShieldingBuildPayload }
-  | { type: 'stop' }
-  | { type: 'dispose' }
+// export type ShieldedWorkerRequest =
+//   | { type: 'init'; payload: ShieldedWorkerInitPayload }
+//   | { type: 'sync'; payload: ShieldedWorkerSyncPayload }
+//   | { type: 'build-shielding'; payload: ShieldingBuildPayload }
+//   | { type: 'stop' }
+//   | { type: 'dispose' }
 
 export type ShieldedWorkerLogLevel = 'info' | 'warn' | 'error'
 
@@ -149,13 +149,13 @@ export interface ShieldedWorkerLogPayload {
   context?: Record<string, unknown>
 }
 
-export type ShieldedWorkerMessage =
-  | { type: 'ready'; payload?: { chainId?: string } }
-  | { type: 'progress'; payload: ShieldedSyncProgress }
-  | { type: 'complete'; payload: ShieldedSyncResult }
-  | { type: 'build-shielding-done'; payload: EncodedTxData }
-  | { type: 'error'; payload: ShieldedWorkerErrorPayload }
-  | { type: 'log'; payload: ShieldedWorkerLogPayload }
+// export type ShieldedWorkerMessage =
+//   | { type: 'ready'; payload?: { chainId?: string } }
+//   | { type: 'progress'; payload: ShieldedSyncProgress }
+//   | { type: 'complete'; payload: ShieldedSyncResult }
+//   | { type: 'build-shielding-done'; payload: EncodedTxData }
+//   | { type: 'error'; payload: ShieldedWorkerErrorPayload }
+//   | { type: 'log'; payload: ShieldedWorkerLogPayload }
 
 export const DEFAULT_SHIELDED_WORKER_FALLBACK = 'shielded/worker.ts'
 
@@ -187,3 +187,130 @@ export function resolveShieldedWorkerAssetPath({
 
   return effectiveFallback
 }
+
+// Unshielding Transfer Types
+export interface UnshieldingTransferDataProps {
+  target: string
+  token: string
+  amount: string | number
+}
+
+export interface UnshieldingTransferProps {
+  source: string
+  data: UnshieldingTransferDataProps[]
+}
+
+// IBC Transfer Types
+export interface IbcTransferProps {
+  source: string
+  receiver: string
+  token: string
+  amountInBaseDenom: string | number
+  portId: string
+  channelId: string
+  timeoutHeight?: bigint | string
+  timeoutSecOffset?: bigint | string
+  memo?: string
+  refundTarget?: string
+  gasSpendingKey?: string
+}
+
+// Unshielding Service Types
+export interface UnshieldingParams {
+  fromShielded: string
+  toTransparent: string
+  tokenAddress: string
+  amountInBase: string
+  gas: GasConfig
+  chain: ChainSettings
+  memo?: string
+}
+
+export interface UnshieldingBuildPayload {
+  account: {
+    address: string
+    publicKey: string
+    type?: string
+  }
+  gasConfig: GasConfig
+  chain: ChainSettings
+  fromShielded: string
+  toTransparent: string
+  tokenAddress: string
+  amountInBase: string
+  memo?: string
+}
+
+// IBC Transfer Service Types
+export interface IbcParams {
+  ownerAddress: string
+  accountPublicKey: string
+  source: string
+  receiver: string
+  tokenAddress: string
+  amountInBase: string
+  gas: GasConfig
+  chain: ChainSettings
+  channelId: string
+  portId?: string
+  timeoutHeight?: bigint | string
+  timeoutSecOffset?: bigint | string
+  memo?: string
+  refundTarget?: string
+  gasSpendingKey?: string
+}
+
+export interface IbcBuildPayload {
+  account: {
+    address: string
+    publicKey: string
+    type?: string
+  }
+  gasConfig: GasConfig
+  chain: ChainSettings
+  source: string
+  receiver: string
+  tokenAddress: string
+  amountInBase: string
+  portId?: string
+  channelId: string
+  timeoutHeight?: bigint | string
+  timeoutSecOffset?: bigint | string
+  memo?: string
+  refundTarget?: string
+  gasSpendingKey?: string
+}
+
+// Payment Transaction Types
+export interface PaymentTransactionData {
+  amount: string
+  destinationAddress: string
+  destinationChain: string
+  destinationDomain: number
+  orbiterMemo: string
+  ibcParams: IbcParams
+  refundTarget?: string
+  disposableSignerAddress?: string
+  disposableSignerPublicKey?: string
+  encodedTxData?: EncodedTxData<IbcTransferProps>
+}
+
+// Extended Worker Message Types
+export type ShieldedWorkerRequest =
+  | { type: 'init'; payload: ShieldedWorkerInitPayload }
+  | { type: 'sync'; payload: ShieldedWorkerSyncPayload }
+  | { type: 'build-shielding'; payload: ShieldingBuildPayload }
+  | { type: 'build-unshielding'; payload: UnshieldingBuildPayload }
+  | { type: 'build-ibc-transfer'; payload: IbcBuildPayload }
+  | { type: 'stop' }
+  | { type: 'dispose' }
+
+export type ShieldedWorkerMessage =
+  | { type: 'ready'; payload?: { chainId?: string } }
+  | { type: 'progress'; payload: ShieldedSyncProgress }
+  | { type: 'complete'; payload: ShieldedSyncResult }
+  | { type: 'build-shielding-done'; payload: EncodedTxData }
+  | { type: 'build-unshielding-done'; payload: EncodedTxData<UnshieldingTransferProps> }
+  | { type: 'build-ibc-transfer-done'; payload: EncodedTxData<IbcTransferProps> }
+  | { type: 'error'; payload: ShieldedWorkerErrorPayload }
+  | { type: 'log'; payload: ShieldedWorkerLogPayload }

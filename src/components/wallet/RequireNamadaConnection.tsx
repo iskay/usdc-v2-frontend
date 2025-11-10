@@ -1,3 +1,4 @@
+import React from 'react'
 import { Shield } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
 import { Button } from '@/components/common/Button'
@@ -7,7 +8,7 @@ interface RequireNamadaConnectionProps {
   message?: string
 }
 
-export function RequireNamadaConnection({ children, message }: RequireNamadaConnectionProps): JSX.Element {
+export function RequireNamadaConnection({ children, message }: RequireNamadaConnectionProps): React.JSX.Element {
   const { state, connectNamada } = useWallet()
   const isNamadaConnected = state.namada.isConnected
 

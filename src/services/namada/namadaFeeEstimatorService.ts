@@ -223,6 +223,38 @@ export async function estimateGasForToken(
 }
 
 /**
+ * Fetch gas estimate for IBC unshielding transfer from indexer.
+ * Some indexers expose a combined metric under `ibc_unshielding_transfer`.
+ * Example response: {"min":6925,"max":300140,"avg":84020,"totalEstimates":37330}
+ *
+ * @returns Gas estimate with min, avg, max, and totalEstimates
+ */
+export async function fetchGasEstimateIbcUnshieldingTransfer(): Promise<GasEstimate> {
+  const url = `${getIndexerUrl()}/api/v1/gas/estimate?ibc_unshielding_transfer=0`
+  try {
+    logger.debug('[NamadaFeeEstimator] Fetching IBC unshielding transfer gas estimate', { url })
+    const res = await fetch(url)
+    if (!res.ok) {
+      throw new Error(`Indexer HTTP ${res.status}`)
+    }
+    const data = await res.json()
+    const estimate: GasEstimate = {
+      min: Number((data && (data.min ?? data.Min)) ?? 50000),
+      avg: Number((data && (data.avg ?? data.Avg)) ?? 75000),
+      max: Number((data && (data.max ?? data.Max)) ?? 100000),
+      totalEstimates: Number((data && (data.totalEstimates ?? data.TotalEstimates)) ?? 0),
+    }
+    logger.debug('[NamadaFeeEstimator] IBC unshielding transfer gas estimate fetched', estimate)
+    return estimate
+  } catch (error) {
+    logger.warn('[NamadaFeeEstimator] Failed to fetch IBC unshielding transfer gas estimate, using fallback', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return { min: 50000, avg: 75000, max: 100000, totalEstimates: 0 }
+  }
+}
+
+/**
  * Estimate gas for shielding transaction with optional RevealPK.
  * This is a convenience function that automatically includes RevealPK in tx kinds if needed.
  *

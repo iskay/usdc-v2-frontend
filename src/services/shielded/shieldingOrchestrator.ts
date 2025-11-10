@@ -3,7 +3,7 @@
  */
 
 import { logger } from '@/utils/logger'
-import { buildShieldingTx, type BuildShieldingTxParams } from '@/services/tx/txBuilder'
+import { buildShieldingTx, type BuildShieldingTxParams, type ShieldingTxData } from '@/services/tx/txBuilder'
 import { submitNamadaTx } from '@/services/tx/txSubmitter'
 import type { TrackedTransaction } from '@/types/tx'
 import {
@@ -87,7 +87,7 @@ export async function executeShielding(
     }
 
     // Update transaction with hash
-    const updatedTransaction: TrackedTransaction = {
+    const updatedTransaction: TrackedTransaction & { shieldingData?: ShieldingTxData } = {
       ...transaction,
       hash: txHash,
       status: 'broadcasted',

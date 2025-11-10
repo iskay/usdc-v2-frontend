@@ -1,14 +1,7 @@
 import { useEffect } from 'react'
-import { X } from 'lucide-react'
+import { X, Loader2 } from 'lucide-react'
 import { Button } from '@/components/common/Button'
-
-export interface DepositTransactionDetails {
-  amount: string
-  fee: string
-  total: string
-  destinationAddress: string
-  chainName: string
-}
+import type { DepositTransactionDetails } from '@/services/deposit/depositService'
 
 export interface DepositConfirmationModalProps {
   open: boolean
@@ -99,8 +92,55 @@ export function DepositConfirmationModal({
               {/* Fee */}
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Fee</span>
-                <span className="text-sm font-medium">${transactionDetails.fee}</span>
+                {transactionDetails.isLoadingFee ? (
+                  <div className="flex items-center gap-1.5">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Estimating...</span>
+                  </div>
+                ) : (
+                  <span className="text-sm font-medium">{transactionDetails.fee}</span>
+                )}
               </div>
+
+              {/* Fee Breakdown (if available) */}
+              {transactionDetails.feeBreakdown && !transactionDetails.isLoadingFee && (
+                <div className="space-y-1 pl-4 text-xs text-muted-foreground">
+                  {/* Only show approve fee if approval is needed */}
+                  {transactionDetails.feeBreakdown.approvalNeeded !== false &&
+                    parseFloat(transactionDetails.feeBreakdown.approveNative) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span>Approve</span>
+                        <span>
+                          {transactionDetails.feeBreakdown.approveNative}{' '}
+                          {transactionDetails.feeBreakdown.nativeSymbol}
+                          {transactionDetails.feeBreakdown.approveUsd !== undefined && (
+                            <span className="ml-1 text-muted-foreground">
+                              (~${transactionDetails.feeBreakdown.approveUsd.toFixed(4)})
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                  <div className="flex items-center justify-between">
+                    <span>Burn</span>
+                    <span>
+                      {transactionDetails.feeBreakdown.burnNative}{' '}
+                      {transactionDetails.feeBreakdown.nativeSymbol}
+                      {transactionDetails.feeBreakdown.burnUsd !== undefined && (
+                        <span className="ml-1 text-muted-foreground">
+                          (~${transactionDetails.feeBreakdown.burnUsd.toFixed(4)})
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  {transactionDetails.feeBreakdown.nobleRegUsd > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span>Noble Registration</span>
+                      <span>${transactionDetails.feeBreakdown.nobleRegUsd.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Total */}
               <div className="flex items-center justify-between border-t border-border pt-3">

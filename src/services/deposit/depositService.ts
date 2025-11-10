@@ -24,6 +24,18 @@ export interface DepositTransactionDetails {
   total: string
   destinationAddress: string
   chainName: string
+  feeBreakdown?: {
+    approveNative: string
+    burnNative: string
+    totalNative: string
+    nativeSymbol: string
+    approvalNeeded?: boolean
+    approveUsd?: number
+    burnUsd?: number
+    totalUsd?: number
+    nobleRegUsd: number
+  }
+  isLoadingFee?: boolean
 }
 
 export interface DepositMetadata {

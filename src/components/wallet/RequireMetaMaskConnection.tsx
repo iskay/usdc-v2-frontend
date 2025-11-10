@@ -1,3 +1,4 @@
+import React from 'react'
 import { Wallet } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
 import { Button } from '@/components/common/Button'
@@ -7,7 +8,7 @@ interface RequireMetaMaskConnectionProps {
   message?: string
 }
 
-export function RequireMetaMaskConnection({ children, message }: RequireMetaMaskConnectionProps): JSX.Element {
+export function RequireMetaMaskConnection({ children, message }: RequireMetaMaskConnectionProps): React.JSX.Element {
   const { state, connectMetaMask, isMetaMaskAvailable } = useWallet()
   const isMetaMaskConnected = state.metaMask.isConnected
 

@@ -27,6 +27,13 @@ export const env = {
   namadaMaspParamsUrl: () => readEnvVar('VITE_NAMADA_MASP_PARAMS_BASE_URL') || '/masp/',
   sharedWorkerPath: () => readEnvVar('VITE_SHIELDED_WORKER_PATH'),
   usdcTokenAddress: () => readEnvVar('VITE_USDC_TOKEN_ADDRESS'),
+  paymentDestinationCaller: () => readEnvVar('VITE_PAYMENT_DESTINATION_CALLER'),
+  namadaToNobleChannel: () => readEnvVar('VITE_CHANNEL_ID_ON_NAMADA') || 'channel-27',
+  nobleReceiverAddress: () => readEnvVar('VITE_NOBLE_RECEIVER_ADDRESS') || 'noble15xt7kx5mles58vkkfxvf0lq78sw04jajvfgd4d',
+  ethUsdPrice: () => {
+    const price = readEnvVar('VITE_ETH_USD_PRICE')
+    return price ? Number.parseFloat(price) : undefined
+  },
   debug: () => readEnvVar('VITE_DEBUG') === 'true' || readEnvVar('VITE_DEBUG') === '1',
   logLevel: () => readEnvVar('VITE_LOG_LEVEL') || 'info',
 }

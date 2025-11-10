@@ -6,9 +6,9 @@ import { logger } from '@/utils/logger'
 import {
   prepareShieldingParams,
   buildShieldingTransaction,
-  type ShieldingParams,
+  // type ShieldingParams,
 } from '@/services/shielded/shieldingService'
-import type { EncodedTxData, ShieldingTransactionData } from '@/types/shielded'
+import type { EncodedTxData } from '@/types/shielded'
 
 export interface BuildTxParams {
   amount: string
@@ -207,14 +207,26 @@ export async function buildShieldingTx(
   }
 }
 
-export async function buildPaymentTx(params: BuildTxParams): Promise<TrackedTransaction> {
-  console.debug('buildPaymentTx params', params)
-  // TODO: Connect to Namada SDK worker to assemble shielding + IBC transactions.
-  return {
-    id: crypto.randomUUID(),
-    createdAt: Date.now(),
-    chain: params.destinationChain,
-    direction: 'send',
-    status: 'building',
-  }
+export async function buildPaymentTx(
+  params: BuildTxParams & {
+    transparentAddress: string
+    shieldedAddress?: string
+  },
+): Promise<TrackedTransaction & { paymentData?: import('@/types/shielded').PaymentTransactionData }> {
+  logger.debug('[TxBuilder] Building payment transaction', {
+    amount: params.amount,
+    destinationAddress: params.recipient.slice(0, 10) + '...',
+    destinationChain: params.destinationChain,
+    transparent: params.transparentAddress.slice(0, 12) + '...',
+  })
+
+  // Delegate to payment service
+  const { buildPaymentTransaction } = await import('@/services/payment/paymentService')
+  return buildPaymentTransaction({
+    amount: params.amount,
+    destinationAddress: params.recipient,
+    destinationChain: params.destinationChain,
+    transparentAddress: params.transparentAddress,
+    shieldedAddress: params.shieldedAddress,
+  })
 }

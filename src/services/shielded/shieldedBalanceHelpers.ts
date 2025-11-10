@@ -1,4 +1,4 @@
-import type { Sdk } from '@namada/sdk-multicore'
+// import type { Sdk } from '@namada/sdk-multicore'
 import { getNamadaSdk } from '@/services/namada/namadaSdkService'
 import { getUSDCAddressFromRegistry } from '@/services/namada/namadaBalanceService'
 import { NAMADA_CHAIN_ID } from '@/config/constants'

@@ -7,7 +7,9 @@ import type {
   WrapperTxMsgValue,
   ShieldingTransferMsgValue,
   ShieldedTransferDataMsgValue,
-  TxMsgValue,
+  UnshieldingTransferProps as SdkUnshieldingTransferProps,
+  IbcTransferProps as SdkIbcTransferProps,
+  // TxMsgValue,
   TxProps,
 } from '@namada/sdk-multicore'
 import BigNumber from 'bignumber.js'
@@ -21,6 +23,10 @@ import type {
   ShieldedWorkerErrorPayload,
   ShieldedWorkerLogPayload,
   ShieldingBuildPayload,
+  UnshieldingBuildPayload,
+  IbcBuildPayload,
+  IbcTransferProps,
+  UnshieldingTransferProps,
   GasConfig,
   ChainSettings,
   EncodedTxData,
@@ -295,6 +301,8 @@ async function buildTx<T>(
   if (!sdk) {
     throw new Error('SDK not initialized')
   }
+  // Store sdk in local variable to ensure TypeScript knows it's defined
+  const sdkInstance = sdk
 
   const txs: TxProps[] = []
   const wrapperTxProps = getTxProps(account, gasConfig, chain, memo)
@@ -326,7 +334,7 @@ async function buildTx<T>(
       })
       
       try {
-        const revealPkTx = await sdk.tx.buildRevealPk(wrapperTxProps)
+        const revealPkTx = await sdkInstance.tx.buildRevealPk(wrapperTxProps)
         txs.push(revealPkTx)
         log('info', 'RevealPK transaction built successfully')
       } catch (error) {
@@ -345,24 +353,24 @@ async function buildTx<T>(
   // Build the main transaction(s)
   // Use .apply() to ensure the function is called with the correct 'this' context (sdk.tx)
   for (const props of queryProps) {
-    const tx = await txFn.apply(sdk.tx, [wrapperTxProps, props])
+    const tx = await txFn.apply(sdkInstance.tx, [wrapperTxProps, props])
     txs.push(tx)
   }
 
   // Batch transactions
-  const txProps = [sdk.tx.buildBatch(txs)]
+  const txProps = [sdkInstance.tx.buildBatch(txs)]
 
   return {
     type: 'shielding-transfer',
     txs: txProps.map(({ args, hash, bytes, signingData }) => {
-      const innerTxHashes = sdk.tx.getInnerTxMeta(bytes)
+      const innerTxHashes = sdkInstance.tx.getInnerTxMeta(bytes) as [string, number[] | null][]
       return {
         args,
         hash,
         bytes,
         signingData,
-        innerTxHashes: innerTxHashes.map(([hash]: [string, unknown]) => hash),
-        memos: innerTxHashes.map(([, memo]: [string, unknown]) => memo),
+        innerTxHashes: innerTxHashes.map(([hash]) => hash),
+        memos: innerTxHashes.map(([, memo]) => memo),
       }
     }),
     wrapperTxProps: {
@@ -489,6 +497,258 @@ async function handleBuildShielding(payload: ShieldingBuildPayload): Promise<voi
 }
 
 /**
+ * Handle build-unshielding request.
+ */
+async function handleBuildUnshielding(payload: UnshieldingBuildPayload): Promise<void> {
+  if (!sdk || !isInitialized) {
+    postError('SDK not initialized', 'SDK_NOT_INITIALIZED', undefined, true)
+    return
+  }
+
+  try {
+    const { account, gasConfig, chain, fromShielded, toTransparent, tokenAddress, amountInBase, memo } = payload
+
+    // Log sanitized inputs
+    log('info', 'Building unshielding transaction', {
+      account: {
+        address: account.address.slice(0, 12) + '...',
+        publicKey: account.publicKey ? account.publicKey.slice(0, 16) + '...' : 'EMPTY',
+        type: account.type,
+      },
+      gasConfig: {
+        token: gasConfig.gasToken,
+        gasLimit: gasConfig.gasLimit,
+        gasPrice: gasConfig.gasPriceInMinDenom,
+      },
+      chain,
+      fromShielded: fromShielded.slice(0, 12) + '...',
+      toTransparent: toTransparent.slice(0, 12) + '...',
+      tokenAddress,
+      amountInBase,
+      memo: memo ? `[${memo.length} chars]` : undefined,
+    })
+
+    // Ensure MASP params are loaded
+    try {
+      await sdk.masp.loadMaspParams('', chain.chainId)
+    } catch (error) {
+      log('warn', 'Failed to load MASP params, continuing anyway', { error: String(error) })
+    }
+
+    // Create unshielding props
+    const unshieldingProps: SdkUnshieldingTransferProps = {
+      source: fromShielded,
+      data: [
+        {
+          target: toTransparent,
+          token: tokenAddress,
+          amount: new BigNumber(amountInBase),
+        },
+      ],
+    }
+
+    // Build transaction (shouldRevealPk = false for unshielding)
+    const encodedTxData = await buildTx<SdkUnshieldingTransferProps>(
+      account,
+      gasConfig,
+      chain,
+      [unshieldingProps],
+      sdk.tx.buildUnshieldingTransfer,
+      memo,
+      false, // shouldRevealPk for unshielding
+    )
+
+    log('info', 'Unshielding transaction built successfully', {
+      txCount: encodedTxData.txs.length,
+      txHashes: encodedTxData.txs.map((tx) => tx.hash.slice(0, 16) + '...'),
+    })
+
+    // Convert EncodedTxData<SdkUnshieldingTransferProps> to EncodedTxData<UnshieldingTransferProps>
+    // by converting BigNumber amounts in data array to strings
+    const convertedPayload: EncodedTxData<UnshieldingTransferProps> = {
+      ...encodedTxData,
+      meta: encodedTxData.meta
+        ? {
+            props: encodedTxData.meta.props.map((prop) => ({
+              ...prop,
+              data: prop.data.map((item) => ({
+                ...item,
+                amount:
+                  item.amount instanceof BigNumber
+                    ? item.amount.toString()
+                    : item.amount,
+              })),
+            })) as UnshieldingTransferProps[],
+          }
+        : undefined,
+    }
+
+    post({ type: 'build-unshielding-done', payload: convertedPayload })
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorStack = error instanceof Error ? error.stack : undefined
+    const errorCause = error instanceof Error ? error.cause : undefined
+
+    log('error', 'Failed to build unshielding transaction', {
+      error: errorMessage,
+      errorStack,
+      errorCause: errorCause ? String(errorCause) : undefined,
+      payload: {
+        account: payload.account.address.slice(0, 12) + '...',
+        fromShielded: payload.fromShielded.slice(0, 12) + '...',
+        toTransparent: payload.toTransparent.slice(0, 12) + '...',
+        tokenAddress: payload.tokenAddress.slice(0, 12) + '...',
+        amountInBase: payload.amountInBase,
+      },
+    })
+
+    const detailedMessage = errorStack
+      ? `${errorMessage}\n\nStack trace:\n${errorStack}`
+      : errorMessage
+
+    postError(detailedMessage, 'BUILD_UNSHIELDING_ERROR', error, true)
+  }
+}
+
+/**
+ * Handle build-ibc-transfer request.
+ */
+async function handleBuildIbcTransfer(payload: IbcBuildPayload): Promise<void> {
+  if (!sdk || !isInitialized) {
+    postError('SDK not initialized', 'SDK_NOT_INITIALIZED', undefined, true)
+    return
+  }
+
+  try {
+    const {
+      account,
+      gasConfig,
+      chain,
+      source,
+      receiver,
+      tokenAddress,
+      amountInBase,
+      portId,
+      channelId,
+      timeoutHeight,
+      timeoutSecOffset,
+      memo,
+      refundTarget,
+      gasSpendingKey,
+    } = payload
+
+    // Log sanitized inputs
+    log('info', 'Building IBC transfer transaction', {
+      account: {
+        address: account.address.slice(0, 12) + '...',
+        publicKey: account.publicKey ? account.publicKey.slice(0, 16) + '...' : 'EMPTY',
+        type: account.type,
+      },
+      gasConfig: {
+        token: gasConfig.gasToken,
+        gasLimit: gasConfig.gasLimit,
+        gasPrice: gasConfig.gasPriceInMinDenom,
+      },
+      chain,
+      source: typeof source === 'string' ? source.slice(0, 12) + '...' : 'N/A',
+      receiver,
+      tokenAddress,
+      amountInBase,
+      portId: portId || 'transfer',
+      channelId,
+      memo: memo ? `[${memo.length} chars]` : undefined,
+      refundTarget: refundTarget ? refundTarget.slice(0, 12) + '...' : undefined,
+      hasGasSpendingKey: Boolean(gasSpendingKey),
+    })
+
+    // Ensure MASP params are loaded
+    try {
+      await sdk.masp.loadMaspParams('', chain.chainId)
+    } catch (error) {
+      log('warn', 'Failed to load MASP params, continuing anyway', { error: String(error) })
+    }
+
+    // Create IBC transfer props
+    const ibcProps: SdkIbcTransferProps = {
+      source,
+      receiver,
+      token: tokenAddress,
+      amountInBaseDenom: new BigNumber(amountInBase),
+      portId: portId || 'transfer',
+      channelId,
+      memo,
+      refundTarget,
+      gasSpendingKey,
+      timeoutHeight: timeoutHeight ? (typeof timeoutHeight === 'string' ? BigInt(timeoutHeight) : timeoutHeight) : undefined,
+      timeoutSecOffset: timeoutSecOffset ? (typeof timeoutSecOffset === 'string' ? BigInt(timeoutSecOffset) : timeoutSecOffset) : undefined,
+    }
+
+    // For IBC transfers, we don't use maspFeePaymentProps - the gasSpendingKey handles fees directly from MASP
+    // Only reveal PK if no gasSpendingKey
+    const shouldRevealPk = !Boolean(ibcProps.gasSpendingKey)
+
+    // Build transaction
+    const encodedTxData = await buildTx<SdkIbcTransferProps>(
+      account,
+      gasConfig,
+      chain,
+      [ibcProps],
+      sdk.tx.buildIbcTransfer,
+      memo,
+      shouldRevealPk,
+    )
+
+    log('info', 'IBC transfer transaction built successfully', {
+      txCount: encodedTxData.txs.length,
+      hasRevealPk: encodedTxData.txs.some((tx) => tx.innerTxHashes.length > 1),
+      txHashes: encodedTxData.txs.map((tx) => tx.hash.slice(0, 16) + '...'),
+    })
+
+    // Convert EncodedTxData<SdkIbcTransferProps> to EncodedTxData<IbcTransferProps>
+    // by converting BigNumber amountInBaseDenom to string
+    const convertedPayload: EncodedTxData<IbcTransferProps> = {
+      ...encodedTxData,
+      meta: encodedTxData.meta
+        ? {
+            props: encodedTxData.meta.props.map((prop) => ({
+              ...prop,
+              amountInBaseDenom:
+                prop.amountInBaseDenom instanceof BigNumber
+                  ? prop.amountInBaseDenom.toString()
+                  : prop.amountInBaseDenom,
+            })) as IbcTransferProps[],
+          }
+        : undefined,
+    }
+
+    post({ type: 'build-ibc-transfer-done', payload: convertedPayload })
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorStack = error instanceof Error ? error.stack : undefined
+    const errorCause = error instanceof Error ? error.cause : undefined
+
+    log('error', 'Failed to build IBC transfer transaction', {
+      error: errorMessage,
+      errorStack,
+      errorCause: errorCause ? String(errorCause) : undefined,
+      payload: {
+        account: payload.account.address.slice(0, 12) + '...',
+        source: typeof payload.source === 'string' ? payload.source.slice(0, 12) + '...' : 'N/A',
+        receiver: payload.receiver,
+        tokenAddress: payload.tokenAddress.slice(0, 12) + '...',
+        amountInBase: payload.amountInBase,
+      },
+    })
+
+    const detailedMessage = errorStack
+      ? `${errorMessage}\n\nStack trace:\n${errorStack}`
+      : errorMessage
+
+    postError(detailedMessage, 'BUILD_IBC_TRANSFER_ERROR', error, true)
+  }
+}
+
+/**
  * Handle dispose request.
  */
 function handleDispose(): void {
@@ -514,6 +774,12 @@ self.onmessage = (event: MessageEvent<ShieldedWorkerRequest>) => {
       break
     case 'build-shielding':
       void handleBuildShielding(request.payload)
+      break
+    case 'build-unshielding':
+      void handleBuildUnshielding(request.payload)
+      break
+    case 'build-ibc-transfer':
+      void handleBuildIbcTransfer(request.payload)
       break
     case 'stop':
       handleStop()

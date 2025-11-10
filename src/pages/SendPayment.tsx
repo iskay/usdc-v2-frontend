@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/useToast'
 import { useAtomValue } from 'jotai'
 import { balanceSyncAtom } from '@/atoms/balanceAtom'
 import { validatePaymentForm } from '@/utils/paymentValidation'
-import { fetchEstimatedFee } from '@/services/payment/feeEstimatorService'
+import { usePaymentFeeEstimate } from '@/hooks/usePaymentFeeEstimate'
 import {
   buildPaymentTransaction,
   signPaymentTransaction,
@@ -32,7 +32,6 @@ export function SendPayment() {
   const [amount, setAmount] = useState('')
   const [toAddress, setToAddress] = useState('')
   const [selectedChain, setSelectedChain] = useState('base')
-  const [estimatedFee, setEstimatedFee] = useState('0.12')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showConfirmationModal, setShowConfirmationModal] = useState(false)
 
@@ -44,6 +43,28 @@ export function SendPayment() {
   const shieldedBalance = balanceState.namada.usdcShielded || '0.00'
   const isShieldedBalanceLoading =
     shieldedState.isSyncing || balanceSyncState.shieldedStatus === 'calculating'
+
+  // Get Namada addresses from wallet state
+  const transparentAddress = walletState.namada.account
+  const shieldedAddress = walletState.namada.shieldedAccount
+
+  // Use payment fee estimation hook
+  const { state: feeEstimateState } = usePaymentFeeEstimate(
+    amount,
+    transparentAddress,
+    shieldedAddress,
+  )
+
+  // Get fee info from hook state
+  const feeInfo = feeEstimateState.feeInfo
+  const isEstimatingFee = feeEstimateState.isLoading
+
+  // Format fee for display
+  const estimatedFee = feeInfo
+    ? feeInfo.feeToken === 'USDC'
+      ? `$${parseFloat(feeInfo.feeAmount).toFixed(2)}`
+      : `${parseFloat(feeInfo.feeAmount).toFixed(6)} NAM`
+    : '0.00'
 
   // Load default chain from config
   useEffect(() => {
@@ -67,35 +88,6 @@ export function SendPayment() {
     }
   }, [])
 
-  // Fetch estimated fee when chain or amount changes
-  useEffect(() => {
-    if (!selectedChain || !amount) {
-      setEstimatedFee('0.12')
-      return
-    }
-
-    let mounted = true
-
-    async function loadFee() {
-      try {
-        const fee = await fetchEstimatedFee(selectedChain, amount)
-        if (mounted) {
-          setEstimatedFee(fee)
-        }
-      } catch (error) {
-        console.error('[SendPayment] Failed to fetch fee:', error)
-        if (mounted) {
-          setEstimatedFee('0.12') // Fallback to default
-        }
-      }
-    }
-
-    void loadFee()
-
-    return () => {
-      mounted = false
-    }
-  }, [selectedChain, amount])
 
   // Get chain name for display
   const [chainName, setChainName] = useState('')
@@ -124,9 +116,18 @@ export function SendPayment() {
     }
   }, [selectedChain])
 
-  // Form validation
-  const validation = validatePaymentForm(amount, shieldedBalance, estimatedFee, toAddress)
-  const total = (parseFloat(amount || '0') + parseFloat(estimatedFee)).toFixed(2)
+  // Form validation - use numeric fee value for validation
+  const feeValueForValidation = feeInfo
+    ? feeInfo.feeToken === 'USDC'
+      ? parseFloat(feeInfo.feeAmount).toFixed(2)
+      : '0.00' // NAM fees don't affect USDC amount validation
+    : '0.00'
+  const validation = validatePaymentForm(amount, shieldedBalance, feeValueForValidation, toAddress)
+  
+  // Calculate total - only add fee if it's USDC
+  const amountNum = parseFloat(amount || '0')
+  const feeNum = feeInfo && feeInfo.feeToken === 'USDC' ? parseFloat(feeInfo.feeAmount) : 0
+  const total = (amountNum + feeNum).toFixed(2)
 
   // Handle form submission
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -182,12 +183,18 @@ export function SendPayment() {
         chainName,
       }
 
+      if (!transparentAddress) {
+        throw new Error('Namada transparent address not found. Please connect your Namada Keychain.')
+      }
+
       // Build transaction
       notify({ title: 'Building transaction...', level: 'info' })
       const tx = await buildPaymentTransaction({
         amount,
         destinationAddress: toAddress,
         destinationChain: selectedChain,
+        transparentAddress,
+        shieldedAddress,
       })
 
       // Sign transaction
@@ -229,10 +236,16 @@ export function SendPayment() {
   // Transaction details for confirmation modal
   const transactionDetails: PaymentTransactionDetails = {
     amount,
-    fee: estimatedFee,
+    fee: feeInfo
+      ? feeInfo.feeToken === 'USDC'
+        ? parseFloat(feeInfo.feeAmount).toFixed(2)
+        : parseFloat(feeInfo.feeAmount).toFixed(6)
+      : '0.00',
+    feeToken: feeInfo?.feeToken,
     total,
     destinationAddress: toAddress,
     chainName,
+    isLoadingFee: isEstimatingFee,
   }
 
   return (
@@ -315,10 +328,27 @@ export function SendPayment() {
           {/* Fee and Total Summary */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">fee: ${estimatedFee}</span>
+              <span className="text-sm text-muted-foreground">Fee</span>
+              {isEstimatingFee ? (
+                <div className="flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Estimating...</span>
+                </div>
+              ) : feeInfo ? (
+                <span className="text-sm font-medium">
+                  {feeInfo.feeToken === 'USDC'
+                    ? `$${parseFloat(feeInfo.feeAmount).toFixed(2)}`
+                    : `${parseFloat(feeInfo.feeAmount).toFixed(6)} NAM`}
+                </span>
+              ) : (
+                <span className="text-sm text-muted-foreground">--</span>
+              )}
             </div>
-            <div>
-              <span className="text-sm font-medium">total: ${total}</span>
+            <div className="flex items-center justify-between border-t border-border pt-2">
+              <span className="text-sm font-medium">Total</span>
+              <span className="text-sm font-semibold">
+                {feeInfo && feeInfo.feeToken === 'USDC' ? `$${total}` : `$${amount || '0.00'}`}
+              </span>
             </div>
           </div>
 

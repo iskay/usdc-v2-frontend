@@ -72,7 +72,7 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
   }
 
   const transparentBalance = balanceState.namada.usdcTransparent || '0.00'
-  const maxAmount = transparentBalance
+  // const maxAmount = transparentBalance
 
   // Get fee information from hook (already calculated, no logic in modal)
   const feeInfo = feeEstimateState.feeInfo

@@ -57,13 +57,23 @@ export async function fetchNamadaAccountBalances(
     // Handle multiple API response formats for robustness
     const balances: NamadaBalance[] = rawBalances.map((b: unknown) => {
       const balance = b as Record<string, unknown>
+      
+      // Extract tokenAddress with proper type handling
+      let tokenAddress: string
+      if (typeof balance.tokenAddress === 'string') {
+        tokenAddress = balance.tokenAddress
+      } else if (balance.tokenAddress && typeof balance.tokenAddress === 'object') {
+        const tokenAddrObj = balance.tokenAddress as Record<string, unknown>
+        tokenAddress = typeof tokenAddrObj.address === 'string' ? tokenAddrObj.address : ''
+      } else if (balance.token && typeof balance.token === 'object') {
+        const tokenObj = balance.token as Record<string, unknown>
+        tokenAddress = typeof tokenObj.address === 'string' ? tokenObj.address : ''
+      } else {
+        tokenAddress = ''
+      }
+      
       return {
-        tokenAddress:
-          typeof balance.tokenAddress === 'string'
-            ? balance.tokenAddress
-            : (balance.tokenAddress as Record<string, unknown>)?.address ||
-              (balance.token as Record<string, unknown>)?.address ||
-              '',
+        tokenAddress,
         minDenomAmount: String(balance.minDenomAmount || '0'),
       }
     })

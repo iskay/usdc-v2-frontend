@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { Sdk } from '@namada/sdk-multicore'
 import type { NamadaKeychainAccount } from '@/services/wallet/namadaKeychain'
 import {
@@ -54,7 +54,8 @@ describe('fetchBlockHeightByTimestamp', () => {
   })
 
   it('throws when indexer URL is not configured', async () => {
-    vi.mocked(env.namadaIndexerUrl).mockReturnValue(undefined)
+    // Mock to return undefined for testing error case
+    vi.mocked(env.namadaIndexerUrl).mockReturnValue(undefined as unknown as string)
 
     await expect(fetchBlockHeightByTimestamp(1700000000)).rejects.toThrow(
       'Indexer URL not configured',

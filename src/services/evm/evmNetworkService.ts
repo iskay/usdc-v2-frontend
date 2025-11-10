@@ -9,16 +9,6 @@ import { chainConfigAtom } from '@/atoms/appAtom'
 import { findChainByKey } from '@/config/chains'
 import { logger } from '@/utils/logger'
 
-interface EthereumProvider {
-  request(args: { method: string; params?: unknown[] }): Promise<unknown>
-}
-
-declare global {
-  interface Window {
-    ethereum?: EthereumProvider
-  }
-}
-
 /**
  * Get the expected chain ID for a given chain key.
  * @param chainKey - The chain key (e.g., 'sepolia', 'base-sepolia')

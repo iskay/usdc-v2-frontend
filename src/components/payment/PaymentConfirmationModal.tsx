@@ -1,14 +1,7 @@
 import { useEffect } from 'react'
-import { X } from 'lucide-react'
+import { X, Loader2 } from 'lucide-react'
 import { Button } from '@/components/common/Button'
-
-export interface PaymentTransactionDetails {
-  amount: string
-  fee: string
-  total: string
-  destinationAddress: string
-  chainName: string
-}
+import type { PaymentTransactionDetails } from '@/services/payment/paymentService'
 
 export interface PaymentConfirmationModalProps {
   open: boolean
@@ -99,7 +92,20 @@ export function PaymentConfirmationModal({
               {/* Fee */}
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Fee</span>
-                <span className="text-sm font-medium">${transactionDetails.fee}</span>
+                {transactionDetails.isLoadingFee ? (
+                  <div className="flex items-center gap-1.5">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Estimating...</span>
+                  </div>
+                ) : (
+                  <span className="text-sm font-medium">
+                    {transactionDetails.feeToken === 'USDC'
+                      ? `$${transactionDetails.fee}`
+                      : transactionDetails.feeToken === 'NAM'
+                        ? `${transactionDetails.fee} NAM`
+                        : `$${transactionDetails.fee}`}
+                  </span>
+                )}
               </div>
 
               {/* Total */}

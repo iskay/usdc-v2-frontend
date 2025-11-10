@@ -4,8 +4,12 @@ import { depositForBurn } from '@/services/evm/evmContractService'
 import type { DepositTxData, ShieldingTxData } from './txBuilder'
 import { logger } from '@/utils/logger'
 import { getNamadaSdk } from '@/services/namada/namadaSdkService'
-import type { EncodedTxData } from '@/types/shielded'
-import { env } from '@/config/env'
+import type { EncodedTxData, PaymentTransactionData } from '@/types/shielded'
+// import { env } from '@/config/env'
+import {
+  persistDisposableSigner,
+  clearDisposableSigner,
+} from '@/services/payment/paymentService'
 
 export interface DepositTxResult {
   txHash: string
@@ -150,12 +154,14 @@ export async function signNamadaTx(
       return tx as TxForSign
     }
     // Fallback: enrich here if needed
-    const inner = (sdk as any).tx.getInnerTxMeta(tx.bytes) as [string, number[] | null][]
+    // Type assertion: tx has bytes property from EncodedTxData type
+    const txWithBytes = tx as { bytes: Uint8Array; args: unknown; hash: string; signingData: unknown; [key: string]: unknown }
+    const inner = (sdk as any).tx.getInnerTxMeta(txWithBytes.bytes) as [string, number[] | null][]
     logger.debug('[TxSubmitter] Enriching transaction metadata (fallback)', {
       innerCount: inner.length,
     })
     return {
-      ...tx,
+      ...txWithBytes,
       innerTxHashes: inner.map(([hash]) => hash),
       memos: inner.map(([, memo]) => memo),
     }
@@ -234,7 +240,7 @@ export async function broadcastNamadaTx(signedTx: Uint8Array): Promise<{ hash: s
 
 /**
  * Submit a Namada transaction (sign and broadcast).
- * Handles both deposit and shielding transactions.
+ * Handles deposit, shielding, and payment transactions.
  */
 export async function submitNamadaTx(tx: TrackedTransaction): Promise<string> {
   logger.info('[TxSubmitter] 📤 Submitting Namada transaction', {
@@ -249,7 +255,13 @@ export async function submitNamadaTx(tx: TrackedTransaction): Promise<string> {
     return submitShieldingTx(tx, shieldingData)
   }
 
-  // Handle other transaction types (payment, etc.)
+  // Handle payment transactions (IBC transfers)
+  const paymentData = (tx as TrackedTransaction & { paymentData?: PaymentTransactionData }).paymentData
+  if (paymentData?.encodedTxData) {
+    return submitPaymentTx(tx, paymentData)
+  }
+
+  // Handle other transaction types
   logger.warn('[TxSubmitter] Unsupported Namada transaction type', {
     txId: tx.id,
     direction: tx.direction,
@@ -301,6 +313,98 @@ async function submitShieldingTx(
     return result.hash
   } catch (error) {
     logger.error('[TxSubmitter] Failed to submit shielding transaction', {
+      txId: tx.id,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    throw error
+  }
+}
+
+/**
+ * Submit a payment transaction (IBC transfer with orbiter payload).
+ * Handles disposable signer lifecycle: persist before signing, clear on error, keep on success.
+ */
+async function submitPaymentTx(
+  tx: TrackedTransaction,
+  paymentData: PaymentTransactionData,
+): Promise<string> {
+  logger.info('[TxSubmitter] 💸 Submitting payment transaction (IBC transfer)', {
+    txId: tx.id,
+    destinationAddress: paymentData.destinationAddress.slice(0, 10) + '...',
+    destinationChain: paymentData.destinationChain,
+    amount: paymentData.amount,
+  })
+
+  if (!paymentData.encodedTxData) {
+    throw new Error('Payment transaction data not found or not built')
+  }
+
+  const disposableSignerAddress = paymentData.disposableSignerAddress
+  let signerPersisted = false
+
+  try {
+    // Persist disposable signer before signing (needed for extension to pay fees)
+    if (disposableSignerAddress) {
+      logger.info('[TxSubmitter] 💾 Persisting disposable signer before signing...', {
+        ownerAddress: disposableSignerAddress.slice(0, 12) + '...',
+      })
+      await persistDisposableSigner(disposableSignerAddress)
+      signerPersisted = true
+      logger.debug('[TxSubmitter] ✅ Disposable signer persisted')
+    }
+
+    // Sign the transaction
+    logger.info('[TxSubmitter] ✍️  Signing payment transaction...')
+    const ownerAddress = disposableSignerAddress || paymentData.ibcParams.ownerAddress
+    const signed = await signNamadaTx(paymentData.encodedTxData, ownerAddress)
+
+    if (!signed || !Array.isArray(signed) || signed.length === 0) {
+      throw new Error('Signing returned no bytes')
+    }
+
+    logger.info('[TxSubmitter] ✅ Payment transaction signed', {
+      signedCount: signed.length,
+      firstTxLength: signed[0]?.length || 0,
+    })
+
+    // Broadcast the transaction (use first signed tx)
+    logger.info('[TxSubmitter] 📡 Broadcasting payment transaction...')
+    const result = await broadcastNamadaTx(signed[0])
+
+    logger.info('[TxSubmitter] ✅ Payment transaction submitted successfully', {
+      txHash: result.hash,
+      txHashDisplay: `${result.hash.slice(0, 8)}...${result.hash.slice(-8)}`,
+      destinationChain: paymentData.destinationChain,
+      amount: paymentData.amount,
+    })
+
+    // Keep disposable signer persisted on success (needed for refunds)
+    // Don't clear it here - it will be cleared later when transaction is confirmed/failed
+    if (signerPersisted && disposableSignerAddress) {
+      logger.debug('[TxSubmitter] Keeping disposable signer persisted for refunds', {
+        ownerAddress: disposableSignerAddress.slice(0, 12) + '...',
+      })
+    }
+
+    return result.hash
+  } catch (error) {
+    // Clear disposable signer on error
+    if (signerPersisted && disposableSignerAddress) {
+      logger.warn('[TxSubmitter] Clearing disposable signer due to error', {
+        ownerAddress: disposableSignerAddress.slice(0, 12) + '...',
+        error: error instanceof Error ? error.message : String(error),
+      })
+      try {
+        await clearDisposableSigner(disposableSignerAddress)
+      } catch (clearError) {
+        logger.error('[TxSubmitter] Failed to clear disposable signer after error', {
+          error: clearError instanceof Error ? clearError.message : String(clearError),
+        })
+        // Don't throw - this is cleanup
+      }
+    }
+
+    logger.error('[TxSubmitter] Failed to submit payment transaction', {
       txId: tx.id,
       error: error instanceof Error ? error.message : String(error),
     })

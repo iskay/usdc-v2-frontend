@@ -10,7 +10,7 @@ import { useBalance } from '@/hooks/useBalance'
 import { useToast } from '@/hooks/useToast'
 import { RequireMetaMaskConnection } from '@/components/wallet/RequireMetaMaskConnection'
 import { validateDepositForm } from '@/utils/depositValidation'
-import { fetchEstimatedEvmFee } from '@/services/deposit/evmFeeEstimatorService'
+import { useDepositFeeEstimate } from '@/hooks/useDepositFeeEstimate'
 import {
   buildDepositTransaction,
   signDepositTransaction,
@@ -33,9 +33,32 @@ export function Deposit() {
   const [amount, setAmount] = useState('')
   const [toAddress, setToAddress] = useState('')
   const [selectedChain, setSelectedChain] = useState('base')
-  const [estimatedFee, setEstimatedFee] = useState('0.12')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showConfirmationModal, setShowConfirmationModal] = useState(false)
+
+  // Get EVM address from wallet state
+  const evmAddress = walletState.metaMask.account
+
+  // Use deposit fee estimation hook
+  const { state: feeEstimateState } = useDepositFeeEstimate(
+    selectedChain,
+    amount,
+    toAddress,
+    evmAddress,
+  )
+
+  // Get fee info from hook state
+  const feeInfo = feeEstimateState.feeInfo
+  const isEstimatingFee = feeEstimateState.isLoading
+
+  // Format fee for display (hybrid: native token + USD estimate)
+  // The service already formats the amount, so we just add the symbol and USD estimate
+  // Use 4 decimal places for better precision
+  const estimatedFee = feeInfo
+    ? feeInfo.totalUsd !== undefined
+      ? `${feeInfo.totalNative} ${feeInfo.nativeSymbol} (~$${feeInfo.totalUsd.toFixed(4)})`
+      : `${feeInfo.totalNative} ${feeInfo.nativeSymbol}`
+    : '--'
 
   // Track last refresh values to prevent unnecessary refreshes
   const lastRefreshRef = useRef<{
@@ -104,35 +127,6 @@ export function Deposit() {
     }
   }, [])
 
-  // Fetch estimated fee when chain or amount changes
-  useEffect(() => {
-    if (!selectedChain || !amount) {
-      setEstimatedFee('0.12')
-      return
-    }
-
-    let mounted = true
-
-    async function loadFee() {
-      try {
-        const fee = await fetchEstimatedEvmFee(selectedChain, amount)
-        if (mounted) {
-          setEstimatedFee(fee)
-        }
-      } catch (error) {
-        console.error('[Deposit] Failed to fetch fee:', error)
-        if (mounted) {
-          setEstimatedFee('0.12') // Fallback to default
-        }
-      }
-    }
-
-    void loadFee()
-
-    return () => {
-      mounted = false
-    }
-  }, [selectedChain, amount])
 
   // Get chain name for display
   const [chainName, setChainName] = useState('')
@@ -176,9 +170,17 @@ export function Deposit() {
     }
   }, [selectedChain, walletState.metaMask.isConnected, walletState.metaMask.account])
 
-  // Form validation
-  const validation = validateDepositForm(amount, availableBalance, estimatedFee, toAddress)
-  const total = (parseFloat(amount || '0') + parseFloat(estimatedFee)).toFixed(2)
+  // Form validation - for now, use 0 for fee validation since native token fees don't affect USDC amount
+  // TODO: In Phase 2, we might want to convert native token fees to USD for validation
+  const feeValueForValidation = '0.00' // Native token fees don't affect USDC amount validation
+  const validation = validateDepositForm(amount, availableBalance, feeValueForValidation, toAddress)
+
+  // Calculate total - USDC amount + fee USD (if available) + Noble registration fee
+  const amountNum = parseFloat(amount || '0')
+  const feeUsd = feeInfo?.totalUsd ?? 0
+  const nobleRegUsd = feeInfo?.nobleRegUsd ?? 0
+  const totalUsd = amountNum + feeUsd + nobleRegUsd
+  const total = totalUsd.toFixed(4)
 
   // Handle form submission
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -279,12 +281,32 @@ export function Deposit() {
   }
 
   // Transaction details for confirmation modal
+  // The service already formats the amounts, so we just add the symbol and USD estimate
+  // Use 4 decimal places for better precision
   const transactionDetails: DepositTransactionDetails = {
     amount,
-    fee: estimatedFee,
+    fee: feeInfo
+      ? feeInfo.totalUsd !== undefined
+        ? `${feeInfo.totalNative} ${feeInfo.nativeSymbol} (~$${feeInfo.totalUsd.toFixed(4)})`
+        : `${feeInfo.totalNative} ${feeInfo.nativeSymbol}`
+      : '--',
     total,
     destinationAddress: toAddress,
     chainName,
+    feeBreakdown: feeInfo
+      ? {
+          approveNative: feeInfo.approveNative,
+          burnNative: feeInfo.burnNative,
+          totalNative: feeInfo.totalNative,
+          nativeSymbol: feeInfo.nativeSymbol,
+          approvalNeeded: feeInfo.approvalNeeded,
+          approveUsd: feeInfo.approveUsd,
+          burnUsd: feeInfo.burnUsd,
+          totalUsd: feeInfo.totalUsd,
+          nobleRegUsd: feeInfo.nobleRegUsd,
+        }
+      : undefined,
+    isLoadingFee: isEstimatingFee,
   }
 
   return (
@@ -364,10 +386,21 @@ export function Deposit() {
           {/* Fee and Total Summary */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">fee: ${estimatedFee}</span>
+              <span className="text-sm text-muted-foreground">Fee</span>
+              {isEstimatingFee ? (
+                <div className="flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Estimating...</span>
+                </div>
+              ) : feeInfo ? (
+                <span className="text-sm font-medium">{estimatedFee}</span>
+              ) : (
+                <span className="text-sm text-muted-foreground">--</span>
+              )}
             </div>
-            <div>
-              <span className="text-sm font-medium">total: ${total}</span>
+            <div className="flex items-center justify-between border-t border-border pt-2">
+              <span className="text-sm font-medium">Total</span>
+              <span className="text-sm font-semibold">${total}</span>
             </div>
           </div>
 

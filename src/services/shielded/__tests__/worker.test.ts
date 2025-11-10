@@ -51,7 +51,7 @@ describe('Shielded Worker Runtime', () => {
     mockAddEventListener = vi.fn()
 
     // Mock global worker context
-    global.self = {
+    ;(global as any).self = {
       postMessage: mockPostMessage,
       addEventListener: mockAddEventListener,
     } as unknown as DedicatedWorkerGlobalScope
@@ -62,17 +62,17 @@ describe('Shielded Worker Runtime', () => {
       const { initSdk } = await import('@namada/sdk-multicore/inline')
       vi.mocked(initSdk).mockResolvedValue(mockSdk as Sdk)
 
-      const initPayload: ShieldedWorkerInitPayload = {
-        rpcUrl: 'https://rpc.testnet.siuuu.click',
-        token: 'tnam1q9gr66cvu4hrzm0sd5kmlnjje82gs3xlfg3v6nu7',
-        maspIndexerUrl: 'https://masp.testnet.siuuu.click',
-        dbName: 'usdcdelivery',
-      }
+      // const initPayload: ShieldedWorkerInitPayload = {
+      //   rpcUrl: 'https://rpc.testnet.siuuu.click',
+      //   token: 'tnam1q9gr66cvu4hrzm0sd5kmlnjje82gs3xlfg3v6nu7',
+      //   maspIndexerUrl: 'https://masp.testnet.siuuu.click',
+      //   dbName: 'usdcdelivery',
+      // }
 
-      const request: ShieldedWorkerRequest = {
-        type: 'init',
-        payload: initPayload,
-      }
+      // const request: ShieldedWorkerRequest = {
+      //   type: 'init',
+      //   payload: initPayload,
+      // }
 
       // Simulate worker message handling
       // Note: In a real test, we'd need to actually load the worker module

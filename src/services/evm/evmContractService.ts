@@ -38,7 +38,7 @@ export interface DepositForBurnResult {
  * @param chainKey - The chain key
  * @returns Token messenger address, or undefined if not found
  */
-function getTokenMessengerAddress(chainKey: string): string | undefined {
+export function getTokenMessengerAddress(chainKey: string): string | undefined {
   const chainConfig = jotaiStore.get(chainConfigAtom)
   if (!chainConfig) {
     return undefined
@@ -53,7 +53,7 @@ function getTokenMessengerAddress(chainKey: string): string | undefined {
  * @param chainKey - The chain key
  * @returns CCTP domain ID, or undefined if not found
  */
-function getCctpDomain(chainKey: string): number | undefined {
+export function getCctpDomain(chainKey: string): number | undefined {
   const chainConfig = jotaiStore.get(chainConfigAtom)
   if (!chainConfig) {
     return undefined

@@ -163,15 +163,18 @@ function parseChainId(chainIdHex: string | number | undefined): number | undefin
 function registerEthereumEventBridge(provider: EthereumProvider): void {
   if (ethereumListenersRegistered) return
 
-  provider.on?.('accountsChanged', (accounts: string[]) => {
+  provider.on?.('accountsChanged', (...args: unknown[]) => {
+    const accounts = args[0] as string[]
     emitWalletEvent('evm:accountsChanged', { accounts })
   })
 
-  provider.on?.('chainChanged', (chainIdHex: string) => {
+  provider.on?.('chainChanged', (...args: unknown[]) => {
+    const chainIdHex = args[0] as string
     emitWalletEvent('evm:chainChanged', { chainIdHex })
   })
 
-  provider.on?.('disconnect', (error: unknown) => {
+  provider.on?.('disconnect', (...args: unknown[]) => {
+    const error = args[0] as unknown
     emitWalletEvent('evm:disconnected', { error })
   })
 

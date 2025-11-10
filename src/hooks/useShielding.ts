@@ -8,7 +8,7 @@ import { walletAtom } from '@/atoms/walletAtom'
 import { useToast } from '@/hooks/useToast'
 import { executeShielding, type ShieldingPhase, type ShieldingResult } from '@/services/shielded/shieldingOrchestrator'
 import { logger } from '@/utils/logger'
-import { env } from '@/config/env'
+// import { env } from '@/config/env'
 import { getUSDCAddressFromRegistry } from '@/services/namada/namadaBalanceService'
 import BigNumber from 'bignumber.js'
 
@@ -66,7 +66,7 @@ export function useShielding(): UseShieldingReturn {
           const { getShieldedPaymentAddressFromExtension } = await import(
             '@/services/shielded/shieldingService'
           )
-          shielded = await getShieldedPaymentAddressFromExtension(transparent)
+          shielded = (await getShieldedPaymentAddressFromExtension(transparent)) ?? undefined
           if (shielded) {
             logger.debug('[useShielding] Shielded payment address fetched from extension', {
               transparent: transparent.slice(0, 12) + '...',
