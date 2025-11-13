@@ -15,15 +15,17 @@ import {
   buildDepositTransaction,
   signDepositTransaction,
   broadcastDepositTransaction,
-  saveDepositMetadata,
+  saveDepositTransaction,
   postDepositToBackend,
   type DepositTransactionDetails,
 } from '@/services/deposit/depositService'
+import { useTxTracker } from '@/hooks/useTxTracker'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 import { preferredChainKeyAtom } from '@/atoms/appAtom'
 
 export function Deposit() {
   const navigate = useNavigate()
+  const { upsertTransaction } = useTxTracker()
   const { notify } = useToast()
   const { state: walletState } = useWallet()
   const { state: balanceState, refresh, sync: balanceSync } = useBalance()
@@ -32,7 +34,7 @@ export function Deposit() {
   // Form state
   const [amount, setAmount] = useState('')
   const [toAddress, setToAddress] = useState('')
-  const [selectedChain, setSelectedChain] = useState('base')
+  const [selectedChain, setSelectedChain] = useState<string | undefined>(undefined)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showConfirmationModal, setShowConfirmationModal] = useState(false)
 
@@ -170,6 +172,19 @@ export function Deposit() {
     }
   }, [selectedChain, walletState.metaMask.isConnected, walletState.metaMask.account])
 
+  // Don't render form until chain is loaded
+  if (!selectedChain) {
+    return (
+      <RequireMetaMaskConnection message="Please connect your MetaMask wallet to deposit USDC. EVM deposits require a connected wallet.">
+        <div className="flex flex-col gap-6 p-24">
+          <div className="flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        </div>
+      </RequireMetaMaskConnection>
+    )
+  }
+
   // Form validation - for now, use 0 for fee validation since native token fees don't affect USDC amount
   // TODO: In Phase 2, we might want to convert native token fees to USD for validation
   const feeValueForValidation = '0.00' // Native token fees don't affect USDC amount validation
@@ -232,11 +247,21 @@ export function Deposit() {
       notify({ title: 'Broadcasting transaction...', level: 'info' })
       const txHash = await broadcastDepositTransaction(signedTx)
 
-      // Save metadata
-      await saveDepositMetadata(txHash, transactionDetails)
+      // Update transaction with hash
+      const txWithHash = {
+            ...signedTx,
+            hash: txHash,
+        status: 'broadcasted' as const,
+      }
 
       // Post to backend (pass transaction for additional metadata)
-      await postDepositToBackend(txHash, transactionDetails, signedTx)
+      const flowId = await postDepositToBackend(txHash, transactionDetails, txWithHash)
+
+      // Save transaction to unified storage with deposit details and flowId
+      const savedTx = await saveDepositTransaction(txWithHash, transactionDetails, flowId)
+
+      // Also update in-memory state for immediate UI updates
+      upsertTransaction(savedTx)
 
       // Show success toast
       notify({

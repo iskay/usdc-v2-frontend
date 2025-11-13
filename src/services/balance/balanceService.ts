@@ -1,14 +1,14 @@
 import { jotaiStore } from '@/store/jotaiStore'
 import { balanceAtom, balanceErrorAtom, balanceSyncAtom } from '@/atoms/balanceAtom'
 import { walletAtom } from '@/atoms/walletAtom'
-import { chainConfigAtom, preferredChainKeyAtom } from '@/atoms/appAtom'
+import { chainConfigAtom, preferredChainKeyAtom, autoShieldedSyncEnabledAtom } from '@/atoms/appAtom'
 import {
   triggerShieldedBalanceRefresh,
   type ShieldedBalanceOptions,
 } from '@/services/balance/shieldedBalanceService'
 import { getNamadaUSDCBalance } from '@/services/namada/namadaBalanceService'
 import { fetchEvmUsdcBalance } from '@/services/balance/evmBalanceService'
-import { findChainByChainId, getDefaultChainKey } from '@/config/chains'
+import { findChainByChainId, findChainByKey, getDefaultChainKey } from '@/config/chains'
 
 const DEFAULT_POLL_INTERVAL_MS = 10_000
 
@@ -62,9 +62,12 @@ export async function refreshBalances(options: BalanceRefreshOptions = {}): Prom
         chainKey = getDefaultChainKey(chainConfig)
       }
 
-      // Only fetch EVM balance if MetaMask is connected and we have an address and chain key
+      // Validate chain key exists in config before fetching balance
+      const chainExists = chainKey && chainConfig ? findChainByKey(chainConfig, chainKey) !== undefined : false
+
+      // Only fetch EVM balance if MetaMask is connected and we have an address and valid chain key
       let evmBalance: { usdc: string; chainKey?: string } = { usdc: '--', chainKey }
-      if (walletState.metaMask.isConnected && metaMaskAddress && chainKey) {
+      if (walletState.metaMask.isConnected && metaMaskAddress && chainKey && chainExists) {
         try {
           const balance = await fetchEvmUsdcBalance(chainKey, metaMaskAddress)
           evmBalance = { usdc: balance, chainKey }
@@ -80,6 +83,7 @@ export async function refreshBalances(options: BalanceRefreshOptions = {}): Prom
           isConnected: walletState.metaMask.isConnected,
           hasAddress: !!metaMaskAddress,
           chainKey,
+          chainExists,
         })
       }
 
@@ -107,8 +111,17 @@ export async function refreshBalances(options: BalanceRefreshOptions = {}): Prom
       }))
 
       // Only trigger shielded balance refresh if Namada wallet is connected
+      // Skip shielded sync during polling if auto-sync is disabled (manual sync button still works)
+      const isPolling = options.trigger === 'poll'
+      const autoSyncEnabled = store.get(autoShieldedSyncEnabledAtom)
+      const shouldSkipShieldedSync = isPolling && !autoSyncEnabled
+
       if (walletState.namada.isConnected) {
+        if (shouldSkipShieldedSync) {
+          console.debug('[BalanceService] Skipping shielded balance refresh - auto-sync disabled during polling')
+        } else {
         void triggerShieldedBalanceRefresh(options.shielded)
+        }
       } else {
         console.debug('[BalanceService] Skipping shielded balance refresh - Namada wallet not connected')
       }

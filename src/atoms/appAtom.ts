@@ -13,3 +13,8 @@ export const chainConfigAtom = atom<EvmChainsFile | undefined>(undefined)
 // This allows the Deposit page to communicate its selected chain to the global balance service,
 // which polling can then use instead of falling back to MetaMask chainId or default chain
 export const preferredChainKeyAtom = atom<string | undefined>(undefined)
+
+// Toggle to enable/disable automatic shielded sync and balance calculation during polling
+// When false, polling will skip shielded operations (user can still manually trigger sync)
+// Default: false (disabled)
+export const autoShieldedSyncEnabledAtom = atom<boolean>(false)

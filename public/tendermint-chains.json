@@ -1,0 +1,39 @@
+{
+  "chains": [
+    {
+      "key": "namada-testnet",
+      "name": "Namada Testnet",
+      "chainName": "namada",
+      "chainId": "housefire-alpaca.cc0d3e0c033be",
+      "rpcUrls": ["https://rpc.testnet.siuuu.click"],
+      "explorer": {
+        "baseUrl": "https://testnet.namada.world"
+      },
+      "pollingTimeout": {
+        "depositTimeoutMs": 600000,
+        "paymentTimeoutMs": 600000
+      },
+      "testnet": true
+    },
+    {
+      "key": "noble-testnet",
+      "name": "Noble Testnet",
+      "chainName": "noble",
+      "chainId": "grand-1",
+      "rpcUrls": ["https://noble-testnet-rpc.polkachu.com"],
+      "explorer": {
+        "baseUrl": "https://testnet.mintscan.io/noble"
+      },
+      "pollingTimeout": {
+        "depositTimeoutMs": 1200000,
+        "paymentTimeoutMs": 1200000
+      },
+      "testnet": true
+    }
+  ],
+  "defaults": {
+    "namadaChainKey": "namada-testnet",
+    "nobleChainKey": "noble-testnet"
+  }
+}
+

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Shield, BookOpen, HelpCircle, RefreshCw, Loader2 } from 'lucide-react'
 import { Button } from '@/components/common/Button'
+import { Switch } from '@/components/common/Switch'
 import { TxInProgressList } from '@/components/tx/TxInProgressList'
 import { TxHistoryList } from '@/components/tx/TxHistoryList'
 import { RequireNamadaConnection } from '@/components/wallet/RequireNamadaConnection'
@@ -9,14 +10,16 @@ import { ShieldedSyncProgress } from '@/components/shielded/ShieldedSyncProgress
 import { ShieldingModal } from '@/components/shielded/ShieldingModal'
 import { useBalance } from '@/hooks/useBalance'
 import { useShieldedSync } from '@/hooks/useShieldedSync'
-import { useAtomValue } from 'jotai'
+import { useAtom, useAtomValue } from 'jotai'
 import { balanceSyncAtom } from '@/atoms/balanceAtom'
+import { autoShieldedSyncEnabledAtom } from '@/atoms/appAtom'
 import { cn } from '@/lib/utils'
 
 export function Dashboard() {
   const { state: balanceState } = useBalance()
   const { startSync, isReady, state: shieldedState } = useShieldedSync()
   const balanceSyncState = useAtomValue(balanceSyncAtom)
+  const [autoShieldedSyncEnabled, setAutoShieldedSyncEnabled] = useAtom(autoShieldedSyncEnabledAtom)
   const [isShieldingModalOpen, setIsShieldingModalOpen] = useState(false)
   
   // Get balances from the balance state
@@ -83,6 +86,24 @@ export function Dashboard() {
 
         {/* Shielded Sync Progress */}
         <ShieldedSyncProgress />
+
+        {/* Auto Sync Toggle */}
+        <div className="flex items-center justify-between rounded-lg border border-border bg-card p-4 shadow-sm">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="auto-shielded-sync-toggle" className="text-sm font-semibold">
+              Auto Sync Shielded Balance
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Automatically sync and calculate shielded balance during polling intervals
+            </p>
+          </div>
+          <Switch
+            id="auto-shielded-sync-toggle"
+            checked={autoShieldedSyncEnabled}
+            onCheckedChange={setAutoShieldedSyncEnabled}
+            aria-label="Toggle automatic shielded sync during polling"
+          />
+        </div>
 
         {/* Action Buttons */}
         <div className="flex flex-col gap-3">

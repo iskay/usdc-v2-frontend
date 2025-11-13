@@ -84,9 +84,11 @@ export async function buildDepositTx(params: BuildTxParams): Promise<TrackedTran
       },
     })
 
+    const now = Date.now()
     return {
       id: txId,
-      createdAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
       chain: params.sourceChain, // Deposits originate from EVM chain
       direction: 'deposit',
       status: 'building',
@@ -186,9 +188,11 @@ export async function buildShieldingTx(
       },
     })
 
+    const now = Date.now()
     return {
       id: txId,
-      createdAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
       chain: shieldingParams.chain.chainId,
       direction: 'send', // Shielding is a type of send operation
       status: 'building',

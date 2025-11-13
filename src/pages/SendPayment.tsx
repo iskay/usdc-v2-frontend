@@ -21,17 +21,20 @@ import {
   postPaymentToBackend,
   type PaymentTransactionDetails,
 } from '@/services/payment/paymentService'
+import { useTxTracker } from '@/hooks/useTxTracker'
+import { flowStorageService } from '@/services/flow/flowStorageService'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 
 export function SendPayment() {
   const navigate = useNavigate()
+  const { upsertTransaction } = useTxTracker()
   const { notify } = useToast()
   const { state: walletState } = useWallet()
 
   // Form state
   const [amount, setAmount] = useState('')
   const [toAddress, setToAddress] = useState('')
-  const [selectedChain, setSelectedChain] = useState('base')
+  const [selectedChain, setSelectedChain] = useState<string | undefined>(undefined)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showConfirmationModal, setShowConfirmationModal] = useState(false)
 
@@ -115,6 +118,19 @@ export function SendPayment() {
       mounted = false
     }
   }, [selectedChain])
+
+  // Don't render form until chain is loaded
+  if (!selectedChain) {
+    return (
+      <RequireNamadaConnection message="Please connect your Namada Keychain to send payments. Shielded payments require a connected wallet.">
+        <div className="flex flex-col gap-6 p-24">
+          <div className="flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        </div>
+      </RequireNamadaConnection>
+    )
+  }
 
   // Form validation - use numeric fee value for validation
   const feeValueForValidation = feeInfo
@@ -208,8 +224,29 @@ export function SendPayment() {
       // Save metadata
       await savePaymentMetadata(txHash, transactionDetails)
 
-      // Post to backend
-      await postPaymentToBackend(txHash, transactionDetails)
+      // Post to backend (registers flow with backend)
+      const flowId = await postPaymentToBackend(txHash, transactionDetails)
+
+      // Update transaction with flowId and flowMetadata
+      if (flowId) {
+        const flowInitiation = flowStorageService.getFlowInitiationByFlowId(flowId)
+        if (flowInitiation) {
+          const updatedTx = {
+            ...signedTx,
+            hash: txHash,
+            flowId,
+            flowMetadata: flowInitiation,
+          }
+          upsertTransaction(updatedTx)
+        }
+      } else {
+        // Still track transaction even if flow registration failed
+        const updatedTx = {
+          ...signedTx,
+          hash: txHash,
+        }
+        upsertTransaction(updatedTx)
+      }
 
       // Show success toast
       notify({

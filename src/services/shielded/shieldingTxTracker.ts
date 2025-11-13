@@ -1,6 +1,13 @@
 /**
  * Stub transaction tracking for shielding transactions.
- * This is a placeholder for future full transaction tracking implementation.
+ * 
+ * NOTE: These are placeholder functions that currently only log transaction events.
+ * They are kept for API compatibility and will be integrated with the unified transaction
+ * tracking system in the future (see Task 1.3: Unified Transaction Storage Service).
+ * 
+ * Shielding transactions are separate from deposit/payment flows and use a different
+ * tracking mechanism. These stubs ensure the shielding orchestrator continues to work
+ * while we build out the unified transaction tracking system.
  */
 
 import { logger } from '@/utils/logger'
@@ -9,7 +16,10 @@ import type { ShieldingTxData } from '@/services/tx/txBuilder'
 
 /**
  * Stub: Create transaction record after successful build.
- * In the future, this will integrate with the full transaction tracking system.
+ * 
+ * @deprecated This is a stub function. Will be replaced by unified transaction storage service.
+ * Currently only logs the transaction creation. The transaction is already tracked in
+ * the TrackedTransaction object passed to the shielding orchestrator.
  */
 export function stubCreateShieldingTransaction(
   transaction: TrackedTransaction & { shieldingData?: ShieldingTxData },
@@ -22,14 +32,17 @@ export function stubCreateShieldingTransaction(
     status: transaction.status,
   })
 
-  // TODO: In the future, integrate with full transaction tracking system
+  // NOTE: This will be replaced by unified transaction storage service in future
   // For now, we just log the transaction creation
   // The transaction is already tracked in the TrackedTransaction object
 }
 
 /**
  * Stub: Update transaction record after broadcast.
- * In the future, this will integrate with the full transaction tracking system.
+ * 
+ * @deprecated This is a stub function. Will be replaced by unified transaction storage service.
+ * Currently only logs the transaction update. The transaction hash is already stored
+ * in the TrackedTransaction object.
  */
 export function stubUpdateShieldingTransaction(
   txId: string,
@@ -43,14 +56,17 @@ export function stubUpdateShieldingTransaction(
     metadata,
   })
 
-  // TODO: In the future, integrate with full transaction tracking system
+  // NOTE: This will be replaced by unified transaction storage service in future
   // For now, we just log the transaction update
   // The transaction hash is already stored in the TrackedTransaction object
 }
 
 /**
  * Stub: Store transaction hash and metadata for future implementation.
- * This is a placeholder that can be extended when full tracking is implemented.
+ * 
+ * @deprecated This is a stub function. Will be replaced by unified transaction storage service.
+ * Currently only logs the metadata. The metadata is already available in the
+ * TrackedTransaction.shieldingData property.
  */
 export function stubStoreShieldingTransactionMetadata(
   txId: string,
@@ -68,7 +84,7 @@ export function stubStoreShieldingTransactionMetadata(
     chainId: shieldingData.chainId,
   })
 
-  // TODO: In the future, store this in a database or persistent storage
+  // NOTE: This will be replaced by unified transaction storage service in future
   // For now, we just log the metadata
   // The metadata is already available in the TrackedTransaction.shieldingData
 }

@@ -28,6 +28,18 @@ export interface EstimatedTimesConfig {
   send?: string
 }
 
+/**
+ * Polling timeout configuration for transaction status polling.
+ * Timeout in milliseconds. If a transaction doesn't resolve within this time,
+ * it will be marked as 'undetermined'.
+ */
+export interface PollingTimeoutConfig {
+  /** Timeout in milliseconds for deposit transactions (default: 20 minutes) */
+  depositTimeoutMs?: number
+  /** Timeout in milliseconds for payment/send transactions (default: 20 minutes) */
+  paymentTimeoutMs?: number
+}
+
 export interface EvmChainConfig {
   key: string
   name: string
@@ -40,6 +52,7 @@ export interface EvmChainConfig {
   contracts: ChainContractsConfig
   gasless?: GaslessConfig
   estimatedTimes?: EstimatedTimesConfig
+  pollingTimeout?: PollingTimeoutConfig
   logo?: string
   testnet?: boolean
 }
@@ -75,4 +88,59 @@ export function findChainByChainId(
  */
 export function getDefaultChainKey(file: EvmChainsFile | undefined): string | undefined {
   return file?.defaults?.selectedChainKey
+}
+
+// Tendermint chain types
+export interface TendermintChainConfig {
+  key: string
+  name: string
+  chainName: string // e.g., "namada", "noble"
+  chainId?: string // Tendermint chain ID
+  rpcUrls: string[]
+  explorer?: ExplorerConfig
+  pollingTimeout?: PollingTimeoutConfig
+  testnet?: boolean
+}
+
+export interface TendermintChainsFile {
+  chains: TendermintChainConfig[]
+  defaults?: {
+    namadaChainKey?: string
+    nobleChainKey?: string
+  }
+}
+
+/**
+ * Find a Tendermint chain by key.
+ * @param file - The Tendermint chains configuration file
+ * @param key - The chain key
+ * @returns The chain configuration, or undefined if not found
+ */
+export function findTendermintChainByKey(
+  file: TendermintChainsFile | undefined,
+  key: string
+): TendermintChainConfig | undefined {
+  return file?.chains.find((chain) => chain.key === key)
+}
+
+/**
+ * Get the default Namada chain key from the Tendermint chains configuration.
+ * @param file - The Tendermint chains configuration file
+ * @returns The default Namada chain key, or undefined if not set
+ */
+export function getDefaultNamadaChainKey(
+  file: TendermintChainsFile | undefined
+): string | undefined {
+  return file?.defaults?.namadaChainKey
+}
+
+/**
+ * Get the default Noble chain key from the Tendermint chains configuration.
+ * @param file - The Tendermint chains configuration file
+ * @returns The default Noble chain key, or undefined if not set
+ */
+export function getDefaultNobleChainKey(
+  file: TendermintChainsFile | undefined
+): string | undefined {
+  return file?.defaults?.nobleChainKey
 }

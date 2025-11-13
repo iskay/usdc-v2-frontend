@@ -1,13 +1,24 @@
-import { Check, X } from 'lucide-react'
-import { useTxTracker } from '@/hooks/useTxTracker'
+import { useEffect, useState } from 'react'
+import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
+import { TransactionCard } from './TransactionCard'
 
 export function TxHistoryList() {
-  const { state } = useTxTracker()
+  const [completedTxs, setCompletedTxs] = useState<StoredTransaction[]>([])
 
-  // Filter completed transactions (finalized or error)
-  const completedTxs = state.history.filter(
-    (tx) => tx.status === 'finalized' || tx.status === 'error',
-  )
+  // Load completed transactions from unified storage (limit to 5 most recent)
+  useEffect(() => {
+    const loadTransactions = () => {
+      const txs = transactionStorageService.getCompletedTransactions(5)
+      setCompletedTxs(txs)
+    }
+
+    // Load initially
+    loadTransactions()
+
+    // Reload periodically to catch updates
+    const interval = setInterval(loadTransactions, 2000)
+    return () => clearInterval(interval)
+  }, [])
 
   if (completedTxs.length === 0) {
     return (
@@ -18,38 +29,15 @@ export function TxHistoryList() {
   }
 
   return (
-    <ul className="space-y-2">
-      {completedTxs.slice(0, 5).map((tx) => {
-        const isSuccess = tx.status === 'finalized'
-        const isDeposit = tx.direction === 'deposit'
-        const recipient = tx.hash ? formatAddress(tx.hash) : 'N/A'
-
-        return (
-          <li key={tx.id} className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">-</span>
-            <span className="capitalize">
-              {isDeposit ? 'Deposit' : 'Pay'} {/* TODO: Show actual amount from tx */}
-            </span>
-            {!isDeposit && (
-              <>
-                <span className="text-muted-foreground">to</span>
-                <span className="text-muted-foreground">[{recipient}]</span>
-              </>
-            )}
-            {isSuccess ? (
-              <Check className="h-4 w-4 text-green-600" />
-            ) : (
-              <X className="h-4 w-4 text-red-600" />
-            )}
-          </li>
-        )
-      })}
-    </ul>
+    <div className="space-y-2">
+      {completedTxs.map((tx) => (
+        <TransactionCard
+          key={tx.id}
+          transaction={tx}
+          variant="compact"
+          showExpandButton={true}
+        />
+      ))}
+    </div>
   )
 }
-
-function formatAddress(address: string): string {
-  if (address.length <= 10) return address
-  return `${address.slice(0, 3)}..${address.slice(-3)}`
-}
-

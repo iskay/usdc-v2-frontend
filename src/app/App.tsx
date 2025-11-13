@@ -6,6 +6,7 @@ import { Navbar } from '@/components/layout/Navbar'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { ToastContainer } from '@/components/layout/ToastContainer'
 import { Spinner } from '@/components/common/Spinner'
+import { useTxTracker } from '@/hooks/useTxTracker'
 
 const slideFromLeft: Variants = {
   initial: { x: '-16%', opacity: 0 },
@@ -39,6 +40,12 @@ export function App() {
   const cachedOutlet = useRef<ReactElement | null>(null)
   const currentOutlet = useOutlet()
   const variants = useMemo(() => resolveVariants(displayLocation), [displayLocation])
+
+  // Initialize global transaction tracking and polling
+  // This runs on app startup and handles hydration from localStorage + polling for in-progress transactions
+  console.log('[App] 🏗️ Initializing useTxTracker hook')
+  const { state: txState } = useTxTracker()
+  console.log('[App] ✅ useTxTracker initialized', { txCount: txState.history.length })
 
   // Always cache outlet when location matches displayLocation (stable state)
   useEffect(() => {

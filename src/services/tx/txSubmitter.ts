@@ -10,6 +10,7 @@ import {
   persistDisposableSigner,
   clearDisposableSigner,
 } from '@/services/payment/paymentService'
+import { clientStageReporter } from '@/services/flow/clientStageReporter'
 
 export interface DepositTxResult {
   txHash: string
@@ -51,12 +52,19 @@ export async function submitEvmTx(tx: TrackedTransaction): Promise<string> {
   })
 
   try {
+    // Report wallet signing stage
+    const flowId = tx.flowId || tx.flowMetadata?.localId || tx.id
+    await clientStageReporter.reportWalletStage(flowId, 'wallet_signing', 'evm', undefined, 'pending')
+
     // Ensure we're on the correct network
     logger.info('[TxSubmitter] 🌐 Ensuring correct network...', {
       sourceChain: depositData.sourceChain,
     })
     await ensureCorrectNetwork(depositData.sourceChain)
     logger.info('[TxSubmitter] ✅ Network verified/switched')
+
+    // Report wallet broadcasting stage
+    await clientStageReporter.reportWalletStage(flowId, 'wallet_broadcasting', 'evm', undefined, 'pending')
 
     // Execute depositForBurn
     logger.info('[TxSubmitter] 🚀 Executing depositForBurn contract call...', {
@@ -71,6 +79,9 @@ export async function submitEvmTx(tx: TrackedTransaction): Promise<string> {
       forwardingAddressBytes32: depositData.forwardingAddressBytes32,
       destinationDomain: depositData.destinationDomain,
     })
+
+    // Report wallet broadcasted stage
+    await clientStageReporter.reportWalletStage(flowId, 'wallet_broadcasted', 'evm', result.txHash, 'confirmed')
 
     logger.info('[TxSubmitter] ✅ Deposit transaction submitted successfully', {
       txHash: result.txHash,
@@ -288,6 +299,10 @@ async function submitShieldingTx(
   }
 
   try {
+    // Report wallet signing stage
+    const flowId = tx.flowId || tx.flowMetadata?.localId || tx.id
+    await clientStageReporter.reportWalletStage(flowId, 'wallet_signing', 'namada', undefined, 'pending')
+
     // Sign the transaction
     logger.info('[TxSubmitter] ✍️  Signing shielding transaction...')
     const signed = await signNamadaTx(shieldingData.encodedTxData, shieldingData.transparent)
@@ -301,9 +316,15 @@ async function submitShieldingTx(
       firstTxLength: signed[0]?.length || 0,
     })
 
+    // Report wallet broadcasting stage
+    await clientStageReporter.reportWalletStage(flowId, 'wallet_broadcasting', 'namada', undefined, 'pending')
+
     // Broadcast the transaction (use first signed tx)
     logger.info('[TxSubmitter] 📡 Broadcasting shielding transaction...')
     const result = await broadcastNamadaTx(signed[0])
+
+    // Report wallet broadcasted stage
+    await clientStageReporter.reportWalletStage(flowId, 'wallet_broadcasted', 'namada', result.hash, 'confirmed')
 
     logger.info('[TxSubmitter] ✅ Shielding transaction submitted successfully', {
       txHash: result.hash,
@@ -353,6 +374,10 @@ async function submitPaymentTx(
       logger.debug('[TxSubmitter] ✅ Disposable signer persisted')
     }
 
+    // Report wallet signing stage
+    const flowId = tx.flowId || tx.flowMetadata?.localId || tx.id
+    await clientStageReporter.reportWalletStage(flowId, 'wallet_signing', 'namada', undefined, 'pending')
+
     // Sign the transaction
     logger.info('[TxSubmitter] ✍️  Signing payment transaction...')
     const ownerAddress = disposableSignerAddress || paymentData.ibcParams.ownerAddress
@@ -367,9 +392,15 @@ async function submitPaymentTx(
       firstTxLength: signed[0]?.length || 0,
     })
 
+    // Report wallet broadcasting stage
+    await clientStageReporter.reportWalletStage(flowId, 'wallet_broadcasting', 'namada', undefined, 'pending')
+
     // Broadcast the transaction (use first signed tx)
     logger.info('[TxSubmitter] 📡 Broadcasting payment transaction...')
     const result = await broadcastNamadaTx(signed[0])
+
+    // Report wallet broadcasted stage
+    await clientStageReporter.reportWalletStage(flowId, 'wallet_broadcasted', 'namada', result.hash, 'confirmed')
 
     logger.info('[TxSubmitter] ✅ Payment transaction submitted successfully', {
       txHash: result.hash,

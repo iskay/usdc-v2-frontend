@@ -18,6 +18,7 @@ import { logger } from '@/utils/logger'
 import BigNumber from 'bignumber.js'
 import type { TrackedTransaction } from '@/types/tx'
 import type { IbcParams, PaymentTransactionData, ChainSettings } from '@/types/shielded'
+import { flowInitiationService } from '@/services/flow/flowInitiationService'
 
 export interface PaymentParams {
   amount: string
@@ -424,9 +425,11 @@ export async function buildPaymentTransaction(
     })
 
     const txId = crypto.randomUUID()
+    const now = Date.now()
     return {
       id: txId,
-      createdAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
       chain: ibcParams.chain.chainId,
       direction: 'send',
       status: 'building',
@@ -525,51 +528,69 @@ export async function savePaymentMetadata(
 }
 
 /**
- * Post payment transaction to backend API.
- * Currently stubbed, will use real backend endpoint once available.
+ * Post payment transaction to backend API for flow tracking.
+ * Registers the flow with backend after Namada IBC transaction is broadcast.
  * 
- * @param txHash - The transaction hash
+ * @param txHash - The Namada IBC transaction hash
  * @param details - Payment transaction details
+ * @param localId - Optional local flow ID (if flow was initiated earlier)
+ * @returns Backend flowId if registration successful
  */
 export async function postPaymentToBackend(
   txHash: string,
-  details: PaymentTransactionDetails
-): Promise<void> {
+  details: PaymentTransactionDetails,
+  localId?: string,
+): Promise<string | undefined> {
   logger.debug('[PaymentService] Posting payment to backend', {
     txHash: txHash.slice(0, 16) + '...',
     destinationChain: details.chainName,
+    localId,
   })
 
   try {
-    // TODO: Replace with actual backend endpoint
-    // Example: await axios.post(`${env.backendUrl()}/api/payments`, payload)
-    
-    // For now, just log the request
-    const payload = {
-      txHash,
-      amount: details.amount,
-      fee: details.fee,
-      total: details.total,
-      destinationAddress: details.destinationAddress,
-      chainName: details.chainName,
-      timestamp: Date.now(),
+    // If localId not provided, try to find existing flow by txHash
+    // (This handles cases where flow wasn't initiated before transaction)
+    if (!localId) {
+      // For now, initiate flow on-the-fly if not already initiated
+      // In future, flow should be initiated before building transaction
+      const amountInBaseUnits = new BigNumber(details.amount)
+        .multipliedBy(1_000_000) // USDC has 6 decimals
+        .toFixed(0)
+      
+      const result = await flowInitiationService.initiateFlow(
+        'payment',
+        'namada', // Payment starts on Namada
+        amountInBaseUnits,
+      )
+      localId = result.localId
     }
 
-    logger.debug('[PaymentService] Would post to backend', {
-      txHash: payload.txHash.slice(0, 16) + '...',
-      amount: payload.amount,
-      destinationChain: payload.chainName,
+    // Register flow with backend using Namada IBC transaction hash
+    const flowId = await flowInitiationService.registerWithBackend(
+      localId,
+      txHash,
+      {
+        destinationAddress: details.destinationAddress,
+        destinationChain: details.chainName,
+        fee: details.fee,
+        total: details.total,
+      },
+    )
+
+    logger.debug('[PaymentService] Payment flow registered with backend', {
+      localId,
+      flowId,
+      txHash: txHash.slice(0, 16) + '...',
     })
 
-    // Stubbed: In real implementation, this would be:
-    // const backendUrl = env.backendUrl() ?? 'http://localhost:8787'
-    // await axios.post(`${backendUrl}/api/payments`, payload)
+    return flowId
   } catch (error) {
     logger.error('[PaymentService] Failed to post payment to backend', {
       error: error instanceof Error ? error.message : String(error),
       txHash: txHash.slice(0, 16) + '...',
     })
-    // Don't throw - this is non-critical for now
+    // Don't throw - flow registration failure shouldn't block payment
+    return undefined
   }
 }
 

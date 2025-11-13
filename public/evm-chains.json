@@ -30,6 +30,10 @@
         "deposit": "2 - 3 minutes",
         "send": "2 - 4 minutes"
       },
+      "pollingTimeout": {
+        "depositTimeoutMs": 300000,
+        "paymentTimeoutMs": 300000
+      },
       "logo": "/ethereum-logo.svg",
       "testnet": true
     },
@@ -60,6 +64,10 @@
       "estimatedTimes": {
         "deposit": "2 - 3 minutes",
         "send": "2 - 4 minutes"
+      },
+      "pollingTimeout": {
+        "depositTimeoutMs": 300000,
+        "paymentTimeoutMs": 300000
       },
       "logo": "/base-logo.svg",
       "testnet": true
@@ -92,6 +100,10 @@
         "deposit": "2 - 3 minutes",
         "send": "2 - 4 minutes"
       },
+      "pollingTimeout": {
+        "depositTimeoutMs": 300000,
+        "paymentTimeoutMs": 300000
+      },
       "logo": "/avax-logo.svg",
       "testnet": true
     },
@@ -122,6 +134,10 @@
       "estimatedTimes": {
         "deposit": "2 - 3 minutes",
         "send": "2 - 4 minutes"
+      },
+      "pollingTimeout": {
+        "depositTimeoutMs": 300000,
+        "paymentTimeoutMs": 300000
       },
       "logo": "/polygon-logo.svg",
       "testnet": true
