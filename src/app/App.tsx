@@ -43,9 +43,7 @@ export function App() {
 
   // Initialize global transaction tracking and polling
   // This runs on app startup and handles hydration from localStorage + polling for in-progress transactions
-  console.log('[App] 🏗️ Initializing useTxTracker hook')
   const { state: txState } = useTxTracker()
-  console.log('[App] ✅ useTxTracker initialized', { txCount: txState.history.length })
 
   // Always cache outlet when location matches displayLocation (stable state)
   useEffect(() => {

@@ -1,11 +1,15 @@
 import type { FlowInitiationMetadata } from '@/types/flow'
 import { deleteItem, loadItem, saveItem } from '@/services/storage/localStore'
+import { transactionStorageService } from '@/services/tx/transactionStorageService'
 
 const STORAGE_KEY = 'usdc-v2-flows'
 
 /**
  * Service for managing flow initiation metadata in localStorage.
- * This replaces the old separate payment/deposit storage with a unified flow-based model.
+ * 
+ * @deprecated Flow metadata is now stored directly in transactions (unified-transactions storage).
+ * This service is kept for backward compatibility and migration purposes only.
+ * Use transactionStorageService.getTransactionByFlowId() or getTransactionByLocalId() instead.
  */
 class FlowStorageService {
   /**
@@ -26,16 +30,32 @@ class FlowStorageService {
 
   /**
    * Get flow initiation metadata by localId
+   * @deprecated Use transactionStorageService.getTransactionByLocalId() instead.
    */
   getFlowInitiation(localId: string): FlowInitiationMetadata | null {
+    // Try transaction storage first (new approach)
+    const tx = transactionStorageService.getTransactionByLocalId(localId)
+    if (tx?.flowMetadata) {
+      return tx.flowMetadata
+    }
+    
+    // Fallback to legacy flows storage (for migration)
     const flows = this.getAllFlowInitiations()
     return flows.find((f) => f.localId === localId) || null
   }
 
   /**
    * Get flow initiation metadata by backend flowId
+   * @deprecated Use transactionStorageService.getTransactionByFlowId() instead.
    */
   getFlowInitiationByFlowId(flowId: string): FlowInitiationMetadata | null {
+    // Try transaction storage first (new approach)
+    const tx = transactionStorageService.getTransactionByFlowId(flowId)
+    if (tx?.flowMetadata) {
+      return tx.flowMetadata
+    }
+    
+    // Fallback to legacy flows storage (for migration)
     const flows = this.getAllFlowInitiations()
     return flows.find((f) => f.flowId === flowId) || null
   }

@@ -1,6 +1,6 @@
 import type { ClientStageInput } from '@/types/flow'
 import { reportClientStage } from '@/services/api/backendClient'
-import { flowStorageService } from './flowStorageService'
+import { transactionStorageService } from '@/services/tx/transactionStorageService'
 import { logger } from '@/utils/logger'
 
 /**
@@ -105,28 +105,33 @@ class ClientStageReporter {
   }
 
   /**
-   * Resolve flowId from localId or return flowId if already resolved.
+   * Resolve flowId from transaction ID, localId, or flowId.
    * 
-   * @param identifier - localId or flowId
+   * @param identifier - Transaction ID, localId, or flowId
    * @returns Resolved flowId or null if not found or not yet registered
    */
   private async resolveFlowId(identifier: string): Promise<string | null> {
-    // Try as localId first
-    const flowInitiation = flowStorageService.getFlowInitiation(identifier)
-    if (flowInitiation?.flowId) {
-      // Only return flowId if flow has been registered with backend
-      return flowInitiation.flowId
+    // Try as transaction ID first
+    let tx = transactionStorageService.getTransaction(identifier)
+    if (tx?.flowId) {
+      return tx.flowId
     }
 
-    // Try as flowId (check if identifier is a registered flowId)
-    const flowInitiationByFlowId = flowStorageService.getFlowInitiationByFlowId(identifier)
-    if (flowInitiationByFlowId?.flowId) {
-      return flowInitiationByFlowId.flowId
+    // Try as localId (look up transaction by flowMetadata.localId)
+    tx = transactionStorageService.getTransactionByLocalId(identifier)
+    if (tx?.flowId) {
+      return tx.flowId
     }
 
-    // Don't assume UUID format = flowId (localId is also UUID format)
-    // Only return flowId if it's actually registered in our local storage
-    return null
+    // Try as flowId (look up transaction by flowId)
+    tx = transactionStorageService.getTransactionByFlowId(identifier)
+    if (tx?.flowId) {
+      return tx.flowId
+    }
+
+    // If identifier matches a flowId format but transaction not found, assume it's a flowId
+    // (This handles cases where transaction might not be in storage yet)
+    return identifier
   }
 }
 

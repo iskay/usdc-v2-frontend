@@ -20,6 +20,7 @@ import {
   type DepositTransactionDetails,
 } from '@/services/deposit/depositService'
 import { useTxTracker } from '@/hooks/useTxTracker'
+import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 import { preferredChainKeyAtom } from '@/atoms/appAtom'
 
@@ -221,6 +222,11 @@ export function Deposit() {
     setShowConfirmationModal(false)
     setIsSubmitting(true)
 
+    // Track transaction state for error handling
+    let tx: Awaited<ReturnType<typeof buildDepositTransaction>> | undefined
+    let signedTx: Awaited<ReturnType<typeof signDepositTransaction>> | undefined
+    let currentTx: StoredTransaction | undefined
+
     try {
       // Build transaction details
       const transactionDetails: DepositTransactionDetails = {
@@ -233,18 +239,46 @@ export function Deposit() {
 
       // Build transaction
       notify({ title: 'Building transaction...', level: 'info' })
-      const tx = await buildDepositTransaction({
+      tx = await buildDepositTransaction({
         amount,
         destinationAddress: toAddress,
         sourceChain: selectedChain,
       })
 
+      // Save transaction immediately after build (for error tracking)
+      currentTx = {
+        ...tx,
+        depositDetails: transactionDetails,
+        updatedAt: Date.now(),
+      }
+      transactionStorageService.saveTransaction(currentTx)
+      upsertTransaction(tx)
+
       // Sign transaction
       notify({ title: 'Signing transaction...', level: 'info' })
-      const signedTx = await signDepositTransaction(tx)
+      signedTx = await signDepositTransaction(tx)
+      
+      // Update status to signing
+      currentTx = {
+        ...currentTx,
+        ...signedTx,
+        status: 'signing',
+        updatedAt: Date.now(),
+      }
+      transactionStorageService.saveTransaction(currentTx)
+      upsertTransaction(signedTx)
 
       // Broadcast transaction
       notify({ title: 'Broadcasting transaction...', level: 'info' })
+      
+      // Update status to submitting before broadcast
+      currentTx = {
+        ...currentTx,
+        status: 'submitting',
+        updatedAt: Date.now(),
+      }
+      transactionStorageService.saveTransaction(currentTx)
+      
       const txHash = await broadcastDepositTransaction(signedTx)
 
       // Update transaction with hash
@@ -275,6 +309,43 @@ export function Deposit() {
     } catch (error) {
       console.error('[Deposit] Deposit submission failed:', error)
       const message = error instanceof Error ? error.message : 'Failed to submit deposit'
+      
+      // Save error transaction to storage for history tracking
+      try {
+        // Build transaction details for error case
+        const transactionDetails: DepositTransactionDetails = {
+          amount,
+          fee: estimatedFee,
+          total,
+          destinationAddress: toAddress,
+          chainName,
+        }
+        
+        // Use current transaction state if available, otherwise create new error transaction
+        const errorTx: StoredTransaction = currentTx
+          ? {
+              ...currentTx,
+              status: 'error',
+              errorMessage: message,
+              updatedAt: Date.now(),
+            }
+          : {
+              id: tx?.id || crypto.randomUUID(),
+              createdAt: tx?.createdAt || Date.now(),
+              updatedAt: Date.now(),
+              chain: tx?.chain || selectedChain || '',
+              direction: 'deposit',
+              status: 'error',
+              errorMessage: message,
+              depositDetails: transactionDetails,
+            }
+        
+        transactionStorageService.saveTransaction(errorTx)
+        upsertTransaction(errorTx)
+      } catch (saveError) {
+        console.error('[Deposit] Failed to save error transaction:', saveError)
+      }
+      
       notify({
         title: 'Deposit Failed',
         description: message,

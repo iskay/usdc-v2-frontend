@@ -1,6 +1,6 @@
 import type { FlowInitiationMetadata, ShieldedMetadata, StartFlowTrackingInput } from '@/types/flow'
-import { flowStorageService } from './flowStorageService'
 import { startFlowTracking } from '@/services/api/backendClient'
+import { transactionStorageService } from '@/services/tx/transactionStorageService'
 import { jotaiStore } from '@/store/jotaiStore'
 import { chainConfigAtom } from '@/atoms/appAtom'
 import { findChainByKey, getDefaultNamadaChainKey } from '@/config/chains'
@@ -31,24 +31,25 @@ function getChainType(chainKey: string): 'evm' | 'tendermint' {
 
 /**
  * Service for initiating flows and registering them with the backend.
+ * Flow metadata is now stored directly in transactions instead of separate flows storage.
  */
 class FlowInitiationService {
   /**
-   * Initiate a new flow locally.
-   * Creates flow initiation metadata and saves it to localStorage.
+   * Create flow initiation metadata.
+   * This creates the metadata object but does NOT save it - it should be stored in the transaction's flowMetadata field.
    * 
    * @param flowType - Type of flow ('deposit' or 'payment')
    * @param initialChain - Chain identifier where flow starts
    * @param amount - Token amount in base units
    * @param shieldedMetadata - Optional shielded transaction metadata (client-side only)
-   * @returns Object with localId
+   * @returns Flow initiation metadata with localId
    */
-  async initiateFlow(
+  createFlowMetadata(
     flowType: 'deposit' | 'payment',
     initialChain: string,
     amount: string,
     shieldedMetadata?: ShieldedMetadata,
-  ): Promise<{ localId: string }> {
+  ): FlowInitiationMetadata {
     const localId = crypto.randomUUID()
     const initialChainType = getChainType(initialChain)
     
@@ -64,36 +65,62 @@ class FlowInitiationService {
       status: 'initiating',
     }
     
-    // Save to localStorage
-    flowStorageService.saveFlowInitiation(localId, initiationMetadata)
-    
-    logger.debug('[FlowInitiationService] Initiated flow', {
+    logger.debug('[FlowInitiationService] Created flow metadata', {
       localId,
       flowType,
       initialChain,
       amount,
     })
     
-    return { localId }
+    return initiationMetadata
+  }
+
+  /**
+   * Initiate a new flow locally.
+   * Creates flow initiation metadata and saves it to transaction storage.
+   * 
+   * @deprecated Use createFlowMetadata() and store in transaction's flowMetadata field instead.
+   * This method is kept for backward compatibility but will be removed.
+   * 
+   * @param flowType - Type of flow ('deposit' or 'payment')
+   * @param initialChain - Chain identifier where flow starts
+   * @param amount - Token amount in base units
+   * @param shieldedMetadata - Optional shielded transaction metadata (client-side only)
+   * @returns Object with localId
+   */
+  async initiateFlow(
+    flowType: 'deposit' | 'payment',
+    initialChain: string,
+    amount: string,
+    shieldedMetadata?: ShieldedMetadata,
+  ): Promise<{ localId: string }> {
+    const metadata = this.createFlowMetadata(flowType, initialChain, amount, shieldedMetadata)
+    return { localId: metadata.localId }
   }
 
   /**
    * Register flow with backend after first transaction is broadcast.
-   * Updates local metadata with backend flowId.
+   * Updates transaction with backend flowId.
    * 
-   * @param localId - Local flow identifier
+   * @param txId - Transaction ID (to find transaction and update it)
    * @param firstTxHash - First transaction hash (required by backend)
    * @param metadata - Optional additional metadata to send to backend
    * @returns Backend flowId
    */
   async registerWithBackend(
-    localId: string,
+    txId: string,
     firstTxHash: string,
     metadata?: Record<string, unknown>,
   ): Promise<string> {
-    const initiation = flowStorageService.getFlowInitiation(localId)
+    // Get transaction to find flow metadata
+    const tx = transactionStorageService.getTransaction(txId)
+    if (!tx) {
+      throw new Error(`Transaction not found for txId: ${txId}`)
+    }
+
+    const initiation = tx.flowMetadata
     if (!initiation) {
-      throw new Error(`Flow initiation not found for localId: ${localId}`)
+      throw new Error(`Flow metadata not found in transaction: ${txId}`)
     }
     
     // Determine destinationChain based on flow type
@@ -156,28 +183,41 @@ class FlowInitiationService {
       const response = await startFlowTracking(input)
       const flowId = response.data.id
       
-      // Update local metadata with flowId
-      flowStorageService.updateFlowInitiation(localId, {
+      // Update transaction with flowId and updated flow metadata
+      const updatedFlowMetadata: FlowInitiationMetadata = {
+        ...initiation,
         flowId,
         status: 'tracking',
+      }
+      
+      transactionStorageService.updateTransaction(txId, {
+        flowId,
+        flowMetadata: updatedFlowMetadata,
       })
       
       logger.debug('[FlowInitiationService] Registered flow with backend', {
-        localId,
+        txId,
+        localId: initiation.localId,
         flowId,
         txHash: firstTxHash.slice(0, 16) + '...',
       })
       
       return flowId
     } catch (error) {
-      // Update status to failed but keep local metadata
-      flowStorageService.updateFlowInitiation(localId, {
+      // Update transaction status to failed but keep flow metadata
+      const updatedFlowMetadata: FlowInitiationMetadata = {
+        ...initiation,
         status: 'failed',
+      }
+      
+      transactionStorageService.updateTransaction(txId, {
+        flowMetadata: updatedFlowMetadata,
       })
       
       const errorMessage = error instanceof Error ? error.message : String(error)
       logger.error('[FlowInitiationService] Failed to register flow with backend', {
-        localId,
+        txId,
+        localId: initiation.localId,
         error: errorMessage,
       })
       
@@ -186,10 +226,12 @@ class FlowInitiationService {
   }
 
   /**
-   * Get flow initiation metadata by localId
+   * Get flow initiation metadata by localId (from transaction).
+   * @deprecated Use transactionStorageService.getTransactionByLocalId() instead.
    */
   getFlowInitiation(localId: string): FlowInitiationMetadata | null {
-    return flowStorageService.getFlowInitiation(localId)
+    const tx = transactionStorageService.getTransactionByLocalId(localId)
+    return tx?.flowMetadata || null
   }
 }
 

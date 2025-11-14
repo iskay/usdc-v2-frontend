@@ -66,13 +66,13 @@ async function getPollingTimeout(
 }
 
 export function useTxTracker() {
-  console.log('[useTxTracker] 🎣 Hook called')
+  logger.debug('[useTxTracker] Hook called')
   const [txState, setTxState] = useAtom(txAtom)
   const hasStartedInitialPolling = useRef(false)
 
   // Hydrate transaction state from localStorage on mount
   useEffect(() => {
-    console.log('[useTxTracker] 💧 Starting hydration effect')
+    logger.debug('[useTxTracker] Starting hydration effect')
     try {
       const storedTxs = transactionStorageService.getAllTransactions()
       
@@ -223,26 +223,11 @@ export function useTxTracker() {
 
   // Helper function to start polling for in-progress transactions
   const startPollingForTransactions = useCallback(() => {
-    // Always log this critical point
-    console.log('[useTxTracker] 📋 startPollingForTransactions called', {
-      hasStartedInitialPolling: hasStartedInitialPolling.current,
-    })
     logger.debug('[useTxTracker] startPollingForTransactions called', {
       hasStartedInitialPolling: hasStartedInitialPolling.current,
     })
 
     const inProgressTxs = transactionStorageService.getInProgressTransactions()
-    console.log('[useTxTracker] 📦 Found in-progress transactions from storage', {
-      count: inProgressTxs.length,
-      transactions: inProgressTxs.map((tx) => ({
-        id: tx.id,
-        status: tx.status,
-        flowId: tx.flowId,
-        isFrontendOnly: tx.isFrontendOnly,
-        chain: tx.chain,
-        direction: tx.direction,
-      })),
-    })
     logger.debug('[useTxTracker] Found in-progress transactions from storage', {
       count: inProgressTxs.length,
       transactions: inProgressTxs.map((tx) => ({
@@ -284,16 +269,7 @@ export function useTxTracker() {
     })
 
     if (pollableTxs.length === 0) {
-      // Always log this - it's important to know why polling didn't start
-      console.warn('[useTxTracker] ⚠️ No pollable transactions found after filtering', {
-        inProgressCount: inProgressTxs.length,
-        reasons: inProgressTxs.map((tx) => ({
-          id: tx.id,
-          hasFlowId: !!tx.flowId,
-          isFrontendOnly: tx.isFrontendOnly,
-        })),
-      })
-      logger.warn('[useTxTracker] No pollable transactions found after filtering', {
+      logger.info('[useTxTracker] No pollable transactions found after filtering', {
         inProgressCount: inProgressTxs.length,
         reasons: inProgressTxs.map((tx) => ({
           id: tx.id,
@@ -306,12 +282,6 @@ export function useTxTracker() {
 
     const isInitialPolling = !hasStartedInitialPolling.current
     if (isInitialPolling) {
-      // Always log this critical startup event
-      console.log('[useTxTracker] 🚀 Starting initial polling for in-progress transactions on app startup', {
-        count: pollableTxs.length,
-        txIds: pollableTxs.map((tx) => tx.id),
-        flowIds: pollableTxs.map((tx) => tx.flowId),
-      })
       logger.info('[useTxTracker] Starting initial polling for in-progress transactions on app startup', {
         count: pollableTxs.length,
         txIds: pollableTxs.map((tx) => tx.id),
@@ -319,11 +289,6 @@ export function useTxTracker() {
       })
       hasStartedInitialPolling.current = true
     } else {
-      console.log('[useTxTracker] 🔄 Starting polling for in-progress transactions', {
-        count: pollableTxs.length,
-        txIds: pollableTxs.map((tx) => tx.id),
-        flowIds: pollableTxs.map((tx) => tx.flowId),
-      })
       logger.info('[useTxTracker] Starting polling for in-progress transactions', {
         count: pollableTxs.length,
         txIds: pollableTxs.map((tx) => tx.id),
@@ -499,14 +464,6 @@ export function useTxTracker() {
 
       getPollingTimeout(txChain, txDirection)
         .then((timeoutMs) => {
-          // Always log this critical event
-          console.log('[useTxTracker] ▶️ Starting polling with timeout', {
-            txId,
-            flowId: txFlowId,
-            timeoutMs,
-            chain: txChain,
-            direction: txDirection,
-          })
           logger.info('[useTxTracker] Starting polling with timeout', {
             txId,
             flowId: txFlowId,
@@ -514,16 +471,11 @@ export function useTxTracker() {
             chain: txChain,
             direction: txDirection,
           })
-          
+
           // Start polling with timeout
           flowStatusPoller.startPolling(txFlowId, onStatusUpdate, onTimeout, timeoutMs)
 
           const isPolling = flowStatusPoller.isPolling(txFlowId)
-          console.log('[useTxTracker] ✅ Polling started successfully', {
-            txId,
-            flowId: txFlowId,
-            isPolling,
-          })
           logger.debug('[useTxTracker] Polling started successfully', {
             txId,
             flowId: txFlowId,
@@ -581,12 +533,6 @@ export function useTxTracker() {
   // 1. On mount (to resume polling for in-progress transactions after page refresh)
   // 2. When txState.history changes (to start polling for newly added transactions)
   useEffect(() => {
-    // Always log this critical point (use console.log + logger for visibility)
-    console.log('[useTxTracker] 🔄 Polling effect triggered', {
-      txStateHistoryLength: txState.history.length,
-      hasStartedInitialPolling: hasStartedInitialPolling.current,
-      historyTxIds: txState.history.map((tx) => tx.id),
-    })
     logger.debug('[useTxTracker] Polling effect triggered', {
       txStateHistoryLength: txState.history.length,
       hasStartedInitialPolling: hasStartedInitialPolling.current,
@@ -595,9 +541,6 @@ export function useTxTracker() {
 
     const cleanupFunctions = startPollingForTransactions()
 
-    console.log('[useTxTracker] ✅ Polling effect completed', {
-      cleanupFunctionsCount: cleanupFunctions.length,
-    })
     logger.debug('[useTxTracker] Polling effect completed', {
       cleanupFunctionsCount: cleanupFunctions.length,
     })

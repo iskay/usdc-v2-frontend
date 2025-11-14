@@ -22,7 +22,7 @@ import {
   type PaymentTransactionDetails,
 } from '@/services/payment/paymentService'
 import { useTxTracker } from '@/hooks/useTxTracker'
-import { flowStorageService } from '@/services/flow/flowStorageService'
+import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 
 export function SendPayment() {
@@ -189,6 +189,11 @@ export function SendPayment() {
     setShowConfirmationModal(false)
     setIsSubmitting(true)
 
+    // Track transaction state for error handling
+    let tx: Awaited<ReturnType<typeof buildPaymentTransaction>> | undefined
+    let signedTx: Awaited<ReturnType<typeof signPaymentTransaction>> | undefined
+    let currentTx: StoredTransaction | undefined
+
     try {
       // Build transaction details
       const transactionDetails: PaymentTransactionDetails = {
@@ -205,7 +210,7 @@ export function SendPayment() {
 
       // Build transaction
       notify({ title: 'Building transaction...', level: 'info' })
-      const tx = await buildPaymentTransaction({
+      tx = await buildPaymentTransaction({
         amount,
         destinationAddress: toAddress,
         destinationChain: selectedChain,
@@ -213,12 +218,40 @@ export function SendPayment() {
         shieldedAddress,
       })
 
+      // Save transaction immediately after build (for error tracking)
+      currentTx = {
+        ...tx,
+        paymentDetails: transactionDetails,
+        updatedAt: Date.now(),
+      }
+      transactionStorageService.saveTransaction(currentTx)
+      upsertTransaction(tx)
+
       // Sign transaction
       notify({ title: 'Signing transaction...', level: 'info' })
-      const signedTx = await signPaymentTransaction(tx)
+      signedTx = await signPaymentTransaction(tx)
+      
+      // Update status to signing
+      currentTx = {
+        ...currentTx,
+        ...signedTx,
+        status: 'signing',
+        updatedAt: Date.now(),
+      }
+      transactionStorageService.saveTransaction(currentTx)
+      upsertTransaction(signedTx)
 
       // Broadcast transaction
       notify({ title: 'Broadcasting transaction...', level: 'info' })
+      
+      // Update status to submitting before broadcast
+      currentTx = {
+        ...currentTx,
+        status: 'submitting',
+        updatedAt: Date.now(),
+      }
+      transactionStorageService.saveTransaction(currentTx)
+      
       const txHash = await broadcastPaymentTransaction(signedTx)
 
       // Save metadata
@@ -227,17 +260,20 @@ export function SendPayment() {
       // Post to backend (registers flow with backend)
       const flowId = await postPaymentToBackend(txHash, transactionDetails)
 
-      // Update transaction with flowId and flowMetadata
+      // Transaction already updated with flowId and flowMetadata in postPaymentToBackend
+      // Just ensure it's synced to state
       if (flowId) {
-        const flowInitiation = flowStorageService.getFlowInitiationByFlowId(flowId)
-        if (flowInitiation) {
-          const updatedTx = {
+        const updatedTx = transactionStorageService.getTransactionByFlowId(flowId)
+        if (updatedTx) {
+          upsertTransaction(updatedTx)
+        } else {
+          // Fallback: update with hash and flowId if transaction lookup fails
+          const fallbackTx = {
             ...signedTx,
             hash: txHash,
             flowId,
-            flowMetadata: flowInitiation,
           }
-          upsertTransaction(updatedTx)
+          upsertTransaction(fallbackTx)
         }
       } else {
         // Still track transaction even if flow registration failed
@@ -260,6 +296,43 @@ export function SendPayment() {
     } catch (error) {
       console.error('[SendPayment] Payment submission failed:', error)
       const message = error instanceof Error ? error.message : 'Failed to submit payment'
+      
+      // Save error transaction to storage for history tracking
+      try {
+        // Build transaction details for error case
+        const transactionDetails: PaymentTransactionDetails = {
+          amount,
+          fee: estimatedFee,
+          total,
+          destinationAddress: toAddress,
+          chainName,
+        }
+        
+        // Use current transaction state if available, otherwise create new error transaction
+        const errorTx: StoredTransaction = currentTx
+          ? {
+              ...currentTx,
+              status: 'error',
+              errorMessage: message,
+              updatedAt: Date.now(),
+            }
+          : {
+              id: tx?.id || crypto.randomUUID(),
+              createdAt: tx?.createdAt || Date.now(),
+              updatedAt: Date.now(),
+              chain: tx?.chain || selectedChain || '',
+              direction: 'send',
+              status: 'error',
+              errorMessage: message,
+              paymentDetails: transactionDetails,
+            }
+        
+        transactionStorageService.saveTransaction(errorTx)
+        upsertTransaction(errorTx)
+      } catch (saveError) {
+        console.error('[SendPayment] Failed to save error transaction:', saveError)
+      }
+      
       notify({
         title: 'Payment Failed',
         description: message,

@@ -90,7 +90,7 @@ export function TransactionDetailModal({
   } else if (isError(transaction)) {
     statusIcon = <XCircle className="h-5 w-5" />
     statusColor = 'text-red-600'
-  } else if (transaction.status === 'undetermined') {
+  } else if (transaction.status === 'undetermined' || transaction.isFrontendOnly) {
     statusIcon = <AlertCircle className="h-5 w-5" />
     statusColor = 'text-yellow-600'
   }
@@ -167,10 +167,16 @@ export function TransactionDetailModal({
                   <dd className="mt-1 font-mono text-sm">{formatHash(transaction.hash)}</dd>
                 </div>
               )}
-              {transaction.flowId && (
+              {transaction.flowId && !transaction.isFrontendOnly && (
                 <div className="col-span-2">
                   <dt className="text-muted-foreground">Flow ID</dt>
                   <dd className="mt-1 font-mono text-sm">{transaction.flowId}</dd>
+                </div>
+              )}
+              {transaction.isFrontendOnly && (
+                <div className="col-span-2">
+                  <dt className="text-muted-foreground">Mode</dt>
+                  <dd className="mt-1 text-sm font-medium text-yellow-600">Frontend Only</dd>
                 </div>
               )}
             </div>
@@ -284,18 +290,18 @@ export function TransactionDetailModal({
           )}
 
           {/* Undetermined Status Notice */}
-          {transaction.status === 'undetermined' && (
+          {(transaction.status === 'undetermined' || transaction.isFrontendOnly) && (
             <div className="rounded-md border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-950">
               <div className="flex items-start gap-2">
                 <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
-                    Status Unknown
+                    {transaction.isFrontendOnly ? 'Frontend Only Mode' : 'Status Unknown'}
                   </p>
                   <p className="mt-1 text-sm text-yellow-800 dark:text-yellow-200">
-                    The transaction status could not be determined within the timeout period. The
-                    transaction may have succeeded or failed, but we were unable to confirm its final
-                    state.
+                    {transaction.isFrontendOnly
+                      ? 'This transaction was not submitted to the backend for tracking. Status cannot be determined as backend tracking is unavailable. The transaction may have succeeded or failed, but we cannot confirm its final state.'
+                      : 'The transaction status could not be determined within the timeout period. The transaction may have succeeded or failed, but we were unable to confirm its final state.'}
                   </p>
                 </div>
               </div>

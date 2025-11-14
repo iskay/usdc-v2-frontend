@@ -240,6 +240,40 @@ class TransactionStorageService {
   getCount(): number {
     return this.getAllTransactions().length
   }
+
+  /**
+   * Get transaction by flowId.
+   * Useful for looking up transactions when only flowId is known.
+   */
+  getTransactionByFlowId(flowId: string): StoredTransaction | null {
+    try {
+      const allTxs = this.getAllTransactions()
+      return allTxs.find((tx) => tx.flowId === flowId) || null
+    } catch (error) {
+      logger.error('[TransactionStorageService] Failed to get transaction by flowId', {
+        flowId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return null
+    }
+  }
+
+  /**
+   * Get transaction by localId (from flowMetadata).
+   * Useful for looking up transactions when only localId is known.
+   */
+  getTransactionByLocalId(localId: string): StoredTransaction | null {
+    try {
+      const allTxs = this.getAllTransactions()
+      return allTxs.find((tx) => tx.flowMetadata?.localId === localId) || null
+    } catch (error) {
+      logger.error('[TransactionStorageService] Failed to get transaction by localId', {
+        localId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return null
+    }
+  }
 }
 
 // Export singleton instance

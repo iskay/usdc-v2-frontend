@@ -48,7 +48,7 @@ src/
  ├─ components/
  │   ├─ layout/         # Navbar, Sidebar, ToastContainer
  │   ├─ wallet/         # WalletSelector, AccountDisplay
- │   ├─ tx/             # TxStatusCard, TxHistoryList
+ │   ├─ tx/             # TxHistoryList, TxInProgressList, TransactionCard
  │   └─ common/         # Button, Spinner, AlertBox
  ├─ atoms/              # Jotai atoms for wallet/tx/settings/shielded/app state
  ├─ services/

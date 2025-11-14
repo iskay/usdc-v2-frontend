@@ -66,11 +66,6 @@ class FlowStatusPoller {
       return
     }
 
-    // Always log this critical event
-    console.log('[FlowStatusPoller] 🎯 Starting new polling job', {
-      flowId,
-      timeoutMs,
-    })
     logger.info('[FlowStatusPoller] Starting new polling job', {
       flowId,
       timeoutMs,
@@ -179,24 +174,14 @@ class FlowStatusPoller {
     })
 
     try {
-      // Always log network requests (critical for debugging)
-      console.log('[FlowStatusPoller] 🌐 Fetching flow status from backend', {
+      logger.debug('[FlowStatusPoller] Fetching flow status from backend', {
         flowId,
         endpoint: `/flow/${flowId}/status`,
         pollCount: pollCount + 1,
       })
-      logger.debug('[FlowStatusPoller] Fetching flow status from backend', {
-        flowId,
-        endpoint: `/flow/${flowId}/status`,
-      })
-      
+
       const status = await getFlowStatus(flowId)
-      
-      console.log('[FlowStatusPoller] ✅ Received flow status', {
-        flowId,
-        status: status.status,
-      })
-      
+
       logger.debug('[FlowStatusPoller] Received flow status', {
         flowId,
         status: status.status,
@@ -262,9 +247,6 @@ class FlowStatusPoller {
 
       // Retry with 10 second delay on error
       const interval = setTimeout(() => {
-        logger.debug('[FlowStatusPoller] Retrying poll after error', {
-          flowId,
-        })
         this.poll(flowId)
       }, 10000)
 

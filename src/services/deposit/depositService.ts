@@ -11,6 +11,8 @@ import { flowInitiationService } from '@/services/flow/flowInitiationService'
 import { getDefaultNamadaChainKey } from '@/config/chains'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
+import { jotaiStore } from '@/store/jotaiStore'
+import { frontendOnlyModeAtom } from '@/atoms/appAtom'
 import BigNumber from 'bignumber.js'
 import type { TrackedTransaction } from '@/types/tx'
 
@@ -157,17 +159,23 @@ export async function saveDepositTransaction(
   details: DepositTransactionDetails,
   flowId?: string,
 ): Promise<StoredTransaction> {
+  // Check if frontend-only mode is enabled
+  const isFrontendOnly = jotaiStore.get(frontendOnlyModeAtom)
+
   logger.info('[DepositService] Saving deposit transaction to unified storage', {
     txId: tx.id,
     txHash: tx.hash,
     flowId,
+    isFrontendOnly,
   })
 
-  // Get flow metadata if flowId is provided
+  // Flow metadata should already be in transaction (created during postDepositToBackend)
+  // If flowId is provided but flowMetadata is missing, get it from transaction storage
   let flowMetadata = tx.flowMetadata
   if (flowId && !flowMetadata) {
-    const { flowStorageService } = await import('@/services/flow/flowStorageService')
-    flowMetadata = flowStorageService.getFlowInitiationByFlowId(flowId) || undefined
+    // Try to get updated transaction from storage (it should have flowMetadata after backend registration)
+    const storedTx = transactionStorageService.getTransaction(tx.id)
+    flowMetadata = storedTx?.flowMetadata
   }
 
   // Create StoredTransaction with deposit details
@@ -176,6 +184,9 @@ export async function saveDepositTransaction(
     depositDetails: details,
     flowId: flowId || tx.flowId,
     flowMetadata,
+    isFrontendOnly: isFrontendOnly || tx.status === 'undetermined' ? true : undefined,
+    // Set status to 'undetermined' if frontend-only mode and no flowId
+    status: isFrontendOnly && !flowId ? 'undetermined' : tx.status,
     updatedAt: Date.now(),
   }
 
@@ -186,6 +197,7 @@ export async function saveDepositTransaction(
     txId: storedTx.id,
     hasFlowId: !!storedTx.flowId,
     hasDepositDetails: !!storedTx.depositDetails,
+    isFrontendOnly: storedTx.isFrontendOnly,
   })
 
   return storedTx
@@ -227,39 +239,68 @@ export async function saveDepositMetadata(
 /**
  * Post deposit transaction to backend API for flow tracking.
  * Registers the flow with backend after EVM burn transaction is broadcast.
+ * Creates flowMetadata in transaction if it doesn't exist.
  * 
  * @param txHash - The EVM burn transaction hash
  * @param details - Deposit transaction details
  * @param tx - The full transaction object (for additional metadata)
- * @param localId - Optional local flow ID (if flow was initiated earlier)
- * @returns Backend flowId if registration successful
+ * @returns Backend flowId if registration successful, undefined if frontend-only mode or registration failed
  */
 export async function postDepositToBackend(
   txHash: string,
   details: DepositTransactionDetails,
   tx?: TrackedTransaction & { depositData?: { nobleForwardingAddress: string; destinationDomain: number; nonce?: string } },
-  localId?: string,
 ): Promise<string | undefined> {
+  // Check if frontend-only mode is enabled
+  const isFrontendOnly = jotaiStore.get(frontendOnlyModeAtom)
+  if (isFrontendOnly) {
+    logger.info('[DepositService] Frontend-only mode enabled, skipping backend registration', {
+      txHash: txHash.slice(0, 16) + '...',
+    })
+    return undefined
+  }
+
   logger.debug('[DepositService] Posting deposit to backend', {
     txHash: txHash.slice(0, 16) + '...',
     chainName: details.chainName,
-    localId,
   })
 
   try {
-    // If localId not provided, initiate flow on-the-fly
-    if (!localId) {
+    // Get transaction ID - if tx is provided, use its ID, otherwise find by hash
+    let txId: string
+    if (tx?.id) {
+      txId = tx.id
+    } else {
+      // Find transaction by hash if tx object not provided
+      const allTxs = transactionStorageService.getAllTransactions()
+      const foundTx = allTxs.find((t) => t.hash === txHash)
+      if (!foundTx) {
+        throw new Error(`Transaction not found for hash: ${txHash.slice(0, 16)}...`)
+      }
+      txId = foundTx.id
+    }
+
+    // Get transaction to check if flowMetadata already exists
+    const storedTx = transactionStorageService.getTransaction(txId)
+    let flowMetadata = storedTx?.flowMetadata
+
+    // If flowMetadata doesn't exist, create it and store in transaction
+    if (!flowMetadata) {
       const amountInBaseUnits = new BigNumber(details.amount)
         .multipliedBy(1_000_000) // USDC has 6 decimals
         .toFixed(0)
       
       const chainKey = tx?.chain || details.chainName.toLowerCase().replace(/\s+/g, '-')
-      const result = await flowInitiationService.initiateFlow(
+      flowMetadata = flowInitiationService.createFlowMetadata(
         'deposit',
         chainKey, // Deposit starts on EVM chain
         amountInBaseUnits,
       )
-      localId = result.localId
+      
+      // Update transaction with flowMetadata
+      transactionStorageService.updateTransaction(txId, {
+        flowMetadata,
+      })
     }
 
     // Get destination chain from tendermint config (deposits always go to Namada)
@@ -274,9 +315,9 @@ export async function postDepositToBackend(
       destinationChainKey = 'namada-testnet'
     }
 
-    // Register flow with backend using EVM burn transaction hash
+    // Register flow with backend using transaction ID
     const flowId = await flowInitiationService.registerWithBackend(
-      localId,
+      txId,
       txHash,
       {
         destinationAddress: details.destinationAddress,
@@ -290,7 +331,8 @@ export async function postDepositToBackend(
     )
 
     logger.debug('[DepositService] Deposit flow registered with backend', {
-      localId,
+      txId,
+      localId: flowMetadata.localId,
       flowId,
       txHash: txHash.slice(0, 16) + '...',
     })

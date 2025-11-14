@@ -548,26 +548,39 @@ export async function postPaymentToBackend(
   })
 
   try {
-    // If localId not provided, try to find existing flow by txHash
-    // (This handles cases where flow wasn't initiated before transaction)
-    if (!localId) {
-      // For now, initiate flow on-the-fly if not already initiated
-      // In future, flow should be initiated before building transaction
+    // Find transaction by hash
+    const { transactionStorageService } = await import('@/services/tx/transactionStorageService')
+    const allTxs = transactionStorageService.getAllTransactions()
+    const foundTx = allTxs.find((t) => t.hash === txHash)
+    
+    if (!foundTx) {
+      throw new Error(`Transaction not found for hash: ${txHash.slice(0, 16)}...`)
+    }
+    
+    const txId = foundTx.id
+    let flowMetadata = foundTx.flowMetadata
+
+    // If flowMetadata doesn't exist, create it and store in transaction
+    if (!flowMetadata) {
       const amountInBaseUnits = new BigNumber(details.amount)
         .multipliedBy(1_000_000) // USDC has 6 decimals
         .toFixed(0)
       
-      const result = await flowInitiationService.initiateFlow(
+      flowMetadata = flowInitiationService.createFlowMetadata(
         'payment',
         'namada', // Payment starts on Namada
         amountInBaseUnits,
       )
-      localId = result.localId
+      
+      // Update transaction with flowMetadata
+      transactionStorageService.updateTransaction(txId, {
+        flowMetadata,
+      })
     }
 
-    // Register flow with backend using Namada IBC transaction hash
+    // Register flow with backend using transaction ID
     const flowId = await flowInitiationService.registerWithBackend(
-      localId,
+      txId,
       txHash,
       {
         destinationAddress: details.destinationAddress,
@@ -578,7 +591,8 @@ export async function postPaymentToBackend(
     )
 
     logger.debug('[PaymentService] Payment flow registered with backend', {
-      localId,
+      txId,
+      localId: flowMetadata.localId,
       flowId,
       txHash: txHash.slice(0, 16) + '...',
     })

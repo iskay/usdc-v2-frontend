@@ -18,3 +18,9 @@ export const preferredChainKeyAtom = atom<string | undefined>(undefined)
 // When false, polling will skip shielded operations (user can still manually trigger sync)
 // Default: false (disabled)
 export const autoShieldedSyncEnabledAtom = atom<boolean>(false)
+
+// Toggle for frontend-only mode
+// When enabled, transactions will not be submitted to backend for tracking
+// Status will be displayed as 'undetermined' since backend tracking is unavailable
+// Default: false (backend tracking enabled)
+export const frontendOnlyModeAtom = atom<boolean>(false)

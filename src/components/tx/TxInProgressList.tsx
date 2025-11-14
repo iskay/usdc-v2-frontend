@@ -2,24 +2,53 @@ import { useEffect, useState } from 'react'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
 import { TransactionCard } from './TransactionCard'
 import { isInProgress } from '@/services/tx/transactionStatusService'
+import { Spinner } from '@/components/common/Spinner'
 
 export function TxInProgressList() {
   const [inProgressTxs, setInProgressTxs] = useState<StoredTransaction[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   // Load in-progress transactions from unified storage
   useEffect(() => {
     const loadTransactions = () => {
-      const txs = transactionStorageService.getInProgressTransactions()
-      setInProgressTxs(txs)
+      try {
+        const txs = transactionStorageService.getInProgressTransactions()
+        setInProgressTxs(txs)
+        setIsLoading(false)
+        setError(null)
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load transactions'
+        console.error('[TxInProgressList] Failed to load transactions', err)
+        setError(errorMessage)
+        setIsLoading(false)
+      }
     }
 
     // Load initially
     loadTransactions()
 
-    // Reload periodically to catch updates
-    const interval = setInterval(loadTransactions, 2000)
+    // Reload periodically to catch updates (optimized: 5 seconds for in-progress)
+    const interval = setInterval(loadTransactions, 5000)
     return () => clearInterval(interval)
   }, [])
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-4">
+        <Spinner label="Loading transactions..." />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
+        <p className="font-medium">Error loading transactions</p>
+        <p className="mt-1 text-xs">{error}</p>
+      </div>
+    )
+  }
 
   if (inProgressTxs.length === 0) {
     return (

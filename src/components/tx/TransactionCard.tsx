@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, memo } from 'react'
 import { Clock, CheckCircle2, XCircle, AlertCircle, ChevronRight } from 'lucide-react'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import {
@@ -19,7 +19,7 @@ export interface TransactionCardProps {
   showExpandButton?: boolean
 }
 
-export function TransactionCard({
+export const TransactionCard = memo(function TransactionCard({
   transaction,
   variant = 'compact',
   onClick,
@@ -64,7 +64,7 @@ export function TransactionCard({
   } else if (isError(transaction)) {
     statusIcon = <XCircle className="h-4 w-4" />
     statusColor = 'text-red-600'
-  } else if (transaction.status === 'undetermined') {
+  } else if (transaction.status === 'undetermined' || transaction.isFrontendOnly) {
     statusIcon = <AlertCircle className="h-4 w-4" />
     statusColor = 'text-yellow-600'
   }
@@ -95,6 +95,9 @@ export function TransactionCard({
                 {statusIcon}
                 <span>{statusLabel}</span>
               </div>
+              {transaction.isFrontendOnly && (
+                <span className="text-xs text-yellow-600">(Frontend Only)</span>
+              )}
               <span className="text-muted-foreground">{timeElapsed}</span>
             </div>
 
@@ -139,5 +142,5 @@ export function TransactionCard({
       )}
     </>
   )
-}
+})
 

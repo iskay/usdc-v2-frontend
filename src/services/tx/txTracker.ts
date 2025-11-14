@@ -1,6 +1,6 @@
 import type { TxStatusMessage } from '@/types/tx'
 import type { FlowStatus } from '@/types/flow'
-import { flowStorageService } from '@/services/flow/flowStorageService'
+import { transactionStorageService } from '@/services/tx/transactionStorageService'
 import { flowStatusPoller } from '@/services/flow/flowStatusPoller'
 import { flowStatusCacheService } from '@/services/flow/flowStatusCacheService'
 import { getFlowStatus } from '@/services/api/backendClient'
@@ -61,20 +61,31 @@ function mapFlowStatusToTxStatusMessage(
  */
 export async function pollTxStatus(txId: string): Promise<TxStatusMessage | undefined> {
   try {
-    // Try to find flow by localId first
-    let flowInitiation = flowStorageService.getFlowInitiation(txId)
+    // Try to find transaction by ID first
+    let tx = transactionStorageService.getTransaction(txId)
     let flowId: string | undefined
 
-    if (flowInitiation?.flowId) {
-      flowId = flowInitiation.flowId
+    if (tx?.flowId) {
+      // Transaction has flowId - use it
+      flowId = tx.flowId
+    } else if (tx?.flowMetadata?.localId === txId) {
+      // txId is a localId, but flowId not set yet (not registered with backend)
+      logger.debug('[TxTracker] Transaction found but flowId not yet registered', { txId })
+      return undefined
     } else {
-      // If not found by localId, try treating txId as flowId
-      flowInitiation = flowStorageService.getFlowInitiationByFlowId(txId)
-      if (flowInitiation) {
-        flowId = flowInitiation.flowId
+      // Try treating txId as flowId (look up transaction by flowId)
+      tx = transactionStorageService.getTransactionByFlowId(txId)
+      if (tx?.flowId) {
+        flowId = tx.flowId
       } else {
-        // Try using txId directly as flowId
-        flowId = txId
+        // Try treating txId as localId
+        tx = transactionStorageService.getTransactionByLocalId(txId)
+        if (tx?.flowId) {
+          flowId = tx.flowId
+        } else {
+          // Last resort: assume txId is flowId
+          flowId = txId
+        }
       }
     }
 
@@ -128,19 +139,27 @@ export async function pollTxStatus(txId: string): Promise<TxStatusMessage | unde
 export function scheduleTxTracking(txId: string, onUpdate: (message: TxStatusMessage) => void): () => void {
   logger.debug('[TxTracker] Scheduling transaction tracking', { txId })
 
-  // Try to find flowId
-  let flowInitiation = flowStorageService.getFlowInitiation(txId)
+  // Try to find transaction and get flowId
+  let tx = transactionStorageService.getTransaction(txId)
   let flowId: string | undefined
 
-  if (flowInitiation?.flowId) {
-    flowId = flowInitiation.flowId
+  if (tx?.flowId) {
+    // Transaction has flowId - use it
+    flowId = tx.flowId
   } else {
-    // Try treating txId as flowId
-    flowInitiation = flowStorageService.getFlowInitiationByFlowId(txId)
-    if (flowInitiation) {
-      flowId = flowInitiation.flowId
+    // Try treating txId as flowId (look up transaction by flowId)
+    tx = transactionStorageService.getTransactionByFlowId(txId)
+    if (tx?.flowId) {
+      flowId = tx.flowId
     } else {
-      flowId = txId
+      // Try treating txId as localId
+      tx = transactionStorageService.getTransactionByLocalId(txId)
+      if (tx?.flowId) {
+        flowId = tx.flowId
+      } else {
+        // Last resort: assume txId is flowId
+        flowId = txId
+      }
     }
   }
 
