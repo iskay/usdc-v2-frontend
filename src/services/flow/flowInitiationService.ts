@@ -174,6 +174,7 @@ class FlowInitiationService {
       metadata: {
         amount: initiation.amount,
         token: initiation.token,
+        localId: initiation.localId, // Include frontend localId for recovery
         ...metadata,
       },
     }
