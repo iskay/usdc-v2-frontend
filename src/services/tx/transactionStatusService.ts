@@ -8,6 +8,7 @@
 import type { StoredTransaction } from './transactionStorageService'
 import type { FlowStatus, ChainStage } from '@/types/flow'
 import { logger } from '@/utils/logger'
+import { getChainOrder } from '@/shared/flowStages'
 
 /**
  * Stage timing information extracted from flow status.
@@ -240,8 +241,7 @@ export function getStageTimings(
   const timings: StageTiming[] = []
 
   // Determine chain order based on flow type
-  const chainOrder: Array<'evm' | 'noble' | 'namada'> =
-    flowType === 'deposit' ? ['evm', 'noble', 'namada'] : ['namada', 'noble', 'evm']
+  const chainOrder = getChainOrder(flowType)
 
   // Collect all stages with timestamps
   for (const chain of chainOrder) {

@@ -5,6 +5,7 @@ import type {
   ChainStage,
   UIStage,
 } from '@/types/flow'
+import { getChainOrder } from '@/shared/flowStages'
 
 // Re-export UIStage for convenience
 export type { UIStage } from '@/types/flow'
@@ -21,8 +22,7 @@ export function mapFlowStatusToUIStages(
   const stages: UIStage[] = []
   
   // Determine chain order based on flow type
-  const chainOrder: Array<'evm' | 'noble' | 'namada'> =
-    flowType === 'deposit' ? ['evm', 'noble', 'namada'] : ['namada', 'noble', 'evm']
+  const chainOrder = getChainOrder(flowType)
 
   // Process each chain in order
   for (const chain of chainOrder) {
