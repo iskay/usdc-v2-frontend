@@ -27,7 +27,7 @@ import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 
 export function SendPayment() {
   const navigate = useNavigate()
-  const { upsertTransaction } = useTxTracker()
+  const { upsertTransaction } = useTxTracker({ enablePolling: false })
   const { notify } = useToast()
   const { state: walletState } = useWallet()
 

@@ -24,7 +24,7 @@ export function RequireMetaMaskConnection({ children, message }: RequireMetaMask
       </div>
 
       {/* Overlay with connect prompt */}
-      <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+      <div className="absolute inset-0 flex items-start justify-center pt-20 bg-background/80 backdrop-blur-sm">
         <div className="flex max-w-md flex-col items-center gap-6 rounded-lg border border-border bg-card p-8 shadow-lg">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
             <Wallet className="h-8 w-8 text-muted-foreground" />

@@ -8,6 +8,9 @@ import {
   getStatusLabel,
   getTimeElapsed,
   getProgressPercentage,
+  getEffectiveStatus,
+  hasClientTimeout,
+  getTimeoutMessage,
 } from '@/services/tx/transactionStatusService'
 import { TransactionDetailModal } from './TransactionDetailModal'
 import { cn } from '@/lib/utils'
@@ -58,13 +61,15 @@ export const TransactionCard = memo(function TransactionCard({
   let statusIcon = <Clock className="h-4 w-4" />
   let statusColor = 'text-muted-foreground'
 
+  const effectiveStatus = getEffectiveStatus(transaction)
+  
   if (isSuccess(transaction)) {
     statusIcon = <CheckCircle2 className="h-4 w-4" />
     statusColor = 'text-green-600'
   } else if (isError(transaction)) {
     statusIcon = <XCircle className="h-4 w-4" />
     statusColor = 'text-red-600'
-  } else if (transaction.status === 'undetermined' || transaction.isFrontendOnly) {
+  } else if (effectiveStatus === 'undetermined' || transaction.isFrontendOnly) {
     statusIcon = <AlertCircle className="h-4 w-4" />
     statusColor = 'text-yellow-600'
   }
@@ -97,6 +102,14 @@ export const TransactionCard = memo(function TransactionCard({
               </div>
               {transaction.isFrontendOnly && (
                 <span className="text-xs text-yellow-600">(Frontend Only)</span>
+              )}
+              {hasClientTimeout(transaction) && (
+                <div className="group relative">
+                  <AlertCircle className="h-3.5 w-3.5 text-yellow-600" />
+                  <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition-opacity group-hover:block group-hover:opacity-100">
+                    {getTimeoutMessage(transaction)}
+                  </div>
+                </div>
               )}
               <span className="text-muted-foreground">{timeElapsed}</span>
             </div>

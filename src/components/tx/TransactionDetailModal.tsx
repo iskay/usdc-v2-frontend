@@ -11,6 +11,8 @@ import {
   getProgressPercentage,
   getStageTimings,
   getCurrentStage,
+  hasClientTimeout,
+  getTimeoutMessage,
 } from '@/services/tx/transactionStatusService'
 import { cn } from '@/lib/utils'
 
@@ -283,6 +285,28 @@ export function TransactionDetailModal({
                   <p className="text-sm font-medium text-red-900 dark:text-red-100">Error</p>
                   <p className="mt-1 text-sm text-red-800 dark:text-red-200">
                     {transaction.errorMessage}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Client Timeout Notice */}
+          {hasClientTimeout(transaction) && (
+            <div className="rounded-md border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-950">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
+                    Client-Side Polling Stopped
+                  </p>
+                  <p className="mt-1 text-sm text-yellow-800 dark:text-yellow-200">
+                    Client-side polling stopped at{' '}
+                    {transaction.clientTimeoutAt
+                      ? new Date(transaction.clientTimeoutAt).toLocaleString()
+                      : 'unknown time'}
+                    . The backend is still tracking this transaction. Polling will resume automatically
+                    when you refresh the page.
                   </p>
                 </div>
               </div>

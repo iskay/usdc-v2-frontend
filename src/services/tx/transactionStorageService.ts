@@ -19,11 +19,51 @@ import { saveItem, loadItem, deleteItem } from '@/services/storage/localStore'
 import { logger } from '@/utils/logger'
 
 /**
+ * Get the effective status of a transaction (helper to avoid circular dependency).
+ * Treats flowStatusSnapshot.status as authoritative when available.
+ */
+function getEffectiveStatusForFilter(tx: StoredTransaction): StoredTransaction['status'] {
+  // If flowStatusSnapshot exists and has a status, use it as authoritative source
+  if (tx.flowStatusSnapshot?.status) {
+    const flowStatus = tx.flowStatusSnapshot.status
+    if (flowStatus === 'completed') {
+      return 'finalized'
+    } else if (flowStatus === 'failed') {
+      return 'error'
+    } else if (flowStatus === 'undetermined') {
+      return 'undetermined'
+    } else if (flowStatus === 'pending') {
+      // For pending flows, check if we have confirmed stages to determine if it's broadcasted
+      const hasConfirmed =
+        tx.flowStatusSnapshot.chainProgress.evm?.stages?.some((s) => s.status === 'confirmed') ||
+        tx.flowStatusSnapshot.chainProgress.namada?.stages?.some((s) => s.status === 'confirmed')
+      if (hasConfirmed) {
+        return 'broadcasted'
+      }
+      return 'submitting'
+    }
+  }
+  // Fallback to top-level status when flowStatusSnapshot is not available
+  return tx.status
+}
+
+/**
  * Enhanced transaction interface for storage.
  * Extends TrackedTransaction with additional metadata for rich display.
  */
 export interface StoredTransaction extends TrackedTransaction {
-  /** Cached flow status snapshot for display (updated via polling) */
+  /**
+   * Cached flow status snapshot for display (updated via polling).
+   * 
+   * **Status Priority:**
+   * - When `flowStatusSnapshot.status` is available, it is treated as the authoritative source
+   *   (comes from backend API and is most accurate)
+   * - The top-level `status` field is used as a fallback when `flowStatusSnapshot` is not available
+   *   (e.g., pre-backend registration, frontend-only transactions)
+   * 
+   * Use `getEffectiveStatus()` from `transactionStatusService` to get the correct status,
+   * which automatically handles this priority logic.
+   */
   flowStatusSnapshot?: FlowStatus
   /** Deposit-specific metadata */
   depositDetails?: DepositTransactionDetails
@@ -31,6 +71,13 @@ export interface StoredTransaction extends TrackedTransaction {
   paymentDetails?: PaymentTransactionDetails
   /** Flag for frontend-only mode (transactions not submitted to backend) */
   isFrontendOnly?: boolean
+  /**
+   * Timestamp when client-side polling timeout occurred (milliseconds since epoch).
+   * Set when the client-side polling timeout is reached but backend is still tracking the transaction.
+   * This allows UI to display a warning indicator that polling has stopped while backend continues tracking.
+   * Cleared when polling resumes (e.g., on page refresh).
+   */
+  clientTimeoutAt?: number
   /** Last update timestamp (for sorting and filtering) */
   updatedAt: number
 }
@@ -171,28 +218,17 @@ class TransactionStorageService {
    */
   getInProgressTransactions(): StoredTransaction[] {
     const allTxs = this.getAllTransactions()
+    // Use effective status to determine if transaction is in-progress
     return allTxs.filter((tx) => {
-      // Exclude final states (including 'undetermined')
-      if (tx.status === 'finalized' || tx.status === 'error' || tx.status === 'undetermined') {
-        return false
-      }
-      
-      // Check if transaction is in a non-final state
-      const isInProgressStatus = 
-        tx.status === 'submitting' || 
-        tx.status === 'broadcasted' ||
-        tx.status === 'building' ||
-        tx.status === 'signing'
-      
-      if (!isInProgressStatus) return false
-      
-      // If we have flow status, check if flow is still pending
-      if (tx.flowStatusSnapshot) {
-        return tx.flowStatusSnapshot.status === 'pending'
-      }
-      
-      // If no flow status but status is in-progress, include it
-      return true
+      const effectiveStatus = getEffectiveStatusForFilter(tx)
+      // Check if effective status is in-progress
+      return (
+        effectiveStatus === 'submitting' ||
+        effectiveStatus === 'broadcasted' ||
+        effectiveStatus === 'building' ||
+        effectiveStatus === 'signing' ||
+        effectiveStatus === 'connecting-wallet'
+      )
     })
   }
 

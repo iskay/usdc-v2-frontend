@@ -11,6 +11,43 @@ import { logger } from '@/utils/logger'
 import { getChainOrder } from '@/shared/flowStages'
 
 /**
+ * Get the effective status of a transaction.
+ * 
+ * This function treats `flowStatusSnapshot.status` as the authoritative source when available,
+ * since it comes from the backend API. The top-level `status` field is used as a fallback
+ * for cases where backend status isn't available (pre-backend registration, frontend-only transactions).
+ * 
+ * @param tx - Transaction to get effective status for
+ * @returns Effective transaction status (from flowStatusSnapshot if available, else top-level status)
+ */
+export function getEffectiveStatus(tx: StoredTransaction): StoredTransaction['status'] {
+  // If flowStatusSnapshot exists and has a status, use it as authoritative source
+  if (tx.flowStatusSnapshot?.status) {
+    // Map backend flow status to transaction status
+    const flowStatus = tx.flowStatusSnapshot.status
+    if (flowStatus === 'completed') {
+      return 'finalized'
+    } else if (flowStatus === 'failed') {
+      return 'error'
+    } else if (flowStatus === 'undetermined') {
+      return 'undetermined'
+    } else if (flowStatus === 'pending') {
+      // For pending flows, check if we have confirmed stages to determine if it's broadcasted
+      const hasConfirmed =
+        tx.flowStatusSnapshot.chainProgress.evm?.stages?.some((s) => s.status === 'confirmed') ||
+        tx.flowStatusSnapshot.chainProgress.namada?.stages?.some((s) => s.status === 'confirmed')
+      if (hasConfirmed) {
+        return 'broadcasted'
+      }
+      return 'submitting'
+    }
+  }
+  
+  // Fallback to top-level status when flowStatusSnapshot is not available
+  return tx.status
+}
+
+/**
  * Stage timing information extracted from flow status.
  */
 export interface StageTiming {
@@ -33,25 +70,17 @@ export interface StageTiming {
  * In-progress: status is not finalized, error, or undetermined.
  */
 export function isInProgress(tx: StoredTransaction): boolean {
-  // Check transaction status
+  const effectiveStatus = getEffectiveStatus(tx)
+  
+  // Check if effective status is in-progress
   const isInProgressStatus =
-    tx.status === 'submitting' ||
-    tx.status === 'broadcasted' ||
-    tx.status === 'building' ||
-    tx.status === 'signing' ||
-    tx.status === 'connecting-wallet'
+    effectiveStatus === 'submitting' ||
+    effectiveStatus === 'broadcasted' ||
+    effectiveStatus === 'building' ||
+    effectiveStatus === 'signing' ||
+    effectiveStatus === 'connecting-wallet'
 
-  if (!isInProgressStatus) {
-    return false
-  }
-
-  // If we have flow status, check if flow is still pending
-  if (tx.flowStatusSnapshot) {
-    return tx.flowStatusSnapshot.status === 'pending'
-  }
-
-  // If no flow status but status is in-progress, consider it in progress
-  return true
+  return isInProgressStatus
 }
 
 /**
@@ -59,55 +88,55 @@ export function isInProgress(tx: StoredTransaction): boolean {
  * Completed: finalized, error, or undetermined.
  */
 export function isCompleted(tx: StoredTransaction): boolean {
-  return tx.status === 'finalized' || tx.status === 'error' || tx.status === 'undetermined'
+  const effectiveStatus = getEffectiveStatus(tx)
+  return effectiveStatus === 'finalized' || effectiveStatus === 'error' || effectiveStatus === 'undetermined'
 }
 
 /**
  * Check if a transaction succeeded.
  */
 export function isSuccess(tx: StoredTransaction): boolean {
-  if (tx.status === 'finalized') {
-    return true
-  }
-
-  // Also check flow status if available
-  if (tx.flowStatusSnapshot) {
-    return tx.flowStatusSnapshot.status === 'completed'
-  }
-
-  return false
+  const effectiveStatus = getEffectiveStatus(tx)
+  return effectiveStatus === 'finalized'
 }
 
 /**
  * Check if a transaction failed.
  */
 export function isError(tx: StoredTransaction): boolean {
-  if (tx.status === 'error') {
-    return true
-  }
+  const effectiveStatus = getEffectiveStatus(tx)
+  return effectiveStatus === 'error'
+}
 
-  // Also check flow status if available
-  if (tx.flowStatusSnapshot) {
-    return tx.flowStatusSnapshot.status === 'failed'
-  }
-
-  return false
+/**
+ * Check if a transaction has experienced a client-side polling timeout.
+ * 
+ * When client-side polling timeout occurs but backend is still tracking the transaction,
+ * the `clientTimeoutAt` field is set. This function checks if that field exists.
+ * 
+ * @param tx - Transaction to check for client timeout
+ * @returns `true` if transaction has `clientTimeoutAt` set, `false` otherwise
+ */
+export function hasClientTimeout(tx: StoredTransaction): boolean {
+  return tx.clientTimeoutAt !== undefined && tx.clientTimeoutAt !== null
 }
 
 /**
  * Get human-readable status label for a transaction.
  */
 export function getStatusLabel(tx: StoredTransaction): string {
+  const effectiveStatus = getEffectiveStatus(tx)
+  
   // Handle special statuses first
-  if (tx.status === 'undetermined') {
+  if (effectiveStatus === 'undetermined') {
     return 'Status Unknown'
   }
 
-  if (tx.status === 'finalized') {
+  if (effectiveStatus === 'finalized') {
     return 'Completed'
   }
 
-  if (tx.status === 'error') {
+  if (effectiveStatus === 'error') {
     return 'Failed'
   }
 
@@ -121,7 +150,24 @@ export function getStatusLabel(tx: StoredTransaction): string {
     broadcasted: 'Broadcasted',
   }
 
-  return statusLabels[tx.status] || 'In Progress'
+  return statusLabels[effectiveStatus] || 'In Progress'
+}
+
+/**
+ * Get timeout message for a transaction that has experienced client-side timeout.
+ * 
+ * Returns a user-friendly message explaining that client-side polling has stopped
+ * but backend is still tracking the transaction.
+ * 
+ * @param tx - Transaction to get timeout message for
+ * @returns Timeout message string, or `null` if transaction doesn't have timeout
+ */
+export function getTimeoutMessage(tx: StoredTransaction): string | null {
+  if (!hasClientTimeout(tx)) {
+    return null
+  }
+
+  return 'Client timeout - Backend still tracking'
 }
 
 /**
@@ -315,7 +361,8 @@ export function getTotalDuration(tx: StoredTransaction): number | undefined {
     return undefined
   }
 
-  const endTime = tx.status === 'finalized' || tx.status === 'error' || tx.status === 'undetermined'
+  const effectiveStatus = getEffectiveStatus(tx)
+  const endTime = effectiveStatus === 'finalized' || effectiveStatus === 'error' || effectiveStatus === 'undetermined'
     ? tx.updatedAt
     : Date.now()
 
@@ -350,14 +397,15 @@ export function getCurrentStage(
 ): StageTiming | null {
   const timings = getStageTimings(tx, flowType)
   
-  // Find the first stage that is not confirmed
-  for (const timing of timings) {
+  // Find the most recent stage that is not confirmed (iterate backwards)
+  for (let i = timings.length - 1; i >= 0; i--) {
+    const timing = timings[i]
     if (timing.status !== 'confirmed' && timing.status !== 'failed') {
       return timing
     }
   }
 
-  // If all stages are confirmed, return the last one
+  // If all stages are confirmed, return the last one (most recent)
   if (timings.length > 0) {
     return timings[timings.length - 1]
   }
@@ -385,7 +433,8 @@ export function getProgressPercentage(
   }
 
   if (!tx.flowStatusSnapshot) {
-    // Estimate progress based on transaction status
+    // Estimate progress based on effective transaction status
+    const effectiveStatus = getEffectiveStatus(tx)
     const statusProgress: Record<string, number> = {
       idle: 0,
       'connecting-wallet': 5,
@@ -395,7 +444,7 @@ export function getProgressPercentage(
       broadcasted: 50,
     }
 
-    return statusProgress[tx.status] || 0
+    return statusProgress[effectiveStatus] || 0
   }
 
   const timings = getStageTimings(tx, flowType)

@@ -31,7 +31,7 @@
         "send": "2 - 4 minutes"
       },
       "pollingTimeout": {
-        "depositTimeoutMs": 300000,
+        "depositTimeoutMs": 720000,
         "paymentTimeoutMs": 300000
       },
       "logo": "/ethereum-logo.svg",

@@ -200,14 +200,17 @@ class FlowStatusPoller {
         })
         callback(flowId, status)
       } else {
-        logger.warn('[FlowStatusPoller] No callback registered for flowId', {
+        logger.warn('[FlowStatusPoller] No callback registered for flowId, stopping polling', {
           flowId,
         })
+        // If callback missing but still polling, stop polling to prevent infinite polling
+        this.stopPolling(flowId)
+        return
       }
 
-      // Stop polling if flow is complete (also clears timeout)
-      if (status.status === 'completed' || status.status === 'failed') {
-        logger.info('[FlowStatusPoller] Flow completed, stopping polling', {
+      // Stop polling if flow is complete or undetermined (also clears timeout)
+      if (status.status === 'completed' || status.status === 'failed' || status.status === 'undetermined') {
+        logger.info('[FlowStatusPoller] Flow completed/undetermined, stopping polling', {
           flowId,
           status: status.status,
           totalPolls: pollCount + 1,
@@ -220,8 +223,8 @@ class FlowStatusPoller {
       const nextPollCount = pollCount + 1
       this.pollCounts.set(flowId, nextPollCount)
 
-      // Active flows: poll every 5 seconds for first 10 polls, then 30 seconds after
-      const delay = nextPollCount > 10 ? 30000 : 5000
+      // Active flows: poll every 15 seconds for first 10 polls, then 30 seconds after
+      const delay = nextPollCount > 10 ? 30000 : 15000
 
       logger.debug('[FlowStatusPoller] Scheduling next poll', {
         flowId,
@@ -238,17 +241,32 @@ class FlowStatusPoller {
       this.intervals.set(flowId, interval)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      logger.warn('[FlowStatusPoller] Polling error, retrying with backoff', {
+      logger.warn('[FlowStatusPoller] Polling error, will retry at next normal interval', {
         flowId,
         pollCount: pollCount + 1,
         error: errorMessage,
         errorStack: error instanceof Error ? error.stack : undefined,
       })
 
-      // Retry with 10 second delay on error
+      // Increment pollCount on error too - errors should also contribute to backoff
+      // This ensures we slow down even when backend is unreachable
+      const nextPollCount = pollCount + 1
+      this.pollCounts.set(flowId, nextPollCount)
+
+      // Use same delay calculation as normal polling
+      const delay = nextPollCount > 10 ? 30000 : 15000
+
+      logger.debug('[FlowStatusPoller] Scheduling next poll after error', {
+        flowId,
+        delayMs: delay,
+        nextPollCount,
+        nextPollIn: `${delay / 1000}s`,
+      })
+
+      // Schedule next poll using normal interval
       const interval = setTimeout(() => {
         this.poll(flowId)
-      }, 10000)
+      }, delay)
 
       this.intervals.set(flowId, interval)
     }

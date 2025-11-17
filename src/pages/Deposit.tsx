@@ -26,7 +26,7 @@ import { preferredChainKeyAtom } from '@/atoms/appAtom'
 
 export function Deposit() {
   const navigate = useNavigate()
-  const { upsertTransaction } = useTxTracker()
+  const { upsertTransaction } = useTxTracker({ enablePolling: false })
   const { notify } = useToast()
   const { state: walletState } = useWallet()
   const { state: balanceState, refresh, sync: balanceSync } = useBalance()
