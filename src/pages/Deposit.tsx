@@ -235,6 +235,7 @@ export function Deposit() {
         total,
         destinationAddress: toAddress,
         chainName,
+        ...(evmAddress && { senderAddress: evmAddress }), // Store EVM sender address if available
       }
 
       // Build transaction

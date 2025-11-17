@@ -1,12 +1,11 @@
-import { useEffect } from 'react'
-import { X, CheckCircle2, XCircle, Clock, AlertCircle, ExternalLink } from 'lucide-react'
+import { useEffect, useState, useCallback } from 'react'
+import { X, CheckCircle2, XCircle, Clock, AlertCircle, Copy, ExternalLink } from 'lucide-react'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import {
   isInProgress,
   isSuccess,
   isError,
   getStatusLabel,
-  getTimeElapsed,
   getTotalDurationLabel,
   getProgressPercentage,
   getStageTimings,
@@ -15,6 +14,12 @@ import {
   getTimeoutMessage,
 } from '@/services/tx/transactionStatusService'
 import { cn } from '@/lib/utils'
+import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
+import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
+import type { EvmChainsFile, TendermintChainsFile } from '@/config/chains'
+import { findChainByKey } from '@/config/chains'
+import { findTendermintChainByKey, getDefaultNamadaChainKey } from '@/config/chains'
+import { useToast } from '@/hooks/useToast'
 
 export interface TransactionDetailModalProps {
   transaction: StoredTransaction
@@ -27,6 +32,38 @@ export function TransactionDetailModal({
   open,
   onClose,
 }: TransactionDetailModalProps) {
+  const { notify } = useToast()
+  const [evmChainsConfig, setEvmChainsConfig] = useState<EvmChainsFile | null>(null)
+  const [tendermintChainsConfig, setTendermintChainsConfig] = useState<TendermintChainsFile | null>(null)
+
+  // Load chain configs when modal opens
+  useEffect(() => {
+    if (!open) return
+
+    let mounted = true
+
+    async function loadConfigs() {
+      try {
+        const [evmConfig, tendermintConfig] = await Promise.all([
+          fetchEvmChainsConfig(),
+          fetchTendermintChainsConfig(),
+        ])
+        if (mounted) {
+          setEvmChainsConfig(evmConfig)
+          setTendermintChainsConfig(tendermintConfig)
+        }
+      } catch (error) {
+        console.error('[TransactionDetailModal] Failed to load chain configs:', error)
+      }
+    }
+
+    void loadConfigs()
+
+    return () => {
+      mounted = false
+    }
+  }, [open])
+
   // Handle Escape key to close modal
   useEffect(() => {
     if (!open) return
@@ -56,17 +93,116 @@ export function TransactionDetailModal({
     }
   }, [open])
 
+  // Copy to clipboard helper
+  const copyToClipboard = useCallback(async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      notify({
+        title: 'Copied',
+        description: `${label} copied to clipboard`,
+        level: 'success',
+      })
+    } catch (error) {
+      console.error('[TransactionDetailModal] Failed to copy to clipboard:', error)
+      notify({
+        title: 'Copy Failed',
+        description: 'Failed to copy to clipboard',
+        level: 'error',
+      })
+    }
+  }, [notify])
+
+  // Helper to get EVM chain key from chain name or transaction chain
+  const getEvmChainKey = useCallback((chainName?: string, transactionChain?: string): string | undefined => {
+    if (!evmChainsConfig) return transactionChain
+
+    // First try to find by chain name (case-insensitive)
+    if (chainName) {
+      const normalizedName = chainName.toLowerCase().replace(/\s+/g, '-')
+      const foundByNormalized = evmChainsConfig.chains.find(
+        chain => chain.key.toLowerCase() === normalizedName
+      )
+      if (foundByNormalized) return foundByNormalized.key
+
+      // Try to find by display name
+      const foundByName = evmChainsConfig.chains.find(
+        chain => chain.name.toLowerCase() === chainName.toLowerCase()
+      )
+      if (foundByName) return foundByName.key
+    }
+
+    // Fallback to transaction chain if it looks like a valid key
+    if (transactionChain) {
+      const foundByChain = evmChainsConfig.chains.find(
+        chain => chain.key === transactionChain
+      )
+      if (foundByChain) return foundByChain.key
+    }
+
+    return transactionChain
+  }, [evmChainsConfig])
+
+  // Build explorer URL helper
+  const buildExplorerUrl = useCallback((
+    value: string,
+    type: 'address' | 'tx',
+    chainType: 'evm' | 'namada' | 'noble',
+    chainKey?: string
+  ): string | undefined => {
+    if (type === 'address') {
+      if (chainType === 'evm') {
+        const chain = chainKey && evmChainsConfig ? findChainByKey(evmChainsConfig, chainKey) : null
+        if (chain?.explorer?.baseUrl && chain.explorer.addressPath) {
+          return `${chain.explorer.baseUrl}/${chain.explorer.addressPath}/${value}`
+        }
+      } else if (chainType === 'namada') {
+        const namadaChainKey = tendermintChainsConfig ? getDefaultNamadaChainKey(tendermintChainsConfig) : 'namada-testnet'
+        const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, namadaChainKey || 'namada-testnet') : null
+        if (chain?.explorer?.baseUrl) {
+          // Namada explorer typically uses /account/{address} or similar
+          return `${chain.explorer.baseUrl}/account/${value}`
+        }
+      } else if (chainType === 'noble') {
+        const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, 'noble-testnet') : null
+        if (chain?.explorer?.baseUrl) {
+          return `${chain.explorer.baseUrl}/account/${value}`
+        }
+      }
+    } else if (type === 'tx') {
+      if (chainType === 'evm') {
+        const chain = chainKey && evmChainsConfig ? findChainByKey(evmChainsConfig, chainKey) : null
+        if (chain?.explorer?.baseUrl && chain.explorer.txPath) {
+          return `${chain.explorer.baseUrl}/${chain.explorer.txPath}/${value}`
+        }
+      } else if (chainType === 'namada') {
+        const namadaChainKey = tendermintChainsConfig ? getDefaultNamadaChainKey(tendermintChainsConfig) : 'namada-testnet'
+        const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, namadaChainKey || 'namada-testnet') : null
+        if (chain?.explorer?.baseUrl) {
+          return `${chain.explorer.baseUrl}/tx/${value}`
+        }
+      } else if (chainType === 'noble') {
+        const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, 'noble-testnet') : null
+        if (chain?.explorer?.baseUrl) {
+          return `${chain.explorer.baseUrl}/tx/${value}`
+        }
+      }
+    }
+    return undefined
+  }, [evmChainsConfig, tendermintChainsConfig])
+
   if (!open) {
     return null
   }
 
   const flowType = transaction.direction === 'deposit' ? 'deposit' : 'payment'
   const statusLabel = getStatusLabel(transaction)
-  const timeElapsed = getTimeElapsed(transaction)
   const totalDuration = getTotalDurationLabel(transaction)
   const progress = getProgressPercentage(transaction, flowType)
   const stageTimings = getStageTimings(transaction, flowType)
   const currentStage = getCurrentStage(transaction, flowType)
+
+  // Format started at timestamp
+  const startedAt = new Date(transaction.createdAt).toLocaleString()
 
   // Get amount from transaction metadata
   let amount: string | undefined
@@ -80,6 +216,53 @@ export function TransactionDetailModal({
     amount = `$${transaction.depositDetails.amount}`
   } else if (transaction.paymentDetails) {
     amount = `$${transaction.paymentDetails.amount}`
+  }
+
+  // Build route string
+  let route: string
+  if (transaction.direction === 'deposit') {
+    // Deposits: {evm source chain} → Noble → Namada
+    const evmChainName = transaction.depositDetails?.chainName || transaction.chain
+    route = `${evmChainName} → Noble → Namada`
+  } else {
+    // Payments: Namada → Noble → {evm destination chain}
+    const evmChainName = transaction.paymentDetails?.chainName || transaction.chain
+    route = `Namada → Noble → ${evmChainName}`
+  }
+
+  // Get receiver address
+  const receiverAddress = transaction.depositDetails?.destinationAddress || transaction.paymentDetails?.destinationAddress
+
+  // Get sender address
+  // For payments: sender is the Namada transparent address (from shieldedMetadata)
+  // For deposits: sender is the EVM address (from depositDetails)
+  let senderAddress: string | undefined
+  if (transaction.direction === 'deposit') {
+    senderAddress = transaction.depositDetails?.senderAddress
+  } else if (transaction.direction === 'payment') {
+    senderAddress = transaction.flowMetadata?.shieldedMetadata?.transparentAddress
+  }
+
+  // Get send and receive transaction hashes
+  let sendTxHash: string | undefined
+  let receiveTxHash: string | undefined
+
+  if (transaction.flowStatusSnapshot) {
+    const { chainProgress } = transaction.flowStatusSnapshot
+    if (transaction.direction === 'deposit') {
+      // Deposits: Send Tx = evm, Receive Tx = namada
+      sendTxHash = chainProgress.evm?.txHash || chainProgress.evm?.stages?.find(s => s.txHash)?.txHash
+      receiveTxHash = chainProgress.namada?.txHash || chainProgress.namada?.stages?.find(s => s.txHash)?.txHash
+    } else {
+      // Payments: Send Tx = namada, Receive Tx = evm
+      sendTxHash = chainProgress.namada?.txHash || chainProgress.namada?.stages?.find(s => s.txHash)?.txHash
+      receiveTxHash = chainProgress.evm?.txHash || chainProgress.evm?.stages?.find(s => s.txHash)?.txHash
+    }
+  }
+
+  // Fallback to transaction.hash if flowStatusSnapshot doesn't have the hashes
+  if (!sendTxHash && transaction.hash) {
+    sendTxHash = transaction.hash
   }
 
   // Status icon and color
@@ -96,6 +279,7 @@ export function TransactionDetailModal({
     statusIcon = <AlertCircle className="h-5 w-5" />
     statusColor = 'text-yellow-600'
   }
+
 
   // Format address for display (truncate middle)
   function formatAddress(address: string): string {
@@ -150,8 +334,8 @@ export function TransactionDetailModal({
                 <dd className={cn('mt-1 font-medium', statusColor)}>{statusLabel}</dd>
               </div>
               <div>
-                <dt className="text-muted-foreground">Time Elapsed</dt>
-                <dd className="mt-1 font-medium">{timeElapsed}</dd>
+                <dt className="text-muted-foreground">Started At</dt>
+                <dd className="mt-1 font-medium">{startedAt}</dd>
               </div>
               {amount && (
                 <div>
@@ -160,15 +344,181 @@ export function TransactionDetailModal({
                 </div>
               )}
               <div>
-                <dt className="text-muted-foreground">Chain</dt>
-                <dd className="mt-1 font-medium capitalize">{transaction.chain}</dd>
+                <dt className="text-muted-foreground">Route</dt>
+                <dd className="mt-1 font-medium">{route}</dd>
               </div>
-              {transaction.hash && (
-                <div className="col-span-2">
-                  <dt className="text-muted-foreground">Transaction Hash</dt>
-                  <dd className="mt-1 font-mono text-sm">{formatHash(transaction.hash)}</dd>
-                </div>
-              )}
+              {senderAddress && (() => {
+                const explorerUrl = buildExplorerUrl(
+                  senderAddress,
+                  'address',
+                  transaction.direction === 'deposit' ? 'evm' : 'namada',
+                  transaction.direction === 'deposit' 
+                    ? getEvmChainKey(transaction.depositDetails?.chainName, transaction.chain)
+                    : undefined
+                )
+                return (
+                  <div className="col-span-2">
+                    <dt className="text-muted-foreground">Sender Address</dt>
+                    <dd className="mt-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm">{formatAddress(senderAddress)}</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(senderAddress, 'Sender Address')}
+                            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                            aria-label="Copy Sender Address"
+                            title="Copy Sender Address"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                          {explorerUrl && (
+                            <a
+                              href={explorerUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                              aria-label="Open Sender Address in explorer"
+                              title="Open Sender Address in explorer"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </dd>
+                  </div>
+                )
+              })()}
+              {receiverAddress && (() => {
+                const explorerUrl = buildExplorerUrl(
+                  receiverAddress,
+                  'address',
+                  transaction.direction === 'deposit' ? 'namada' : 'evm',
+                  transaction.direction === 'payment'
+                    ? getEvmChainKey(transaction.paymentDetails?.chainName, transaction.chain)
+                    : undefined
+                )
+                return (
+                  <div className="col-span-2">
+                    <dt className="text-muted-foreground">Receiver Address</dt>
+                    <dd className="mt-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm">{formatAddress(receiverAddress)}</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(receiverAddress, 'Receiver Address')}
+                            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                            aria-label="Copy Receiver Address"
+                            title="Copy Receiver Address"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                          {explorerUrl && (
+                            <a
+                              href={explorerUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                              aria-label="Open Receiver Address in explorer"
+                              title="Open Receiver Address in explorer"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </dd>
+                  </div>
+                )
+              })()}
+              {sendTxHash && (() => {
+                const explorerUrl = buildExplorerUrl(
+                  sendTxHash,
+                  'tx',
+                  transaction.direction === 'deposit' ? 'evm' : 'namada',
+                  transaction.direction === 'deposit'
+                    ? getEvmChainKey(transaction.depositDetails?.chainName, transaction.chain)
+                    : undefined
+                )
+                return (
+                  <div className="col-span-2">
+                    <dt className="text-muted-foreground">Send Tx</dt>
+                    <dd className="mt-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm">{formatHash(sendTxHash)}</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(sendTxHash, 'Send Tx')}
+                            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                            aria-label="Copy Send Tx"
+                            title="Copy Send Tx"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                          {explorerUrl && (
+                            <a
+                              href={explorerUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                              aria-label="Open Send Tx in explorer"
+                              title="Open Send Tx in explorer"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </dd>
+                  </div>
+                )
+              })()}
+              {receiveTxHash && (() => {
+                const explorerUrl = buildExplorerUrl(
+                  receiveTxHash,
+                  'tx',
+                  transaction.direction === 'deposit' ? 'namada' : 'evm',
+                  transaction.direction === 'payment'
+                    ? getEvmChainKey(transaction.paymentDetails?.chainName, transaction.chain)
+                    : undefined
+                )
+                return (
+                  <div className="col-span-2">
+                    <dt className="text-muted-foreground">Receive Tx</dt>
+                    <dd className="mt-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm">{formatHash(receiveTxHash)}</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(receiveTxHash, 'Receive Tx')}
+                            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                            aria-label="Copy Receive Tx"
+                            title="Copy Receive Tx"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                          {explorerUrl && (
+                            <a
+                              href={explorerUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                              aria-label="Open Receive Tx in explorer"
+                              title="Open Receive Tx in explorer"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </dd>
+                  </div>
+                )
+              })()}
               {transaction.flowId && !transaction.isFrontendOnly && (
                 <div className="col-span-2">
                   <dt className="text-muted-foreground">Flow ID</dt>

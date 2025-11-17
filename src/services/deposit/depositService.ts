@@ -28,6 +28,7 @@ export interface DepositTransactionDetails {
   total: string
   destinationAddress: string
   chainName: string
+  senderAddress?: string // EVM wallet address that initiated the deposit
   feeBreakdown?: {
     approveNative: string
     burnNative: string
