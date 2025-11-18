@@ -17,7 +17,7 @@ import {
   buildPaymentTransaction,
   signPaymentTransaction,
   broadcastPaymentTransaction,
-  savePaymentMetadata,
+  savePaymentTransaction,
   postPaymentToBackend,
   type PaymentTransactionDetails,
 } from '@/services/payment/paymentService'
@@ -254,35 +254,21 @@ export function SendPayment() {
       
       const txHash = await broadcastPaymentTransaction(signedTx)
 
-      // Save metadata
-      await savePaymentMetadata(txHash, transactionDetails)
+      // Update transaction with hash
+      const txWithHash = {
+        ...signedTx,
+        hash: txHash,
+        status: 'broadcasted' as const,
+      }
 
       // Post to backend (registers flow with backend)
-      const flowId = await postPaymentToBackend(txHash, transactionDetails)
+      const flowId = await postPaymentToBackend(txHash, transactionDetails, txWithHash)
 
-      // Transaction already updated with flowId and flowMetadata in postPaymentToBackend
-      // Just ensure it's synced to state
-      if (flowId) {
-        const updatedTx = transactionStorageService.getTransactionByFlowId(flowId)
-        if (updatedTx) {
-          upsertTransaction(updatedTx)
-        } else {
-          // Fallback: update with hash and flowId if transaction lookup fails
-          const fallbackTx = {
-            ...signedTx,
-            hash: txHash,
-            flowId,
-          }
-          upsertTransaction(fallbackTx)
-        }
-      } else {
-        // Still track transaction even if flow registration failed
-        const updatedTx = {
-          ...signedTx,
-          hash: txHash,
-        }
-        upsertTransaction(updatedTx)
-      }
+      // Save transaction to unified storage with payment details and flowId
+      const savedTx = await savePaymentTransaction(txWithHash, transactionDetails, flowId)
+
+      // Also update in-memory state for immediate UI updates
+      upsertTransaction(savedTx)
 
       // Show success toast
       notify({

@@ -4,7 +4,6 @@
  */
 
 import { submitNamadaTx } from '@/services/tx/txSubmitter'
-import { saveItem, loadItem } from '@/services/storage/localStore'
 import { buildOrbiterCctpMemo, verifyOrbiterPayload } from './orbiterPayloadService'
 import { buildIbcTransaction } from './ibcService'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
@@ -19,6 +18,11 @@ import BigNumber from 'bignumber.js'
 import type { TrackedTransaction } from '@/types/tx'
 import type { IbcParams, PaymentTransactionData, ChainSettings } from '@/types/shielded'
 import { flowInitiationService } from '@/services/flow/flowInitiationService'
+import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
+import { jotaiStore } from '@/store/jotaiStore'
+import { frontendOnlyModeAtom } from '@/atoms/appAtom'
+import { getDefaultNamadaChainKey } from '@/config/chains'
+import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 
 export interface PaymentParams {
   amount: string
@@ -36,15 +40,6 @@ export interface PaymentTransactionDetails {
   isLoadingFee?: boolean
 }
 
-export interface PaymentMetadata {
-  txId: string
-  txHash?: string
-  details: PaymentTransactionDetails
-  timestamp: number
-  status: 'pending' | 'submitted' | 'confirmed' | 'failed'
-}
-
-const PAYMENT_STORAGE_KEY = 'payment-transactions'
 
 /**
  * Get shielded account (pseudoExtendedKey) from Namada extension.
@@ -493,38 +488,61 @@ export async function broadcastPaymentTransaction(
 }
 
 /**
- * Save payment metadata to local storage.
+ * Save payment transaction to unified storage.
+ * This replaces the legacy savePaymentMetadata function and uses the unified transaction storage.
  * 
- * @param txHash - The transaction hash
+ * @param tx - The transaction to save
  * @param details - Payment transaction details
+ * @param flowId - Optional flow ID from backend
+ * @returns The saved transaction
  */
-export async function savePaymentMetadata(
-  txHash: string,
-  details: PaymentTransactionDetails
-): Promise<void> {
-  const metadata: PaymentMetadata = {
-    txId: crypto.randomUUID(),
-    txHash,
-    details,
-    timestamp: Date.now(),
-    status: 'submitted',
+export async function savePaymentTransaction(
+  tx: TrackedTransaction,
+  details: PaymentTransactionDetails,
+  flowId?: string,
+): Promise<StoredTransaction> {
+  // Check if frontend-only mode is enabled
+  const isFrontendOnly = jotaiStore.get(frontendOnlyModeAtom)
+
+  logger.info('[PaymentService] Saving payment transaction to unified storage', {
+    txId: tx.id,
+    txHash: tx.hash,
+    flowId,
+    isFrontendOnly,
+  })
+
+  // Flow metadata should already be in transaction (created during postPaymentToBackend)
+  // If flowId is provided but flowMetadata is missing, get it from transaction storage
+  let flowMetadata = tx.flowMetadata
+  if (flowId && !flowMetadata) {
+    // Try to get updated transaction from storage (it should have flowMetadata after backend registration)
+    const storedTx = transactionStorageService.getTransaction(tx.id)
+    flowMetadata = storedTx?.flowMetadata
   }
 
-  // Load existing payments
-  const existingPayments = loadItem<PaymentMetadata[]>(PAYMENT_STORAGE_KEY) ?? []
+  // Create StoredTransaction with payment details
+  const storedTx: StoredTransaction = {
+    ...tx,
+    paymentDetails: details,
+    flowId: flowId || tx.flowId,
+    flowMetadata,
+    isFrontendOnly: isFrontendOnly || tx.status === 'undetermined' ? true : undefined,
+    // Set status to 'undetermined' if frontend-only mode and no flowId
+    status: isFrontendOnly && !flowId ? 'undetermined' : tx.status,
+    updatedAt: Date.now(),
+  }
 
-  // Add new payment
-  const updatedPayments = [metadata, ...existingPayments]
+  // Save to unified storage
+  transactionStorageService.saveTransaction(storedTx)
 
-  // Save back to storage
-  saveItem(PAYMENT_STORAGE_KEY, updatedPayments)
-
-  logger.debug('[PaymentService] Saved payment metadata', {
-    txId: metadata.txId,
-    txHash: metadata.txHash?.slice(0, 16) + '...',
-    amount: metadata.details.amount,
-    destinationChain: metadata.details.chainName,
+  logger.debug('[PaymentService] Payment transaction saved successfully', {
+    txId: storedTx.id,
+    hasFlowId: !!storedTx.flowId,
+    hasPaymentDetails: !!storedTx.paymentDetails,
+    isFrontendOnly: storedTx.isFrontendOnly,
   })
+
+  return storedTx
 }
 
 /**
@@ -533,32 +551,42 @@ export async function savePaymentMetadata(
  * 
  * @param txHash - The Namada IBC transaction hash
  * @param details - Payment transaction details
+ * @param tx - Optional transaction object (if provided, uses tx.id directly)
  * @param localId - Optional local flow ID (if flow was initiated earlier)
  * @returns Backend flowId if registration successful
  */
 export async function postPaymentToBackend(
   txHash: string,
   details: PaymentTransactionDetails,
+  tx?: TrackedTransaction,
   localId?: string,
 ): Promise<string | undefined> {
   logger.debug('[PaymentService] Posting payment to backend', {
     txHash: txHash.slice(0, 16) + '...',
     destinationChain: details.chainName,
     localId,
+    hasTxObject: !!tx,
   })
 
   try {
-    // Find transaction by hash
+    // Get transaction ID - if tx is provided, use its ID, otherwise find by hash
     const { transactionStorageService } = await import('@/services/tx/transactionStorageService')
-    const allTxs = transactionStorageService.getAllTransactions()
-    const foundTx = allTxs.find((t) => t.hash === txHash)
-    
-    if (!foundTx) {
-      throw new Error(`Transaction not found for hash: ${txHash.slice(0, 16)}...`)
+    let txId: string
+    if (tx?.id) {
+      txId = tx.id
+    } else {
+      // Find transaction by hash if tx object not provided
+      const allTxs = transactionStorageService.getAllTransactions()
+      const foundTx = allTxs.find((t) => t.hash === txHash)
+      if (!foundTx) {
+        throw new Error(`Transaction not found for hash: ${txHash.slice(0, 16)}...`)
+      }
+      txId = foundTx.id
     }
-    
-    const txId = foundTx.id
-    let flowMetadata = foundTx.flowMetadata
+
+    // Get transaction to check if flowMetadata already exists
+    const storedTx = transactionStorageService.getTransaction(txId)
+    let flowMetadata = storedTx?.flowMetadata
 
     // If flowMetadata doesn't exist, create it and store in transaction
     if (!flowMetadata) {
@@ -566,9 +594,21 @@ export async function postPaymentToBackend(
         .multipliedBy(1_000_000) // USDC has 6 decimals
         .toFixed(0)
       
+      // Get Namada chain key (payment starts on Namada)
+      let namadaChainKey: string
+      try {
+        const tendermintConfig = await fetchTendermintChainsConfig()
+        namadaChainKey = getDefaultNamadaChainKey(tendermintConfig) || 'namada-testnet'
+      } catch (error) {
+        logger.warn('[PaymentService] Failed to load tendermint chains config, using fallback', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+        namadaChainKey = 'namada-testnet'
+      }
+      
       flowMetadata = flowInitiationService.createFlowMetadata(
         'payment',
-        'namada', // Payment starts on Namada
+        namadaChainKey, // Payment starts on Namada
         amountInBaseUnits,
       )
       
@@ -608,23 +648,4 @@ export async function postPaymentToBackend(
   }
 }
 
-/**
- * Get all saved payment transactions from local storage.
- * 
- * @returns Array of payment metadata
- */
-export function getPaymentHistory(): PaymentMetadata[] {
-  return loadItem<PaymentMetadata[]>(PAYMENT_STORAGE_KEY) ?? []
-}
-
-/**
- * Get a specific payment transaction by hash.
- * 
- * @param txHash - The transaction hash
- * @returns Payment metadata or undefined if not found
- */
-export function getPaymentByHash(txHash: string): PaymentMetadata | undefined {
-  const payments = getPaymentHistory()
-  return payments.find((p) => p.txHash === txHash)
-}
 
