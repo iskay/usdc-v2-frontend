@@ -140,8 +140,25 @@ class FlowInitiationService {
       // For payments, extract destinationChain from metadata
       const destinationChainFromMetadata = metadata?.destinationChain as string | undefined
       if (destinationChainFromMetadata) {
-        // Use provided destinationChain from metadata (e.g., "Base" -> "base")
-        destinationChain = destinationChainFromMetadata.toLowerCase().replace(/\s+/g, '-')
+        // Try to find chain by name in config first
+        const chainConfig = jotaiStore.get(chainConfigAtom)
+        const chainByName = chainConfig?.chains.find(
+          (chain) => chain.name.toLowerCase() === destinationChainFromMetadata.toLowerCase()
+        )
+        
+        if (chainByName) {
+          // Use the chain key from config
+          destinationChain = chainByName.key
+        } else {
+          // Fallback: try to match by key (in case it's already a key)
+          const chainByKey = chainConfig ? findChainByKey(chainConfig, destinationChainFromMetadata) : undefined
+          if (chainByKey) {
+            destinationChain = chainByKey.key
+          } else {
+            // Last resort: convert name to key format (e.g., "Base Sepolia" -> "base-sepolia")
+            destinationChain = destinationChainFromMetadata.toLowerCase().replace(/\s+/g, '-')
+          }
+        }
       } else {
         // Fallback to default chain from config if not provided
         const chainConfig = jotaiStore.get(chainConfigAtom)

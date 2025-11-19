@@ -74,7 +74,7 @@
     },
     {
       "key": "avalanche-fuji",
-      "name": "Avalance Fuji",
+      "name": "Avalanche Fuji",
       "chainId": 43113,
       "chainIdHex": "0xa869",
       "cctpDomain": 1,
