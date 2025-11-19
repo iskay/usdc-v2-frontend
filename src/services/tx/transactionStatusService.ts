@@ -270,6 +270,7 @@ export function formatDuration(durationMs: number): string {
 /**
  * Extract stage timings from flow status.
  * Calculates duration spent in each stage based on occurredAt timestamps.
+ * Includes client-side stages prepended before backend stages.
  * 
  * @param tx - Transaction with flow status snapshot
  * @param flowType - Flow type ('deposit' or 'payment')
@@ -279,53 +280,69 @@ export function getStageTimings(
   tx: StoredTransaction,
   flowType: 'deposit' | 'payment' = 'deposit',
 ): StageTiming[] {
-  if (!tx.flowStatusSnapshot) {
-    return []
-  }
-
-  const flowStatus = tx.flowStatusSnapshot
   const timings: StageTiming[] = []
 
-  // Determine chain order based on flow type
-  const chainOrder = getChainOrder(flowType)
-
-  // Collect all stages with timestamps
-  for (const chain of chainOrder) {
-    const progress = flowStatus.chainProgress[chain]
-    if (!progress) continue
-
-    // Process regular stages
-    if (progress.stages && progress.stages.length > 0) {
-      for (const stage of progress.stages) {
-        if (stage.occurredAt) {
-          const occurredAt = new Date(stage.occurredAt).getTime()
-          timings.push({
-            stage: stage.stage,
-            chain,
-            status: stage.status || 'pending',
-            occurredAt,
-          })
-        }
+  // First, add client-side stages if present
+  if (tx.clientStages && tx.clientStages.length > 0) {
+    for (const stage of tx.clientStages) {
+      if (stage.occurredAt) {
+        const occurredAt = new Date(stage.occurredAt).getTime()
+        // Extract chain from metadata (stored there for client stages)
+        const chain = (stage.metadata?.chain as 'evm' | 'noble' | 'namada') || 'evm'
+        timings.push({
+          stage: stage.stage,
+          chain,
+          status: stage.status || 'pending',
+          occurredAt,
+        })
       }
     }
+  }
 
-    // Process gasless stages
-    if (progress.gaslessStages && progress.gaslessStages.length > 0) {
-      for (const stage of progress.gaslessStages) {
-        if (stage.occurredAt) {
-          const occurredAt = new Date(stage.occurredAt).getTime()
-          timings.push({
-            stage: stage.stage,
-            chain,
-            status: stage.status || 'pending',
-            occurredAt,
-          })
+  // Then, add backend stages from flowStatusSnapshot
+  if (tx.flowStatusSnapshot) {
+    const flowStatus = tx.flowStatusSnapshot
+    // Determine chain order based on flow type
+    const chainOrder = getChainOrder(flowType)
+
+    // Collect all stages with timestamps
+    for (const chain of chainOrder) {
+      const progress = flowStatus.chainProgress[chain]
+      if (!progress) continue
+
+      // Process regular stages
+      if (progress.stages && progress.stages.length > 0) {
+        for (const stage of progress.stages) {
+          if (stage.occurredAt) {
+            const occurredAt = new Date(stage.occurredAt).getTime()
+            timings.push({
+              stage: stage.stage,
+              chain,
+              status: stage.status || 'pending',
+              occurredAt,
+            })
+          }
+        }
+      }
+
+      // Process gasless stages
+      if (progress.gaslessStages && progress.gaslessStages.length > 0) {
+        for (const stage of progress.gaslessStages) {
+          if (stage.occurredAt) {
+            const occurredAt = new Date(stage.occurredAt).getTime()
+            timings.push({
+              stage: stage.stage,
+              chain,
+              status: stage.status || 'pending',
+              occurredAt,
+            })
+          }
         }
       }
     }
   }
 
-  // Sort by occurredAt timestamp
+  // Sort by occurredAt timestamp (chronological order)
   timings.sort((a, b) => a.occurredAt - b.occurredAt)
 
   // Calculate durations between stages

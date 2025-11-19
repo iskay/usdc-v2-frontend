@@ -545,18 +545,21 @@ export async function savePaymentTransaction(
   // Flow metadata should already be in transaction (created during postPaymentToBackend)
   // If flowId is provided but flowMetadata is missing, get it from transaction storage
   let flowMetadata = tx.flowMetadata
+  // Get existing transaction from storage to preserve clientStages and other fields
+  const existingTx = transactionStorageService.getTransaction(tx.id)
   if (flowId && !flowMetadata) {
     // Try to get updated transaction from storage (it should have flowMetadata after backend registration)
-    const storedTx = transactionStorageService.getTransaction(tx.id)
-    flowMetadata = storedTx?.flowMetadata
+    flowMetadata = existingTx?.flowMetadata
   }
 
   // Create StoredTransaction with payment details
+  // Preserve clientStages from existing transaction (added during submission)
   const storedTx: StoredTransaction = {
     ...tx,
     paymentDetails: details,
     flowId: flowId || tx.flowId,
     flowMetadata,
+    clientStages: existingTx?.clientStages, // Preserve client stages added during submission
     isFrontendOnly: isFrontendOnly || tx.status === 'undetermined' ? true : undefined,
     // Set status to 'undetermined' if frontend-only mode and no flowId
     status: isFrontendOnly && !flowId ? 'undetermined' : tx.status,

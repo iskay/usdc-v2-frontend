@@ -141,6 +141,40 @@ export function TransactionDetailModal({
     return transactionChain
   }, [evmChainsConfig])
 
+  // Helper to get chain display name from chain key ('evm', 'noble', 'namada')
+  const getChainDisplayName = useCallback((chainKey: 'evm' | 'noble' | 'namada'): string => {
+    if (chainKey === 'noble') {
+      return 'Noble'
+    }
+    if (chainKey === 'namada') {
+      return 'Namada'
+    }
+    // For EVM, get the actual chain name from transaction details
+    if (chainKey === 'evm') {
+      const chainName = transaction.depositDetails?.chainName || transaction.paymentDetails?.chainName
+      if (chainName && evmChainsConfig) {
+        // Try to find chain by name
+        const chain = evmChainsConfig.chains.find(
+          c => c.name.toLowerCase() === chainName.toLowerCase() || c.key === chainName
+        )
+        if (chain) {
+          return chain.name
+        }
+        // If not found, return the chainName as-is (might already be display name)
+        return chainName
+      }
+      // Fallback: try to get from transaction.chain
+      if (transaction.chain && evmChainsConfig) {
+        const chain = findChainByKey(evmChainsConfig, transaction.chain)
+        if (chain) {
+          return chain.name
+        }
+      }
+      return 'EVM'
+    }
+    return chainKey.toUpperCase()
+  }, [transaction, evmChainsConfig])
+
   // Build explorer URL helper
   const buildExplorerUrl = useCallback((
     value: string,
@@ -557,7 +591,7 @@ export function TransactionDetailModal({
                 <span className="font-medium capitalize">
                   Current Stage: {currentStage.stage.replace(/_/g, ' ')}
                 </span>
-                <span className="text-muted-foreground">on {currentStage.chain.toUpperCase()}</span>
+                <span className="text-muted-foreground">on {getChainDisplayName(currentStage.chain)}</span>
               </div>
               {currentStage.durationLabel && (
                 <p className="mt-2 text-xs text-muted-foreground">
@@ -603,7 +637,7 @@ export function TransactionDetailModal({
                               {timing.stage.replace(/_/g, ' ')}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              ({timing.chain.toUpperCase()})
+                              ({getChainDisplayName(timing.chain)})
                             </span>
                           </div>
                           {timing.durationLabel && (

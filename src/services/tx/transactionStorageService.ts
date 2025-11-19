@@ -12,7 +12,7 @@
  */
 
 import type { TrackedTransaction } from '@/types/tx'
-import type { FlowStatus } from '@/types/flow'
+import type { FlowStatus, ChainStage } from '@/types/flow'
 import type { DepositTransactionDetails } from '@/services/deposit/depositService'
 import type { PaymentTransactionDetails } from '@/services/payment/paymentService'
 import { saveItem, loadItem, deleteItem } from '@/services/storage/localStore'
@@ -78,6 +78,12 @@ export interface StoredTransaction extends TrackedTransaction {
    * Cleared when polling resumes (e.g., on page refresh).
    */
   clientTimeoutAt?: number
+  /**
+   * Client-side stages that occur before backend registration or are ephemeral.
+   * These stages are stored locally and prepended when displaying transaction status.
+   * Examples: wallet_signing, wallet_broadcasting, gasless_quote_pending
+   */
+  clientStages?: ChainStage[]
   /** Last update timestamp (for sorting and filtering) */
   updatedAt: number
 }

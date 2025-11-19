@@ -63,6 +63,9 @@ export async function submitEvmTx(tx: TrackedTransaction): Promise<string> {
     await ensureCorrectNetwork(depositData.sourceChain)
     logger.info('[TxSubmitter] ✅ Network verified/switched')
 
+    // Update signing stage to confirmed (signing is complete)
+    await clientStageReporter.updateStageStatus(flowId, 'wallet_signing', 'confirmed')
+
     // Report wallet broadcasting stage
     await clientStageReporter.reportWalletStage(flowId, 'wallet_broadcasting', 'evm', undefined, 'pending')
 
@@ -79,6 +82,9 @@ export async function submitEvmTx(tx: TrackedTransaction): Promise<string> {
       forwardingAddressBytes32: depositData.forwardingAddressBytes32,
       destinationDomain: depositData.destinationDomain,
     })
+
+    // Update broadcasting stage to confirmed (broadcasting is complete)
+    await clientStageReporter.updateStageStatus(flowId, 'wallet_broadcasting', 'confirmed')
 
     // Report wallet broadcasted stage
     await clientStageReporter.reportWalletStage(flowId, 'wallet_broadcasted', 'evm', result.txHash, 'confirmed')
@@ -316,12 +322,18 @@ async function submitShieldingTx(
       firstTxLength: signed[0]?.length || 0,
     })
 
+    // Update signing stage to confirmed (signing is complete)
+    await clientStageReporter.updateStageStatus(flowId, 'wallet_signing', 'confirmed')
+
     // Report wallet broadcasting stage
     await clientStageReporter.reportWalletStage(flowId, 'wallet_broadcasting', 'namada', undefined, 'pending')
 
     // Broadcast the transaction (use first signed tx)
     logger.info('[TxSubmitter] 📡 Broadcasting shielding transaction...')
     const result = await broadcastNamadaTx(signed[0])
+
+    // Update broadcasting stage to confirmed (broadcasting is complete)
+    await clientStageReporter.updateStageStatus(flowId, 'wallet_broadcasting', 'confirmed')
 
     // Report wallet broadcasted stage
     await clientStageReporter.reportWalletStage(flowId, 'wallet_broadcasted', 'namada', result.hash, 'confirmed')
@@ -392,12 +404,18 @@ async function submitPaymentTx(
       firstTxLength: signed[0]?.length || 0,
     })
 
+    // Update signing stage to confirmed (signing is complete)
+    await clientStageReporter.updateStageStatus(flowId, 'wallet_signing', 'confirmed')
+
     // Report wallet broadcasting stage
     await clientStageReporter.reportWalletStage(flowId, 'wallet_broadcasting', 'namada', undefined, 'pending')
 
     // Broadcast the transaction (use first signed tx)
     logger.info('[TxSubmitter] 📡 Broadcasting payment transaction...')
     const result = await broadcastNamadaTx(signed[0])
+
+    // Update broadcasting stage to confirmed (broadcasting is complete)
+    await clientStageReporter.updateStageStatus(flowId, 'wallet_broadcasting', 'confirmed')
 
     // Report wallet broadcasted stage
     await clientStageReporter.reportWalletStage(flowId, 'wallet_broadcasted', 'namada', result.hash, 'confirmed')

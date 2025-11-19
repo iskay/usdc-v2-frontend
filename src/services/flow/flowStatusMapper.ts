@@ -2,6 +2,7 @@ import type {
   FlowStatus,
   FlowInitiationMetadata,
   UIStage,
+  ChainStage,
 } from '@/types/flow'
 import { getChainOrder } from '@/shared/flowStages'
 
@@ -10,14 +11,37 @@ export type { UIStage } from '@/types/flow'
 
 /**
  * Map backend flow status to UI-friendly stages.
- * Combines backend chain progress with client-side metadata for complete UI state.
+ * Combines backend chain progress with client-side stages for complete UI state.
+ * Client stages are prepended before backend stages.
+ * 
+ * @param flowStatus - Backend flow status
+ * @param _flowInitiation - Flow initiation metadata (unused)
+ * @param flowType - Flow type ('deposit' or 'payment')
+ * @param clientStages - Optional client-side stages to prepend
  */
 export function mapFlowStatusToUIStages(
   flowStatus: FlowStatus,
   _flowInitiation: FlowInitiationMetadata | null,
   flowType: 'deposit' | 'payment',
+  clientStages?: ChainStage[],
 ): UIStage[] {
   const stages: UIStage[] = []
+  
+  // First, add client-side stages if present
+  if (clientStages && clientStages.length > 0) {
+    for (const stage of clientStages) {
+      // Extract chain from metadata (stored there for client stages)
+      const chain = (stage.metadata?.chain as 'evm' | 'noble' | 'namada') || 'evm'
+      stages.push({
+        chain,
+        stage: stage.stage,
+        status: stage.status || 'pending',
+        txHash: stage.txHash,
+        occurredAt: stage.occurredAt,
+        message: stage.message,
+      })
+    }
+  }
   
   // Determine chain order based on flow type
   const chainOrder = getChainOrder(flowType)
@@ -56,6 +80,12 @@ export function mapFlowStatusToUIStages(
     }
   }
 
+  // Sort all stages by occurredAt timestamp (chronological order)
+  stages.sort((a, b) => {
+    if (!a.occurredAt || !b.occurredAt) return 0
+    return new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()
+  })
+
   return stages
 }
 
@@ -79,13 +109,15 @@ export function getOverallFlowStatus(flowStatus: FlowStatus): 'pending' | 'compl
  * 
  * @param flowStatus - Backend flow status
  * @param flowType - Flow type ('deposit' or 'payment')
+ * @param clientStages - Optional client-side stages
  * @returns Current active stage or null if all stages are complete
  */
 export function getCurrentActiveStage(
   flowStatus: FlowStatus,
   flowType: 'deposit' | 'payment',
+  clientStages?: ChainStage[],
 ): UIStage | null {
-  const stages = mapFlowStatusToUIStages(flowStatus, null, flowType)
+  const stages = mapFlowStatusToUIStages(flowStatus, null, flowType, clientStages)
   
   // Find the first stage that is not confirmed
   for (const stage of stages) {
@@ -107,11 +139,13 @@ export function getCurrentActiveStage(
  * 
  * @param flowStatus - Backend flow status
  * @param flowType - Flow type ('deposit' or 'payment')
+ * @param clientStages - Optional client-side stages
  * @returns Progress percentage (0-100)
  */
 export function getFlowProgress(
   flowStatus: FlowStatus,
   flowType: 'deposit' | 'payment',
+  clientStages?: ChainStage[],
 ): number {
   if (flowStatus.status === 'completed') {
     return 100
@@ -120,7 +154,7 @@ export function getFlowProgress(
     return 0
   }
 
-  const stages = mapFlowStatusToUIStages(flowStatus, null, flowType)
+  const stages = mapFlowStatusToUIStages(flowStatus, null, flowType, clientStages)
   if (stages.length === 0) {
     return 0
   }
