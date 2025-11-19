@@ -172,7 +172,8 @@ export function TransactionDetailModal({
       }
       return 'EVM'
     }
-    return chainKey.toUpperCase()
+    // All cases handled above, this should never be reached
+    return 'Unknown'
   }, [transaction, evmChainsConfig])
 
   // Build explorer URL helper

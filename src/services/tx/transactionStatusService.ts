@@ -8,7 +8,7 @@
 import type { StoredTransaction } from './transactionStorageService'
 // import type { FlowStatus, ChainStage } from '@/types/flow'
 // import { logger } from '@/utils/logger'
-import { getChainOrder, getExpectedStages, DEPOSIT_PROGRESSION, PAYMENT_PROGRESSION } from '@/shared/flowStages'
+import { getChainOrder, getExpectedStages } from '@/shared/flowStages'
 
 /**
  * Get the effective status of a transaction.
