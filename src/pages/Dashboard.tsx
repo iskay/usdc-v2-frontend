@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Shield, BookOpen, HelpCircle, RefreshCw, Loader2 } from 'lucide-react'
 import { Button } from '@/components/common/Button'
@@ -14,6 +14,7 @@ import { useAtom, useAtomValue } from 'jotai'
 import { balanceSyncAtom } from '@/atoms/balanceAtom'
 import { autoShieldedSyncEnabledAtom } from '@/atoms/appAtom'
 import { cn } from '@/lib/utils'
+import { transactionStorageService } from '@/services/tx/transactionStorageService'
 
 export function Dashboard() {
   const { state: balanceState } = useBalance()
@@ -21,6 +22,37 @@ export function Dashboard() {
   const balanceSyncState = useAtomValue(balanceSyncAtom)
   const [autoShieldedSyncEnabled, setAutoShieldedSyncEnabled] = useAtom(autoShieldedSyncEnabledAtom)
   const [isShieldingModalOpen, setIsShieldingModalOpen] = useState(false)
+  const [openModalTxId, setOpenModalTxId] = useState<string | null>(null)
+  const [historyReloadTrigger, setHistoryReloadTrigger] = useState(0)
+  const previousInProgressTxIds = useRef<Set<string>>(new Set())
+
+  // Monitor in-progress transactions to detect when one completes
+  useEffect(() => {
+    const checkForCompletedTransactions = () => {
+      const currentInProgressTxs = transactionStorageService.getInProgressTransactions()
+      const currentInProgressTxIds = new Set(currentInProgressTxs.map(tx => tx.id))
+      
+      // Check if any transaction disappeared from in-progress (moved to history)
+      const disappearedTxIds = Array.from(previousInProgressTxIds.current).filter(
+        txId => !currentInProgressTxIds.has(txId)
+      )
+      
+      // If a transaction disappeared and we have a modal open for it, trigger History reload
+      if (disappearedTxIds.length > 0 && openModalTxId && disappearedTxIds.includes(openModalTxId)) {
+        setHistoryReloadTrigger(prev => prev + 1)
+      }
+      
+      // Update previous set for next check
+      previousInProgressTxIds.current = currentInProgressTxIds
+    }
+
+    // Check immediately on mount
+    checkForCompletedTransactions()
+
+    // Check periodically (every 2 seconds - more frequent than polling to catch transitions quickly)
+    const interval = setInterval(checkForCompletedTransactions, 2000)
+    return () => clearInterval(interval)
+  }, [openModalTxId])
   
   // Get balances from the balance state
   const shieldedBalance = balanceState.namada.usdcShielded
@@ -126,7 +158,10 @@ export function Dashboard() {
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
               In Progress
             </h2>
-            <TxInProgressList />
+            <TxInProgressList
+              openModalTxId={openModalTxId}
+              onModalOpenChange={setOpenModalTxId}
+            />
           </div>
 
           {/* History Section */}
@@ -141,7 +176,11 @@ export function Dashboard() {
                 </Button>
               </Link>
             </div>
-            <TxHistoryList />
+            <TxHistoryList
+              openModalTxId={openModalTxId}
+              onModalOpenChange={setOpenModalTxId}
+              reloadTrigger={historyReloadTrigger}
+            />
           </div>
         </div>
 

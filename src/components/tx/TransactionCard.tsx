@@ -22,6 +22,9 @@ export interface TransactionCardProps {
   onClick?: () => void
   showExpandButton?: boolean
   onDelete?: (txId: string) => void
+  // Optional external modal state control (for persistence across component remounts)
+  isModalOpen?: boolean
+  onModalOpenChange?: (open: boolean) => void
 }
 
 export const TransactionCard = memo(function TransactionCard({
@@ -30,8 +33,14 @@ export const TransactionCard = memo(function TransactionCard({
   onClick,
   showExpandButton = true,
   onDelete,
+  isModalOpen: externalIsModalOpen,
+  onModalOpenChange,
 }: TransactionCardProps) {
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  // Use external modal state if provided, otherwise use internal state
+  const [internalIsModalOpen, setInternalIsModalOpen] = useState(false)
+  const isModalOpen = externalIsModalOpen !== undefined ? externalIsModalOpen : internalIsModalOpen
+  const setIsModalOpen = onModalOpenChange || setInternalIsModalOpen
+  
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
 
   const handleClick = () => {

@@ -5,7 +5,12 @@ import { isInProgress } from '@/services/tx/transactionStatusService'
 import { Spinner } from '@/components/common/Spinner'
 import { useDeleteTransaction } from '@/hooks/useDeleteTransaction'
 
-export function TxInProgressList() {
+export interface TxInProgressListProps {
+  openModalTxId?: string | null
+  onModalOpenChange?: (txId: string | null) => void
+}
+
+export function TxInProgressList({ openModalTxId, onModalOpenChange }: TxInProgressListProps = {}) {
   const [inProgressTxs, setInProgressTxs] = useState<StoredTransaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -88,6 +93,12 @@ export function TxInProgressList() {
             variant="compact"
             showExpandButton={true}
             onDelete={handleDelete}
+            isModalOpen={openModalTxId === tx.id}
+            onModalOpenChange={(open) => {
+              if (onModalOpenChange) {
+                onModalOpenChange(open ? tx.id : null)
+              }
+            }}
           />
         )
       })}

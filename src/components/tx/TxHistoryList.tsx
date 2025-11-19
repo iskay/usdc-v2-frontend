@@ -4,7 +4,13 @@ import { TransactionCard } from './TransactionCard'
 import { Spinner } from '@/components/common/Spinner'
 import { useDeleteTransaction } from '@/hooks/useDeleteTransaction'
 
-export function TxHistoryList() {
+export interface TxHistoryListProps {
+  openModalTxId?: string | null
+  onModalOpenChange?: (txId: string | null) => void
+  reloadTrigger?: number // When changed, triggers immediate reload
+}
+
+export function TxHistoryList({ openModalTxId, onModalOpenChange, reloadTrigger }: TxHistoryListProps = {}) {
   const [completedTxs, setCompletedTxs] = useState<StoredTransaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -29,10 +35,17 @@ export function TxHistoryList() {
     // Load initially
     loadTransactions()
 
-    // Reload periodically to catch updates (optimized: 10 seconds for completed transactions)
-    const interval = setInterval(loadTransactions, 10000)
+    // Reload periodically to catch updates (synchronized: 5 seconds to match In Progress)
+    const interval = setInterval(loadTransactions, 5000)
     return () => clearInterval(interval)
   }, [loadTransactions])
+
+  // Trigger immediate reload when reloadTrigger changes (for coordination with In Progress)
+  useEffect(() => {
+    if (reloadTrigger !== undefined && reloadTrigger > 0) {
+      loadTransactions()
+    }
+  }, [reloadTrigger, loadTransactions])
 
   const handleDelete = useCallback(
     (txId: string) => {
@@ -81,6 +94,12 @@ export function TxHistoryList() {
           variant="compact"
           showExpandButton={true}
           onDelete={handleDelete}
+          isModalOpen={openModalTxId === tx.id}
+          onModalOpenChange={(open) => {
+            if (onModalOpenChange) {
+              onModalOpenChange(open ? tx.id : null)
+            }
+          }}
         />
       ))}
     </div>

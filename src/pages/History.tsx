@@ -14,6 +14,7 @@ export function History() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const { deleteTransaction } = useDeleteTransaction()
+  const [openModalTxId, setOpenModalTxId] = useState<string | null>(null)
 
   const loadTransactions = useCallback(() => {
     try {
@@ -134,6 +135,10 @@ export function History() {
               variant="detailed"
               showExpandButton={true}
               onDelete={handleDelete}
+              isModalOpen={openModalTxId === tx.id}
+              onModalOpenChange={(open) => {
+                setOpenModalTxId(open ? tx.id : null)
+              }}
             />
           ))}
         </div>
