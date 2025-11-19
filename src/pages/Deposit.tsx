@@ -141,12 +141,12 @@ export function Deposit() {
         const config = await fetchEvmChainsConfig()
         if (mounted) {
           const chain = config.chains.find((c) => c.key === selectedChain)
-          setChainName(chain?.name ?? selectedChain)
+          setChainName(chain?.name ?? selectedChain ?? '')
         }
       } catch (error) {
         console.error('[Deposit] Failed to load chain name:', error)
         if (mounted) {
-          setChainName(selectedChain)
+          setChainName(selectedChain ?? '')
         }
       }
     }
@@ -243,7 +243,7 @@ export function Deposit() {
       tx = await buildDepositTransaction({
         amount,
         destinationAddress: toAddress,
-        sourceChain: selectedChain,
+        sourceChain: selectedChain!, // Safe: guarded by check at line 177
       })
 
       // Save transaction immediately after build (for error tracking)

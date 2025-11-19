@@ -102,12 +102,12 @@ export function SendPayment() {
         const config = await fetchEvmChainsConfig()
         if (mounted) {
           const chain = config.chains.find((c) => c.key === selectedChain)
-          setChainName(chain?.name ?? selectedChain)
+          setChainName(chain?.name ?? selectedChain ?? '')
         }
       } catch (error) {
         console.error('[SendPayment] Failed to load chain name:', error)
         if (mounted) {
-          setChainName(selectedChain)
+          setChainName(selectedChain ?? '')
         }
       }
     }
@@ -213,7 +213,7 @@ export function SendPayment() {
       tx = await buildPaymentTransaction({
         amount,
         destinationAddress: toAddress,
-        destinationChain: selectedChain,
+        destinationChain: selectedChain!, // Safe: guarded by check at line 123
         transparentAddress,
         shieldedAddress,
       })

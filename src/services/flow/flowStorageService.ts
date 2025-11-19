@@ -1,5 +1,5 @@
 import type { FlowInitiationMetadata } from '@/types/flow'
-import { deleteItem, loadItem, saveItem } from '@/services/storage/localStore'
+import { loadItem, saveItem } from '@/services/storage/localStore'
 import { transactionStorageService } from '@/services/tx/transactionStorageService'
 
 const STORAGE_KEY = 'usdc-v2-flows'

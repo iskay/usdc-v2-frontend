@@ -11,7 +11,6 @@ import {
   getStageTimings,
   getCurrentStage,
   hasClientTimeout,
-  getTimeoutMessage,
 } from '@/services/tx/transactionStatusService'
 import { cn } from '@/lib/utils'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
@@ -239,7 +238,7 @@ export function TransactionDetailModal({
   let senderAddress: string | undefined
   if (transaction.direction === 'deposit') {
     senderAddress = transaction.depositDetails?.senderAddress
-  } else if (transaction.direction === 'payment') {
+  } else if (transaction.direction === 'send') {
     senderAddress = transaction.flowMetadata?.shieldedMetadata?.transparentAddress
   }
 
@@ -395,7 +394,7 @@ export function TransactionDetailModal({
                   receiverAddress,
                   'address',
                   transaction.direction === 'deposit' ? 'namada' : 'evm',
-                  transaction.direction === 'payment'
+                  transaction.direction === 'send'
                     ? getEvmChainKey(transaction.paymentDetails?.chainName, transaction.chain)
                     : undefined
                 )
@@ -481,7 +480,7 @@ export function TransactionDetailModal({
                   receiveTxHash,
                   'tx',
                   transaction.direction === 'deposit' ? 'namada' : 'evm',
-                  transaction.direction === 'payment'
+                  transaction.direction === 'send'
                     ? getEvmChainKey(transaction.paymentDetails?.chainName, transaction.chain)
                     : undefined
                 )

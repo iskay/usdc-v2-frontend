@@ -170,7 +170,7 @@ export function scheduleTxTracking(txId: string, onUpdate: (message: TxStatusMes
   }
 
   // Set up callback that maps flow status to TxStatusMessage
-  const statusUpdateCallback = (polledFlowId: string, flowStatus: FlowStatus) => {
+  const statusUpdateCallback = (_polledFlowId: string, flowStatus: FlowStatus) => {
     const message = mapFlowStatusToTxStatusMessage(txId, flowStatus)
     onUpdate(message)
   }

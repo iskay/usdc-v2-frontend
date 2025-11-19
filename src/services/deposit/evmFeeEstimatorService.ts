@@ -7,7 +7,7 @@
 import { ethers } from 'ethers'
 import { getEvmProvider, getEvmSigner } from '@/services/evm/evmNetworkService'
 import { getUsdcContractAddress } from '@/services/balance/evmBalanceService'
-import { getTokenMessengerAddress, getCctpDomain, checkUsdcAllowance } from '@/services/evm/evmContractService'
+import { getTokenMessengerAddress, checkUsdcAllowance } from '@/services/evm/evmContractService'
 import { findChainByKey } from '@/config/chains'
 import { jotaiStore } from '@/store/jotaiStore'
 import { chainConfigAtom } from '@/atoms/appAtom'
@@ -369,7 +369,7 @@ export async function estimateDepositFeeForDisplay(
     if (signer && wallet && provider) {
       const tokenMessenger = new ethers.Contract(tokenMessengerAddress, TOKEN_MESSENGER_ABI, signer)
       // Dummy values for estimation; downstream UI calls use accurate execution path.
-      const cctpDomain = getCctpDomain(chainKey) ?? 4 // fallback to noble domain
+      // const cctpDomain = getCctpDomain(chainKey) ?? 4 // fallback to noble domain
       // Use a non-zero mintRecipient (bytes32) - all zeros except last byte = 1
       // This passes the "must be nonzero" check while still being a dummy value
       const dummyMintRecipient = '0x0000000000000000000000000000000000000000000000000000000000000001'

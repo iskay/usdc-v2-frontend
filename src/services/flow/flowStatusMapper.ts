@@ -1,8 +1,6 @@
 import type {
   FlowStatus,
   FlowInitiationMetadata,
-  ChainProgressEntry,
-  ChainStage,
   UIStage,
 } from '@/types/flow'
 import { getChainOrder } from '@/shared/flowStages'
@@ -16,7 +14,7 @@ export type { UIStage } from '@/types/flow'
  */
 export function mapFlowStatusToUIStages(
   flowStatus: FlowStatus,
-  flowInitiation: FlowInitiationMetadata | null,
+  _flowInitiation: FlowInitiationMetadata | null,
   flowType: 'deposit' | 'payment',
 ): UIStage[] {
   const stages: UIStage[] = []
@@ -68,6 +66,10 @@ export function mapFlowStatusToUIStages(
  * @returns Overall status: 'pending', 'completed', or 'failed'
  */
 export function getOverallFlowStatus(flowStatus: FlowStatus): 'pending' | 'completed' | 'failed' {
+  // Map 'undetermined' to 'pending' as it's an intermediate state
+  if (flowStatus.status === 'undetermined') {
+    return 'pending'
+  }
   return flowStatus.status
 }
 
