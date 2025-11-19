@@ -8,7 +8,7 @@
 import type { StoredTransaction } from './transactionStorageService'
 // import type { FlowStatus, ChainStage } from '@/types/flow'
 // import { logger } from '@/utils/logger'
-import { getChainOrder } from '@/shared/flowStages'
+import { getChainOrder, getExpectedStages, DEPOSIT_PROGRESSION, PAYMENT_PROGRESSION } from '@/shared/flowStages'
 
 /**
  * Get the effective status of a transaction.
@@ -433,6 +433,10 @@ export function getCurrentStage(
 /**
  * Get progress percentage for a transaction.
  * 
+ * Calculates progress based on confirmed stages vs total expected stages for the flow.
+ * Uses the flow progression model to determine total expected stages, ensuring progress
+ * doesn't show 100% prematurely when only some stages have occurred.
+ * 
  * @param tx - Transaction to get progress for
  * @param flowType - Flow type ('deposit' or 'payment')
  * @returns Progress percentage (0-100)
@@ -464,12 +468,45 @@ export function getProgressPercentage(
     return statusProgress[effectiveStatus] || 0
   }
 
+  // Get all stage timings (includes client stages and backend stages)
   const timings = getStageTimings(tx, flowType)
-  if (timings.length === 0) {
+  
+  // Get expected backend stages for the flow from progression model
+  const chainOrder = getChainOrder(flowType)
+  const expectedStagesSet = new Set<string>()
+  
+  // Collect all expected backend stages from the progression model
+  // This gives us the total number of stages that should occur for this flow type
+  for (const chain of chainOrder) {
+    const expectedStages = getExpectedStages(flowType, chain)
+    for (const stage of expectedStages) {
+      expectedStagesSet.add(stage)
+    }
+  }
+  
+  // Total expected backend stages (this is the denominator)
+  const totalExpectedStages = expectedStagesSet.size
+  
+  if (totalExpectedStages === 0) {
     return 0
   }
-
-  const confirmedStages = timings.filter((t) => t.status === 'confirmed').length
-  return Math.round((confirmedStages / timings.length) * 100)
+  
+  // Count confirmed backend stages that match expected stages
+  // Exclude client stages (wallet_signing, wallet_broadcasting, wallet_broadcasted, gasless_*)
+  // as they are ephemeral and not part of the backend flow progression
+  const confirmedExpectedStages = timings.filter((t) => {
+    // Skip client-only stages
+    const isClientStage = t.stage.startsWith('wallet_') || t.stage.startsWith('gasless_')
+    if (isClientStage) {
+      return false
+    }
+    // Only count backend stages that are in the expected stages set and are confirmed
+    return t.status === 'confirmed' && expectedStagesSet.has(t.stage)
+  }).length
+  
+  // Calculate progress: confirmed expected stages / total expected stages
+  // Cap at 99% until flow is actually completed (to avoid showing 100% prematurely)
+  const progress = Math.round((confirmedExpectedStages / totalExpectedStages) * 100)
+  return Math.min(progress, 99) // Cap at 99% until flow status is 'completed'
 }
 
