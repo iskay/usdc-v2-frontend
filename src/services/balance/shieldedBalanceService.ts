@@ -5,7 +5,7 @@ import {
   balanceSyncAtom,
 } from '@/atoms/balanceAtom'
 import { walletAtom } from '@/atoms/walletAtom'
-import { shieldedAtom } from '@/atoms/shieldedAtom'
+import { shieldedAtom, shieldedProgressAtom } from '@/atoms/shieldedAtom'
 import {
   startShieldedSync,
   getShieldedSyncStatus,
@@ -72,8 +72,15 @@ export function triggerShieldedBalanceRefresh(options: ShieldedBalanceOptions = 
       // Create listeners that update shieldedAtom (for loading spinner) and calculate balance on completion
       const listeners: ShieldedSyncListeners = {
         onProgress: (progress: ShieldedSyncProgress) => {
-          // Update shieldedAtom (for loading spinner) - same as button click path
           const store = jotaiStore
+          
+          // Update progress percentage (for progress bar) - same as button click path
+          if (typeof progress.current === 'number' && typeof progress.total === 'number' && progress.total > 0) {
+            const percentage = Math.min(100, Math.max(0, Math.round((progress.current / progress.total) * 100)))
+            store.set(shieldedProgressAtom, percentage)
+          }
+          
+          // Update shieldedAtom (for loading spinner) - same as button click path
           store.set(shieldedAtom, (state) => ({
             ...state,
             isSyncing: progress.stage !== 'complete' && progress.stage !== 'error',
@@ -82,8 +89,12 @@ export function triggerShieldedBalanceRefresh(options: ShieldedBalanceOptions = 
           }))
         },
         onComplete: async (result: ShieldedSyncResult) => {
-          // Update shieldedAtom (for loading spinner)
           const store = jotaiStore
+          
+          // Update progress to 100% (for progress bar)
+          store.set(shieldedProgressAtom, 100)
+          
+          // Update shieldedAtom (for loading spinner)
           store.set(shieldedAtom, (state) => ({
             ...state,
             isSyncing: false,
@@ -98,6 +109,9 @@ export function triggerShieldedBalanceRefresh(options: ShieldedBalanceOptions = 
         onError: (error: Error) => {
           console.error('[ShieldedBalance] Sync failed:', error)
           const store = jotaiStore
+
+          // Reset progress to 0 (for progress bar)
+          store.set(shieldedProgressAtom, 0)
 
           // Update shieldedAtom (for loading spinner)
           store.set(shieldedAtom, (state) => ({
