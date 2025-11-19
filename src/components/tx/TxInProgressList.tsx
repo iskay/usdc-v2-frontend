@@ -1,37 +1,52 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
 import { TransactionCard } from './TransactionCard'
 import { isInProgress } from '@/services/tx/transactionStatusService'
 import { Spinner } from '@/components/common/Spinner'
+import { useDeleteTransaction } from '@/hooks/useDeleteTransaction'
 
 export function TxInProgressList() {
   const [inProgressTxs, setInProgressTxs] = useState<StoredTransaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const { deleteTransaction } = useDeleteTransaction()
+
+  const loadTransactions = useCallback(() => {
+    try {
+      const txs = transactionStorageService.getInProgressTransactions()
+      setInProgressTxs(txs)
+      setIsLoading(false)
+      setError(null)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load transactions'
+      console.error('[TxInProgressList] Failed to load transactions', err)
+      setError(errorMessage)
+      setIsLoading(false)
+    }
+  }, [])
 
   // Load in-progress transactions from unified storage
   useEffect(() => {
-    const loadTransactions = () => {
-      try {
-        const txs = transactionStorageService.getInProgressTransactions()
-        setInProgressTxs(txs)
-        setIsLoading(false)
-        setError(null)
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to load transactions'
-        console.error('[TxInProgressList] Failed to load transactions', err)
-        setError(errorMessage)
-        setIsLoading(false)
-      }
-    }
-
     // Load initially
     loadTransactions()
 
     // Reload periodically to catch updates (optimized: 5 seconds for in-progress)
     const interval = setInterval(loadTransactions, 5000)
     return () => clearInterval(interval)
-  }, [])
+  }, [loadTransactions])
+
+  const handleDelete = useCallback(
+    (txId: string) => {
+      try {
+        deleteTransaction(txId)
+        // Refresh the list after deletion
+        loadTransactions()
+      } catch (err) {
+        console.error('[TxInProgressList] Failed to delete transaction', err)
+      }
+    },
+    [deleteTransaction, loadTransactions],
+  )
 
   if (isLoading) {
     return (
@@ -72,6 +87,7 @@ export function TxInProgressList() {
             transaction={tx}
             variant="compact"
             showExpandButton={true}
+            onDelete={handleDelete}
           />
         )
       })}

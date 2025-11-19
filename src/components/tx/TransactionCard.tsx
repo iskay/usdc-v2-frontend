@@ -1,5 +1,5 @@
 import { useState, memo } from 'react'
-import { Clock, CheckCircle2, XCircle, AlertCircle, ChevronRight } from 'lucide-react'
+import { Clock, CheckCircle2, XCircle, AlertCircle, ChevronRight, Trash2 } from 'lucide-react'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import {
   isInProgress,
@@ -13,6 +13,7 @@ import {
   getTimeoutMessage,
 } from '@/services/tx/transactionStatusService'
 import { TransactionDetailModal } from './TransactionDetailModal'
+import { DeleteTransactionConfirmationDialog } from './DeleteTransactionConfirmationDialog'
 import { cn } from '@/lib/utils'
 
 export interface TransactionCardProps {
@@ -20,6 +21,7 @@ export interface TransactionCardProps {
   variant?: 'compact' | 'detailed'
   onClick?: () => void
   showExpandButton?: boolean
+  onDelete?: (txId: string) => void
 }
 
 export const TransactionCard = memo(function TransactionCard({
@@ -27,14 +29,27 @@ export const TransactionCard = memo(function TransactionCard({
   variant = 'compact',
   onClick,
   showExpandButton = true,
+  onDelete,
 }: TransactionCardProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
 
   const handleClick = () => {
     if (onClick) {
       onClick()
     } else if (showExpandButton) {
       setIsModalOpen(true)
+    }
+  }
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent card click handler
+    setIsDeleteDialogOpen(true)
+  }
+
+  const handleDeleteConfirm = () => {
+    if (onDelete) {
+      onDelete(transaction.id)
     }
   }
 
@@ -138,10 +153,22 @@ export const TransactionCard = memo(function TransactionCard({
             )}
           </div>
 
-          {/* Right side: Expand button */}
-          {showExpandButton && (onClick || showExpandButton) && (
-            <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-          )}
+          {/* Right side: Actions */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {onDelete && (
+              <button
+                type="button"
+                onClick={handleDeleteClick}
+                className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
+                aria-label="Delete transaction"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
+            {showExpandButton && (onClick || showExpandButton) && (
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            )}
+          </div>
         </div>
       </div>
 
@@ -151,6 +178,16 @@ export const TransactionCard = memo(function TransactionCard({
           transaction={transaction}
           open={isModalOpen}
           onClose={() => setIsModalOpen(false)}
+        />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {onDelete && (
+        <DeleteTransactionConfirmationDialog
+          open={isDeleteDialogOpen}
+          onClose={() => setIsDeleteDialogOpen(false)}
+          onConfirm={handleDeleteConfirm}
+          transactionType={transaction.direction}
         />
       )}
     </>

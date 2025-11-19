@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { AlertBox } from '@/components/common/AlertBox'
 import { Button } from '@/components/common/Button'
 import { TransactionCard } from '@/components/tx/TransactionCard'
 import { Spinner } from '@/components/common/Spinner'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
+import { useDeleteTransaction } from '@/hooks/useDeleteTransaction'
 
 const FILTERS = ['all', 'deposits', 'payments'] as const
 
@@ -12,30 +13,44 @@ export function History() {
   const [allTransactions, setAllTransactions] = useState<StoredTransaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const { deleteTransaction } = useDeleteTransaction()
+
+  const loadTransactions = useCallback(() => {
+    try {
+      const allTxs = transactionStorageService.getAllTransactions()
+      setAllTransactions(allTxs)
+      setIsLoading(false)
+      setError(null)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load transactions'
+      console.error('[History] Failed to load transactions', err)
+      setError(errorMessage)
+      setIsLoading(false)
+    }
+  }, [])
 
   // Load all transactions from unified storage (both in-progress and completed)
   useEffect(() => {
-    const loadTransactions = () => {
-      try {
-        const allTxs = transactionStorageService.getAllTransactions()
-        setAllTransactions(allTxs)
-        setIsLoading(false)
-        setError(null)
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to load transactions'
-        console.error('[History] Failed to load transactions', err)
-        setError(errorMessage)
-        setIsLoading(false)
-      }
-    }
-
     // Load initially
     loadTransactions()
 
     // Reload periodically to catch updates (optimized: 5 seconds for history page)
     const interval = setInterval(loadTransactions, 5000)
     return () => clearInterval(interval)
-  }, [])
+  }, [loadTransactions])
+
+  const handleDelete = useCallback(
+    (txId: string) => {
+      try {
+        deleteTransaction(txId)
+        // Refresh the list after deletion
+        loadTransactions()
+      } catch (err) {
+        console.error('[History] Failed to delete transaction', err)
+      }
+    },
+    [deleteTransaction, loadTransactions],
+  )
 
   // Filter transactions based on active filter
   const filteredTransactions = allTransactions.filter((tx) => {
@@ -118,6 +133,7 @@ export function History() {
               transaction={tx}
               variant="detailed"
               showExpandButton={true}
+              onDelete={handleDelete}
             />
           ))}
         </div>

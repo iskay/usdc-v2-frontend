@@ -1,36 +1,51 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
 import { TransactionCard } from './TransactionCard'
 import { Spinner } from '@/components/common/Spinner'
+import { useDeleteTransaction } from '@/hooks/useDeleteTransaction'
 
 export function TxHistoryList() {
   const [completedTxs, setCompletedTxs] = useState<StoredTransaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const { deleteTransaction } = useDeleteTransaction()
+
+  const loadTransactions = useCallback(() => {
+    try {
+      const txs = transactionStorageService.getCompletedTransactions(5)
+      setCompletedTxs(txs)
+      setIsLoading(false)
+      setError(null)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load transactions'
+      console.error('[TxHistoryList] Failed to load transactions', err)
+      setError(errorMessage)
+      setIsLoading(false)
+    }
+  }, [])
 
   // Load completed transactions from unified storage (limit to 5 most recent)
   useEffect(() => {
-    const loadTransactions = () => {
-      try {
-        const txs = transactionStorageService.getCompletedTransactions(5)
-        setCompletedTxs(txs)
-        setIsLoading(false)
-        setError(null)
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to load transactions'
-        console.error('[TxHistoryList] Failed to load transactions', err)
-        setError(errorMessage)
-        setIsLoading(false)
-      }
-    }
-
     // Load initially
     loadTransactions()
 
     // Reload periodically to catch updates (optimized: 10 seconds for completed transactions)
     const interval = setInterval(loadTransactions, 10000)
     return () => clearInterval(interval)
-  }, [])
+  }, [loadTransactions])
+
+  const handleDelete = useCallback(
+    (txId: string) => {
+      try {
+        deleteTransaction(txId)
+        // Refresh the list after deletion
+        loadTransactions()
+      } catch (err) {
+        console.error('[TxHistoryList] Failed to delete transaction', err)
+      }
+    },
+    [deleteTransaction, loadTransactions],
+  )
 
   if (isLoading) {
     return (
@@ -65,6 +80,7 @@ export function TxHistoryList() {
           transaction={tx}
           variant="compact"
           showExpandButton={true}
+          onDelete={handleDelete}
         />
       ))}
     </div>
