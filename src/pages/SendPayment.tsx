@@ -24,6 +24,8 @@ import {
 import { useTxTracker } from '@/hooks/useTxTracker'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
+import { triggerShieldedBalanceRefresh } from '@/services/balance/shieldedBalanceService'
+import { NAMADA_CHAIN_ID } from '@/config/constants'
 
 export function SendPayment() {
   const navigate = useNavigate()
@@ -90,6 +92,16 @@ export function SendPayment() {
       mounted = false
     }
   }, [])
+
+  // Trigger shielded sync on page load (non-blocking, happens in background)
+  useEffect(() => {
+    if (walletState.namada.isConnected && shieldedAddress) {
+      void triggerShieldedBalanceRefresh({ chainId: NAMADA_CHAIN_ID }).catch((error) => {
+        // Don't show error to user - sync will happen again before transaction
+        console.debug('[SendPayment] Background sync failed:', error)
+      })
+    }
+  }, [walletState.namada.isConnected, shieldedAddress])
 
 
   // Get chain name for display
@@ -208,7 +220,16 @@ export function SendPayment() {
         throw new Error('Namada transparent address not found. Please connect your Namada Keychain.')
       }
 
-      // Build transaction
+      // Show sync status if sync is happening
+      if (shieldedState.isSyncing) {
+        notify({
+          title: 'Syncing shielded balance...',
+          description: 'Please wait while we update your shielded context',
+          level: 'info',
+        })
+      }
+
+      // Build transaction (this will ensure sync completes before building)
       notify({ title: 'Building transaction...', level: 'info' })
       tx = await buildPaymentTransaction({
         amount,

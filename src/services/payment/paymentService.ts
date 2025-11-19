@@ -23,6 +23,9 @@ import { jotaiStore } from '@/store/jotaiStore'
 import { frontendOnlyModeAtom } from '@/atoms/appAtom'
 import { getDefaultNamadaChainKey } from '@/config/chains'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
+import { triggerShieldedBalanceRefresh } from '@/services/balance/shieldedBalanceService'
+import { getShieldedSyncStatus } from '@/services/shielded/shieldedService'
+import { NAMADA_CHAIN_ID } from '@/config/constants'
 
 export interface PaymentParams {
   amount: string
@@ -40,6 +43,30 @@ export interface PaymentTransactionDetails {
   isLoadingFee?: boolean
 }
 
+/**
+ * Ensure shielded sync completes before proceeding with payment transaction.
+ * This prevents "masp double spend" errors by ensuring shielded context is up-to-date.
+ * 
+ * @param options - Optional sync options
+ * @returns Promise that resolves when sync is complete
+ */
+export async function ensureShieldedSyncBeforePayment(
+  options: { chainId?: string } = {},
+): Promise<void> {
+  const syncStatus = getShieldedSyncStatus()
+
+  // If sync is already in progress, wait for it
+  if (syncStatus.isSyncing) {
+    logger.info('[PaymentService] Shielded sync in progress, waiting for completion...')
+    // triggerShieldedBalanceRefresh already handles waiting for in-progress syncs
+    await triggerShieldedBalanceRefresh(options)
+    return
+  }
+
+  // Trigger sync if not in progress
+  logger.info('[PaymentService] Triggering shielded sync before payment transaction...')
+  await triggerShieldedBalanceRefresh(options)
+}
 
 /**
  * Get shielded account (pseudoExtendedKey) from Namada extension.
@@ -407,6 +434,10 @@ export async function buildPaymentTransaction(
   })
 
   try {
+    // Ensure shielded sync completes before building transaction
+    // This prevents "masp double spend" errors by ensuring shielded context is up-to-date
+    await ensureShieldedSyncBeforePayment({ chainId: NAMADA_CHAIN_ID })
+
     // Prepare all payment parameters
     const { ibcParams, paymentData } = await preparePaymentParams(params)
 
