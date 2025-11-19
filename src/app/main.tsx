@@ -1,5 +1,5 @@
 import { StrictMode } from 'react'
-import { BrowserRouter } from 'react-router-dom'
+import { HashRouter } from 'react-router-dom'
 import { Provider as JotaiProvider } from 'jotai'
 import { jotaiStore } from '@/store/jotaiStore'
 import { AppRoutes } from './routes'
@@ -9,11 +9,11 @@ export function AppMain() {
   return (
     <StrictMode>
       <JotaiProvider store={jotaiStore}>
-        <BrowserRouter>
+        <HashRouter>
           <AppBootstrap>
             <AppRoutes />
           </AppBootstrap>
-        </BrowserRouter>
+        </HashRouter>
       </JotaiProvider>
     </StrictMode>
   )
