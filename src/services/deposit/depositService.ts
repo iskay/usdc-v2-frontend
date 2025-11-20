@@ -13,6 +13,8 @@ import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainCo
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
 import { jotaiStore } from '@/store/jotaiStore'
 import { frontendOnlyModeAtom } from '@/atoms/appAtom'
+import { trackNobleForwarding } from '@/services/api/backendClient'
+import { env } from '@/config/env'
 import BigNumber from 'bignumber.js'
 import type { TrackedTransaction } from '@/types/tx'
 
@@ -341,6 +343,23 @@ export async function postDepositToBackend(
       txHash: txHash.slice(0, 16) + '...',
     })
 
+    // Register Noble forwarding address for tracking if available
+    if (tx?.depositData?.nobleForwardingAddress && details.destinationAddress) {
+      try {
+        await registerNobleForwardingForTracking(
+          tx.depositData.nobleForwardingAddress,
+          details.destinationAddress,
+        )
+      } catch (error) {
+        // Log but don't fail - Noble forwarding registration tracking is non-blocking
+        logger.warn('[DepositService] Failed to register Noble forwarding address for tracking', {
+          error: error instanceof Error ? error.message : String(error),
+          nobleAddress: tx.depositData.nobleForwardingAddress.slice(0, 16) + '...',
+          recipient: details.destinationAddress.slice(0, 16) + '...',
+        })
+      }
+    }
+
     return flowId
   } catch (error) {
     logger.error('[DepositService] Failed to post deposit to backend', {
@@ -349,6 +368,59 @@ export async function postDepositToBackend(
     })
     // Don't throw - flow registration failure shouldn't block deposit
     return undefined
+  }
+}
+
+/**
+ * Register Noble forwarding address with backend for registration tracking.
+ * This allows the backend to monitor the address and automatically register it
+ * when sufficient balance is received.
+ * 
+ * @param nobleAddress - The Noble forwarding address
+ * @param recipient - The Namada recipient address
+ * @returns Registration tracking result
+ */
+export async function registerNobleForwardingForTracking(
+  nobleAddress: string,
+  recipient: string,
+): Promise<void> {
+  // Check if frontend-only mode is enabled
+  const isFrontendOnly = jotaiStore.get(frontendOnlyModeAtom)
+  if (isFrontendOnly) {
+    logger.debug('[DepositService] Frontend-only mode enabled, skipping Noble forwarding registration tracking')
+    return
+  }
+
+  logger.debug('[DepositService] Registering Noble forwarding address for tracking', {
+    nobleAddress: nobleAddress.slice(0, 16) + '...',
+    recipient: recipient.slice(0, 16) + '...',
+  })
+
+  try {
+    const channel = env.nobleToNamadaChannel()
+    const result = await trackNobleForwarding({
+      nobleAddress,
+      recipient,
+      channel,
+    })
+
+    if (result.tracked) {
+      logger.info('[DepositService] Noble forwarding address registered for tracking', {
+        nobleAddress: nobleAddress.slice(0, 16) + '...',
+        registrationId: result.data?.id,
+      })
+    } else {
+      logger.debug('[DepositService] Noble forwarding address not tracked', {
+        nobleAddress: nobleAddress.slice(0, 16) + '...',
+        reason: result.reason,
+      })
+    }
+  } catch (error) {
+    logger.error('[DepositService] Failed to register Noble forwarding address for tracking', {
+      error: error instanceof Error ? error.message : String(error),
+      nobleAddress: nobleAddress.slice(0, 16) + '...',
+    })
+    throw error
   }
 }
 

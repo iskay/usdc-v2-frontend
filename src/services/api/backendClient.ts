@@ -146,3 +146,52 @@ export async function lookupFlowByHash(
     return null
   }
 }
+
+export interface TrackNobleForwardingInput {
+  nobleAddress: string
+  recipient: string
+  channel?: string
+  fallback?: string
+}
+
+export interface TrackNobleForwardingResponse {
+  tracked: boolean
+  reason?: string
+  data?: {
+    id: string
+    nobleAddress: string
+    recipient: string
+    channel: string
+    fallback: string | null
+    status: 'pending' | 'registered' | 'failed' | 'stale'
+    balanceUusdc: string | null
+    lastCheckedAt: string | null
+    registeredAt: string | null
+    registrationTxHash: string | null
+    errorMessage: string | null
+    createdAt: string
+    updatedAt: string
+  }
+}
+
+/**
+ * Track Noble forwarding address for registration monitoring.
+ * Registers a Noble forwarding address with the backend so it can monitor
+ * and automatically register it when sufficient balance is received.
+ */
+export async function trackNobleForwarding(
+  input: TrackNobleForwardingInput,
+): Promise<TrackNobleForwardingResponse> {
+  try {
+    const response = await getClient().post<TrackNobleForwardingResponse>(
+      '/api/noble-forwarding/track',
+      input,
+    )
+    return response.data
+  } catch (error) {
+    const axiosError = error as AxiosError
+    throw new Error(
+      `Failed to track Noble forwarding address: ${axiosError.response?.status} ${axiosError.message}`,
+    )
+  }
+}
