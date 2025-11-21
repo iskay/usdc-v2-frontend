@@ -72,6 +72,11 @@ export interface StoredTransaction extends TrackedTransaction {
   /** Flag for frontend-only mode (transactions not submitted to backend) */
   isFrontendOnly?: boolean
   /**
+   * Block height where the transaction was included (for Namada transactions).
+   * Extracted from the broadcast response.
+   */
+  blockHeight?: string
+  /**
    * Timestamp when client-side polling timeout occurred (milliseconds since epoch).
    * Set when the client-side polling timeout is reached but backend is still tracking the transaction.
    * This allows UI to display a warning indicator that polling has stopped while backend continues tracking.

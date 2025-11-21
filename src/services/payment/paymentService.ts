@@ -502,20 +502,25 @@ export async function signPaymentTransaction(
 
 /**
  * Broadcast a payment transaction.
- * Currently stubbed, will use real transaction submitter once available.
  * 
  * @param tx - The signed transaction to broadcast
- * @returns Transaction hash
+ * @returns Object with inner tx hash and block height
  */
 export async function broadcastPaymentTransaction(
   tx: TrackedTransaction
-): Promise<string> {
-  console.debug('[PaymentService] Broadcasting payment transaction', tx.id)
+): Promise<{ hash: string; blockHeight?: string }> {
+  logger.debug('[PaymentService] Broadcasting payment transaction', { txId: tx.id })
 
   // Use existing txSubmitter service
-  const txHash = await submitNamadaTx(tx)
-
-  return txHash
+  const result = await submitNamadaTx(tx)
+  
+  // Payment transactions return an object, other types return a string
+  if (typeof result === 'object' && 'hash' in result) {
+    return result
+  }
+  
+  // Fallback for non-payment transactions (shouldn't happen for payments)
+  return { hash: result as string }
 }
 
 /**
@@ -583,9 +588,10 @@ export async function savePaymentTransaction(
  * Post payment transaction to backend API for flow tracking.
  * Registers the flow with backend after Namada IBC transaction is broadcast.
  * 
- * @param txHash - The Namada IBC transaction hash
+ * @param txHash - The Namada IBC transaction hash (inner tx hash)
  * @param details - Payment transaction details
  * @param tx - Optional transaction object (if provided, uses tx.id directly)
+ * @param blockHeight - Optional block height where transaction was included
  * @param localId - Optional local flow ID (if flow was initiated earlier)
  * @returns Backend flowId if registration successful
  */
@@ -593,6 +599,7 @@ export async function postPaymentToBackend(
   txHash: string,
   details: PaymentTransactionDetails,
   tx?: TrackedTransaction,
+  blockHeight?: string,
   localId?: string,
 ): Promise<string | undefined> {
   logger.debug('[PaymentService] Posting payment to backend', {
@@ -661,6 +668,7 @@ export async function postPaymentToBackend(
         destinationChain: details.chainName,
         fee: details.fee,
         total: details.total,
+        blockHeight: blockHeight || tx?.blockHeight, // Pass block height to backend
       },
     )
 

@@ -228,25 +228,50 @@ export async function signNamadaTx(
 
 /**
  * Broadcast signed Namada transaction via RPC.
+ * Returns wrapper hash, inner tx hash(es), and block height.
  */
-export async function broadcastNamadaTx(signedTx: Uint8Array): Promise<{ hash: string }> {
+export async function broadcastNamadaTx(signedTx: Uint8Array): Promise<{ 
+  hash: string // Wrapper transaction hash
+  innerTxHash?: string // First inner transaction hash (for payment transactions)
+  innerTxHashes?: string[] // All inner transaction hashes
+  blockHeight?: string // Block height where transaction was included
+}> {
   logger.info('[TxSubmitter] 📡 Broadcasting Namada transaction...')
 
   try {
     const sdk = await getNamadaSdk()
     const response = await (sdk as any).rpc.broadcastTx(signedTx)
 
-    const hash = (response as any)?.hash
-    if (!hash) {
+    const wrapperHash = (response as any)?.hash
+    if (!wrapperHash) {
       throw new Error('Transaction broadcasted but no hash returned')
     }
 
+    // Extract inner transaction hashes from commitments
+    const commitments = (response as any)?.commitments || []
+    const innerTxHashes = commitments
+      .map((c: any) => c?.hash)
+      .filter((h: any): h is string => typeof h === 'string' && h.length > 0)
+    
+    // Use first inner tx hash as the primary inner tx hash (for payment transactions)
+    const innerTxHash = innerTxHashes.length > 0 ? innerTxHashes[0] : undefined
+
+    // Extract block height
+    const blockHeight = (response as any)?.height
+
     logger.info('[TxSubmitter] ✅ Transaction broadcasted successfully', {
-      hash: hash.slice(0, 16) + '...',
-      hashLength: hash.length,
+      wrapperHash: wrapperHash.slice(0, 16) + '...',
+      innerTxHash: innerTxHash ? innerTxHash.slice(0, 16) + '...' : 'none',
+      innerTxHashesCount: innerTxHashes.length,
+      blockHeight: blockHeight || 'not available',
     })
 
-    return { hash }
+    return { 
+      hash: wrapperHash,
+      innerTxHash,
+      innerTxHashes: innerTxHashes.length > 0 ? innerTxHashes : undefined,
+      blockHeight,
+    }
   } catch (error) {
     logger.error('[TxSubmitter] Failed to broadcast transaction', {
       error: error instanceof Error ? error.message : String(error),
@@ -258,8 +283,11 @@ export async function broadcastNamadaTx(signedTx: Uint8Array): Promise<{ hash: s
 /**
  * Submit a Namada transaction (sign and broadcast).
  * Handles deposit, shielding, and payment transactions.
+ * 
+ * For payment transactions, returns an object with hash and blockHeight.
+ * For other transactions, returns a string hash.
  */
-export async function submitNamadaTx(tx: TrackedTransaction): Promise<string> {
+export async function submitNamadaTx(tx: TrackedTransaction): Promise<string | { hash: string; blockHeight?: string }> {
   logger.info('[TxSubmitter] 📤 Submitting Namada transaction', {
     txId: tx.id,
     direction: tx.direction,
@@ -414,15 +442,21 @@ async function submitPaymentTx(
     logger.info('[TxSubmitter] 📡 Broadcasting payment transaction...')
     const result = await broadcastNamadaTx(signed[0])
 
+    // Use inner tx hash as the primary hash for payment transactions (this is what we track)
+    // Fallback to wrapper hash if inner tx hash is not available
+    const txHash = result.innerTxHash || result.hash
+    const wrapperHash = result.hash
+
     // Update broadcasting stage to confirmed (broadcasting is complete)
     await clientStageReporter.updateStageStatus(flowId, 'wallet_broadcasting', 'confirmed')
 
-    // Report wallet broadcasted stage
-    await clientStageReporter.reportWalletStage(flowId, 'wallet_broadcasted', 'namada', result.hash, 'confirmed')
+    // Report wallet broadcasted stage (use inner tx hash for tracking)
+    await clientStageReporter.reportWalletStage(flowId, 'wallet_broadcasted', 'namada', txHash, 'confirmed')
 
     logger.info('[TxSubmitter] ✅ Payment transaction submitted successfully', {
-      txHash: result.hash,
-      txHashDisplay: `${result.hash.slice(0, 8)}...${result.hash.slice(-8)}`,
+      innerTxHash: txHash.slice(0, 16) + '...',
+      wrapperHash: wrapperHash.slice(0, 16) + '...',
+      blockHeight: result.blockHeight || 'not available',
       destinationChain: paymentData.destinationChain,
       amount: paymentData.amount,
     })
@@ -435,7 +469,12 @@ async function submitPaymentTx(
       })
     }
 
-    return result.hash
+    // Return object with inner tx hash and block height
+    return {
+      hash: txHash,
+      wrapperHash,
+      blockHeight: result.blockHeight,
+    }
   } catch (error) {
     // Clear disposable signer on error
     if (signerPersisted && disposableSignerAddress) {

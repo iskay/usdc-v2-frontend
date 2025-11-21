@@ -25,6 +25,8 @@ export interface TrackedTransaction {
   flowId?: string
   /** Local flow metadata (for flow-based tracking) */
   flowMetadata?: FlowInitiationMetadata
+  /** Block height where the transaction was included (for Namada transactions) */
+  blockHeight?: string
 }
 
 export interface TxStatusMessage {

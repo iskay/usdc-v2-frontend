@@ -273,17 +273,20 @@ export function SendPayment() {
       }
       transactionStorageService.saveTransaction(currentTx)
       
-      const txHash = await broadcastPaymentTransaction(signedTx)
+      const broadcastResult = await broadcastPaymentTransaction(signedTx)
+      const txHash = broadcastResult.hash
+      const blockHeight = broadcastResult.blockHeight
 
-      // Update transaction with hash
+      // Update transaction with hash and block height
       const txWithHash = {
         ...signedTx,
         hash: txHash,
+        blockHeight,
         status: 'broadcasted' as const,
       }
 
       // Post to backend (registers flow with backend)
-      const flowId = await postPaymentToBackend(txHash, transactionDetails, txWithHash)
+      const flowId = await postPaymentToBackend(txHash, transactionDetails, txWithHash, blockHeight)
 
       // Save transaction to unified storage with payment details and flowId
       const savedTx = await savePaymentTransaction(txWithHash, transactionDetails, flowId)
