@@ -24,3 +24,8 @@ export const autoShieldedSyncEnabledAtom = atom<boolean>(false)
 // Status will be displayed as 'undetermined' since backend tracking is unavailable
 // Default: false (backend tracking enabled)
 export const frontendOnlyModeAtom = atom<boolean>(false)
+
+// Store the current deposit recipient tnam address
+// This allows any part of the app to access the current recipient address
+// Updated by the Deposit component when the user enters/changes the recipient address
+export const depositRecipientAddressAtom = atom<string | undefined>(undefined)

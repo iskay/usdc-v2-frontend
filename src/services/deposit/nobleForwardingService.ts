@@ -4,6 +4,8 @@
  */
 
 import { env } from '@/config/env'
+import { jotaiStore } from '@/store/jotaiStore'
+import { depositRecipientAddressAtom } from '@/atoms/appAtom'
 
 export interface NobleForwardingResponse {
   address: string
@@ -143,5 +145,38 @@ export async function checkNobleForwardingRegistration(
     })
     return { exists: false }
   }
+}
+
+/**
+ * Checks if the current deposit recipient tnam address has been registered as a Noble forwarding address.
+ * This function automatically uses the deposit recipient address from global state if no address is provided.
+ * 
+ * This is a convenience wrapper around checkNobleForwardingRegistration that can be called from anywhere
+ * without needing to pass the recipient address explicitly.
+ *
+ * @param namadaAddress - Optional Namada destination address (bech32 format). If not provided, uses the current deposit recipient address from global state.
+ * @param channelId - Optional IBC channel ID (defaults to env config)
+ * @returns Registration status with exists flag and forwarding address (if available)
+ * @throws Error if no address is provided and no current deposit recipient address is available in global state
+ */
+export async function checkCurrentDepositRecipientRegistration(
+  namadaAddress?: string,
+  channelId?: string
+): Promise<NobleRegistrationStatus> {
+  // Use provided address or get from global state
+  const addressToCheck = namadaAddress || jotaiStore.get(depositRecipientAddressAtom)
+  
+  if (!addressToCheck) {
+    throw new Error(
+      'No deposit recipient address provided and no current deposit recipient address available in global state'
+    )
+  }
+
+  console.debug('[NobleForwardingService] Checking registration for current deposit recipient', {
+    namadaAddress: addressToCheck,
+    source: namadaAddress ? 'provided' : 'global-state',
+  })
+
+  return checkNobleForwardingRegistration(addressToCheck, channelId)
 }
 

@@ -3,13 +3,14 @@
  */
 
 import { useState, useEffect, type FormEvent } from 'react'
-import { X, Loader2 } from 'lucide-react'
+import { X, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { useShielding } from '@/hooks/useShielding'
 import { useBalance } from '@/hooks/useBalance'
 import { useShieldingFeeEstimate } from '@/hooks/useShieldingFeeEstimate'
 import { useAtomValue } from 'jotai'
 import { walletAtom } from '@/atoms/walletAtom'
+import { validateShieldAmount, handleAmountInputChange } from '@/services/validation'
 
 export interface ShieldingModalProps {
   open: boolean
@@ -72,20 +73,21 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
   }
 
   const transparentBalance = balanceState.namada.usdcTransparent || '0.00'
-  // const maxAmount = transparentBalance
 
   // Get fee information from hook (already calculated, no logic in modal)
   const feeInfo = feeEstimateState.feeInfo
   const isEstimatingFee = feeEstimateState.isLoading
 
+  // Validate amount using new validation service
+  const amountValidation = validateShieldAmount(amount, transparentBalance)
+  const isAmountValid = amountValidation.isValid
+  const amountError = amountValidation.error
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
 
-    if (!amount || parseFloat(amount) <= 0) {
-      return
-    }
-
-    if (parseFloat(amount) > parseFloat(transparentBalance)) {
+    // Validate form
+    if (!isAmountValid) {
       return
     }
 
@@ -106,7 +108,6 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
     setAmount(transparentBalance)
   }
 
-  const isAmountValid = amount && parseFloat(amount) > 0 && parseFloat(amount) <= parseFloat(transparentBalance)
   const isDisabled = shieldingState.isShielding || isConfirming || !isAmountValid
 
   return (
@@ -144,15 +145,17 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
             <div className="flex items-center gap-2">
               <input
                 id="amount"
-                type="number"
-                step="0.000001"
-                min="0"
-                max={transparentBalance}
+                type="text"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => handleAmountInputChange(e, setAmount, 6)}
                 disabled={shieldingState.isShielding || isConfirming}
                 placeholder="0.00"
-                className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                inputMode="decimal"
+                className={`flex-1 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 transition-colors disabled:opacity-50 ${
+                  amountError && amount.trim() !== ''
+                    ? 'border-destructive focus:ring-destructive/20 focus:border-destructive'
+                    : 'border-border focus:ring-ring'
+                }`}
               />
               <Button
                 type="button"
@@ -164,10 +167,15 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
                 MAX
               </Button>
             </div>
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Available: {transparentBalance} USDC</span>
-              {amount && parseFloat(amount) > parseFloat(transparentBalance) && (
-                <span className="text-red-500">Insufficient balance</span>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>Available: {transparentBalance} USDC</span>
+              </div>
+              {amountError && amount.trim() !== '' && (
+                <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span className="flex-1">{amountError}</span>
+                </div>
               )}
             </div>
           </div>

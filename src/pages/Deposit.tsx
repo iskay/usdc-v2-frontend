@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSetAtom } from 'jotai'
-import { DollarSign, Loader2, Wallet, ArrowRight } from 'lucide-react'
+import { DollarSign, Loader2, Wallet, ArrowRight, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { BackToHome } from '@/components/common/BackToHome'
 import { ChainSelect } from '@/components/common/ChainSelect'
@@ -10,7 +10,7 @@ import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useToast } from '@/hooks/useToast'
 import { RequireMetaMaskConnection } from '@/components/wallet/RequireMetaMaskConnection'
-import { validateDepositForm } from '@/utils/depositValidation'
+import { validateDepositForm, handleAmountInputChange, handleBech32InputChange } from '@/services/validation'
 import { useDepositFeeEstimate } from '@/hooks/useDepositFeeEstimate'
 import {
   buildDepositTransaction,
@@ -23,7 +23,7 @@ import {
 import { useTxTracker } from '@/hooks/useTxTracker'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
-import { preferredChainKeyAtom } from '@/atoms/appAtom'
+import { preferredChainKeyAtom, depositRecipientAddressAtom } from '@/atoms/appAtom'
 
 export function Deposit() {
   const navigate = useNavigate()
@@ -32,6 +32,7 @@ export function Deposit() {
   const { state: walletState } = useWallet()
   const { state: balanceState, refresh, sync: balanceSync } = useBalance()
   const setPreferredChainKey = useSetAtom(preferredChainKeyAtom)
+  const setDepositRecipientAddress = useSetAtom(depositRecipientAddressAtom)
 
   // Form state
   const [amount, setAmount] = useState('')
@@ -39,6 +40,11 @@ export function Deposit() {
   const [selectedChain, setSelectedChain] = useState<string | undefined>(undefined)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showConfirmationModal, setShowConfirmationModal] = useState(false)
+
+  // Sync toAddress to global atom so it can be accessed from anywhere
+  useEffect(() => {
+    setDepositRecipientAddress(toAddress || undefined)
+  }, [toAddress, setDepositRecipientAddress])
 
   // Get EVM address from wallet state
   const evmAddress = walletState.metaMask.account
@@ -448,7 +454,7 @@ export function Deposit() {
               <input
                 type="text"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => handleAmountInputChange(e, setAmount, 6)}
                 className="flex-1 border-none bg-transparent p-0 text-3xl font-bold focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30"
                 placeholder="0.00"
                 inputMode="decimal"
@@ -457,8 +463,11 @@ export function Deposit() {
               <span className="text-sm text-muted-foreground">USDC</span>
             </div>
             {/* Validation error for amount */}
-            {validation.amountError && (
-              <div className="text-sm text-destructive mt-2">{validation.amountError}</div>
+            {validation.amountError && amount.trim() !== '' && (
+              <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span className="flex-1">{validation.amountError}</span>
+              </div>
             )}
           </div>
 
@@ -482,14 +491,21 @@ export function Deposit() {
             <input
               type="text"
               value={toAddress}
-              onChange={(e) => setToAddress(e.target.value)}
-              className="w-full rounded-lg border border-input bg-background px-4 py-3 text-sm font-mono shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring transition-colors"
+              onChange={(e) => handleBech32InputChange(e, setToAddress)}
+              className={`w-full rounded-lg border bg-background px-4 py-3 text-sm font-mono shadow-sm focus-visible:outline-none focus-visible:ring-2 transition-colors ${
+                validation.addressError && toAddress.trim() !== ''
+                  ? 'border-destructive focus-visible:ring-destructive/20 focus-visible:border-destructive'
+                  : 'border-input focus-visible:ring-ring focus-visible:border-ring'
+              }`}
               placeholder="tnam..."
               disabled={isSubmitting}
             />
             {/* Validation error for address */}
-            {validation.addressError && (
-              <div className="text-sm text-destructive mt-2">{validation.addressError}</div>
+            {validation.addressError && toAddress.trim() !== '' && (
+              <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span className="flex-1">{validation.addressError}</span>
+              </div>
             )}
           </div>
 
