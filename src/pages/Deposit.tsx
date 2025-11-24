@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSetAtom } from 'jotai'
-import { DollarSign, Loader2, Wallet, ArrowRight, AlertCircle } from 'lucide-react'
+import { DollarSign, Loader2, Wallet, ArrowRight, AlertCircle, CheckCircle2, Info, Copy } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { BackToHome } from '@/components/common/BackToHome'
 import { ChainSelect } from '@/components/common/ChainSelect'
@@ -10,7 +10,8 @@ import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useToast } from '@/hooks/useToast'
 import { RequireMetaMaskConnection } from '@/components/wallet/RequireMetaMaskConnection'
-import { validateDepositForm, handleAmountInputChange, handleBech32InputChange } from '@/services/validation'
+import { validateDepositForm, handleAmountInputChange, handleBech32InputChange, validateNamadaAddress } from '@/services/validation'
+import { checkCurrentDepositRecipientRegistration } from '@/services/deposit/nobleForwardingService'
 import { useDepositFeeEstimate } from '@/hooks/useDepositFeeEstimate'
 import {
   buildDepositTransaction,
@@ -41,10 +42,106 @@ export function Deposit() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showConfirmationModal, setShowConfirmationModal] = useState(false)
 
+  // Noble forwarding registration status
+  const [registrationStatus, setRegistrationStatus] = useState<{
+    isLoading: boolean
+    isRegistered: boolean | null
+    forwardingAddress: string | null
+    error: string | null
+  }>({
+    isLoading: false,
+    isRegistered: null,
+    forwardingAddress: null,
+    error: null,
+  })
+
   // Sync toAddress to global atom so it can be accessed from anywhere
   useEffect(() => {
     setDepositRecipientAddress(toAddress || undefined)
   }, [toAddress, setDepositRecipientAddress])
+
+  // Track the current address being checked to prevent race conditions
+  const checkingAddressRef = useRef<string | null>(null)
+
+  // Debounced check for Noble forwarding registration
+  useEffect(() => {
+    // Only check if address is valid
+    const addressValidation = validateNamadaAddress(toAddress)
+    if (!addressValidation.isValid || !addressValidation.value) {
+      // Reset status if address is invalid
+      checkingAddressRef.current = null
+      setRegistrationStatus({
+        isLoading: false,
+        isRegistered: null,
+        forwardingAddress: null,
+        error: null,
+      })
+      return
+    }
+
+    const addressToCheck = addressValidation.value
+    checkingAddressRef.current = addressToCheck
+
+    // Debounce the check
+    const timeoutId = setTimeout(async () => {
+      // Double-check that we're still checking the same address
+      if (checkingAddressRef.current !== addressToCheck) {
+        return
+      }
+
+      setRegistrationStatus({
+        isLoading: true,
+        isRegistered: null,
+        forwardingAddress: null,
+        error: null,
+      })
+
+      try {
+        const status = await checkCurrentDepositRecipientRegistration(addressToCheck)
+        
+        // Only update if we're still checking the same address
+        if (checkingAddressRef.current === addressToCheck) {
+          setRegistrationStatus({
+            isLoading: false,
+            isRegistered: status.exists,
+            forwardingAddress: status.address || null,
+            error: null,
+          })
+        }
+      } catch (error) {
+        // Only update if we're still checking the same address
+        if (checkingAddressRef.current !== addressToCheck) {
+          return
+        }
+
+        // Don't show error if it's just that no address is available
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        if (errorMessage.includes('No deposit recipient address')) {
+          setRegistrationStatus({
+            isLoading: false,
+            isRegistered: null,
+            forwardingAddress: null,
+            error: null,
+          })
+        } else {
+          setRegistrationStatus({
+            isLoading: false,
+            isRegistered: null,
+            forwardingAddress: null,
+            error: errorMessage,
+          })
+        }
+      }
+    }, 500) // 500ms debounce
+
+    return () => {
+      clearTimeout(timeoutId)
+      // Clear the ref if the effect is cleaning up due to address change
+      if (checkingAddressRef.current === addressToCheck) {
+        checkingAddressRef.current = null
+      }
+    }
+  }, [toAddress])
 
   // Get EVM address from wallet state
   const evmAddress = walletState.metaMask.account
@@ -505,6 +602,89 @@ export function Deposit() {
               <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span className="flex-1">{validation.addressError}</span>
+              </div>
+            )}
+            {/* Noble forwarding registration status */}
+            {!validation.addressError && toAddress.trim() !== '' && (
+              <div className="mt-3">
+                {registrationStatus.isLoading && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Checking registration status...</span>
+                  </div>
+                )}
+                {!registrationStatus.isLoading && registrationStatus.isRegistered === true && (
+                  <div className="rounded-md border border-green-500/50 bg-green-500/10 px-3 py-2 text-sm text-green-700 dark:text-green-400">
+                    <div className="flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+                      <div className="flex-1 space-y-1">
+                        <p>Noble forwarding address is already registered</p>
+                        {registrationStatus.forwardingAddress && (
+                          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-green-500/20">
+                            <span className="font-mono text-xs opacity-90 break-all">
+                              {registrationStatus.forwardingAddress}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(registrationStatus.forwardingAddress!)
+                                notify({
+                                  title: 'Copied',
+                                  description: 'Forwarding address copied to clipboard',
+                                  level: 'success',
+                                })
+                              }}
+                              className="rounded p-1 text-green-700 dark:text-green-400 hover:bg-green-500/20 transition-colors shrink-0"
+                              aria-label="Copy forwarding address"
+                              title="Copy forwarding address"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {!registrationStatus.isLoading && registrationStatus.isRegistered === false && (
+                  <div className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+                    <div className="flex items-start gap-2">
+                      <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                      <div className="flex-1 space-y-1">
+                        <p>Noble forwarding address not yet registered. A $0.02 registration fee will be included.</p>
+                        {registrationStatus.forwardingAddress && (
+                          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-amber-500/20">
+                            <span className="font-mono text-xs opacity-90 break-all">
+                              {registrationStatus.forwardingAddress}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(registrationStatus.forwardingAddress!)
+                                notify({
+                                  title: 'Copied',
+                                  description: 'Forwarding address copied to clipboard',
+                                  level: 'success',
+                                })
+                              }}
+                              className="rounded p-1 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 transition-colors shrink-0"
+                              aria-label="Copy forwarding address"
+                              title="Copy forwarding address"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {!registrationStatus.isLoading && registrationStatus.error && (
+                  <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span className="flex-1">Unable to check registration status: {registrationStatus.error}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
