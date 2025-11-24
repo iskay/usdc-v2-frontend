@@ -18,4 +18,3 @@ export async function fetchEvmChainsConfig(): Promise<EvmChainsFile> {
   return payload
 }
 
-// TODO: Add caching + versioning once backend serves the config dynamically.

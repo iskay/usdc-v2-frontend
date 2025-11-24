@@ -1,8 +1,13 @@
 import { useMemo } from 'react'
+import { Menu } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { useWallet } from '@/hooks/useWallet'
 
-export function Navbar() {
+interface NavbarProps {
+  onToggleSidebar: () => void
+}
+
+export function Navbar({ onToggleSidebar }: NavbarProps) {
   const {
     state,
     connectMetaMask,
@@ -27,8 +32,17 @@ export function Navbar() {
 
   return (
     <header className="flex items-center justify-between border-b border-border bg-background/80 px-6 py-4 backdrop-blur">
-      <div className="space-y-1">
-        <p className="text-sm uppercase tracking-widest text-muted-foreground">Borderless Private USDC</p>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onToggleSidebar}
+          className="flex items-center justify-center rounded-md p-2 text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          aria-label="Toggle sidebar"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <div className="space-y-1">
+          <p className="text-sm uppercase tracking-widest text-muted-foreground">Borderless Private USDC</p>
+        </div>
       </div>
       <div className="flex items-center gap-3">
         {/* MetaMask Connection Button */}

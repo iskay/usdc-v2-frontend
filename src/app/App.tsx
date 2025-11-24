@@ -1,4 +1,4 @@
-import { Suspense, useMemo } from 'react'
+import { Suspense, useMemo, useState } from 'react'
 import { useLocation, useOutlet } from 'react-router-dom'
 import { motion, AnimatePresence, type Variants } from 'framer-motion'
 import { Navbar } from '@/components/layout/Navbar'
@@ -36,6 +36,7 @@ export function App() {
   const location = useLocation()
   const outlet = useOutlet()
   const variants = useMemo(() => resolveVariants(location.pathname), [location.pathname])
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
   // Initialize global transaction tracking and polling
   // This runs on app startup and handles hydration from localStorage + polling for in-progress transactions
@@ -44,9 +45,9 @@ export function App() {
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       <ToastContainer />
-      <Sidebar />
+      <Sidebar isCollapsed={isSidebarCollapsed} />
       <div className="flex flex-1 flex-col">
-        <Navbar />
+        <Navbar onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} />
         <main className="relative flex-1 overflow-hidden p-6">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
@@ -56,7 +57,7 @@ export function App() {
               animate="animate"
               exit="exit"
               transition={{ duration: 0.35, ease: 'easeInOut' }}
-              className="absolute inset-0 overflow-y-auto"
+              className="absolute inset-0 overflow-y-auto flex justify-center"
             >
               <Suspense fallback={<div className="flex justify-center mt-48"><Spinner label="Loading view" /></div>}>
                 {outlet || <div className="h-full" />}

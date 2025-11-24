@@ -230,7 +230,7 @@ async function calculateShieldedBalanceStub(): Promise<{ usdcShielded: string }>
 
     if (!accountWithVk?.viewingKey) {
       console.warn('[ShieldedBalance] No account with viewing key found')
-      return { usdcShielded: '0.000000' }
+      return { usdcShielded: '--' }
     }
 
     // Query shielded USDC balance using SDK

@@ -13,7 +13,6 @@ import type {
   UnshieldingBuildPayload,
   EncodedTxData,
   UnshieldingTransferProps,
-  // GasConfig,
   ChainSettings,
 } from '@/types/shielded'
 import { env } from '@/config/env'

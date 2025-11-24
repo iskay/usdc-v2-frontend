@@ -20,12 +20,11 @@ export async function initializeApplication(): Promise<BootstrapResult> {
     // Error is logged but bootstrap continues
   }
 
-  // Start periodic balance refresh loop (stubbed fetch logic for now).
+  // Start periodic balance refresh loop
   startBalancePolling({ intervalMs: 10_000, runImmediate: true })
 
   // TODO: Restore persisted wallet + settings state before reconnect attempts.
   // TODO: Attempt MetaMask reconnection, prefetch balances, etc.
-  // TODO: Initialize shielded sync prerequisites (MASP params, etc.).
 
   return { chains }
 }

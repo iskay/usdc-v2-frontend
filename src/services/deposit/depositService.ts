@@ -57,7 +57,6 @@ const DEPOSIT_STORAGE_KEY = 'deposit-transactions'
 
 /**
  * Build a deposit transaction.
- * Currently stubbed, will use real transaction builder once available.
  * 
  * @param params - Deposit parameters
  * @returns Built transaction
@@ -123,7 +122,6 @@ export async function signDepositTransaction(
 
 /**
  * Broadcast a deposit transaction.
- * Currently stubbed, will use real transaction submitter once available.
  * 
  * @param tx - The signed transaction to broadcast
  * @returns Transaction hash
@@ -150,7 +148,6 @@ export async function broadcastDepositTransaction(
 
 /**
  * Save deposit transaction to unified storage.
- * This replaces the legacy saveDepositMetadata function and uses the unified transaction storage.
  * 
  * @param tx - The transaction to save
  * @param details - Deposit transaction details

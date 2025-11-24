@@ -41,4 +41,3 @@ export const walletAtom = atom<WalletState>({
 export const walletErrorAtom = atom<string | undefined>(undefined)
 
 // Note: Balances are stored separately in balanceAtom.
-// TODO: Extend wallet state with chain metadata and keychain capabilities.

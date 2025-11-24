@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { Shield, BookOpen, HelpCircle, RefreshCw, Loader2 } from 'lucide-react'
+import { Shield, Eye, RefreshCw, Loader2, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { Switch } from '@/components/common/Switch'
 import { TxInProgressList } from '@/components/tx/TxInProgressList'
@@ -63,56 +63,74 @@ export function Dashboard() {
 
   return (
     <RequireNamadaConnection>
-      <div className="flex flex-col gap-6 p-24">
+      <div className="flex flex-col gap-6 p-24 max-w-[1024px] mx-auto w-full">
 
         {/* Balance Section */}
-        <div className="flex items-center justify-between rounded-lg border border-border bg-card p-4 shadow-sm">
-          <div className="flex flex-col items-start gap-3">
-            <div className="flex items-center gap-3">
-              <Shield className="h-6 w-6 text-yellow-600" />
-              <span className="text-md font-semibold">Transparent: </span>
-              <div>
-                <span className="text-2xl font-semibold">{transparentBalance} USDC</span>
+        <div className="flex flex-col md:flex-row items-center md:items-stretch gap-4">
+          {/* Transparent Balance Card */}
+          <div className="rounded-lg border border-yellow-200/50 bg-gradient-to-br from-yellow-50/50 to-yellow-100/30 dark:from-yellow-950/20 dark:to-yellow-900/10 dark:border-yellow-800/50 p-6 shadow-sm flex-1">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-yellow-500/20 dark:bg-yellow-600/20">
+                  <Eye className="h-5 w-5 text-yellow-600 dark:text-yellow-500" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Transparent</p>
+                  <p className="text-2xl font-bold mt-1">{transparentBalance} <span className="text-lg font-semibold text-muted-foreground">USDC</span></p>
+                </div>
               </div>
-              <Link to="/deposit">
-                <Button variant="ghost" className="gap-2">
-                  <span className="text-lg">+</span>
-                  <span>deposit</span>
-                </Button>
-              </Link>
             </div>
-            <div className="flex items-center gap-3">
-              <Shield className="h-6 w-6 text-red-600" />
-              <span className="text-md font-semibold">Shielded: </span>
-              <div className="flex items-center gap-2">
-                <span className="text-2xl font-semibold">{shieldedBalance} USDC</span>
-                {isShieldedBalanceLoading && (
-                  <Loader2 className="h-5 w-5 animate-spin text-blue-500" aria-label="Loading shielded balance" />
-                )}
+            <Link to="/deposit">
+              <Button variant="ghost" className="w-full gap-2 hover:bg-yellow-100/50 dark:hover:bg-yellow-900/20">
+                <span className="text-lg">+</span>
+                <span>Deposit</span>
+              </Button>
+            </Link>
+          </div>
+
+          {/* Shield Button - Centered between cards */}
+          <div className="flex items-center justify-center md:flex-col">
+            <Button
+              variant="ghost"
+              className="gap-2 hover:bg-muted/50 rounded-full p-3 h-auto"
+              onClick={() => setIsShieldingModalOpen(true)}
+              disabled={isShieldedBalanceLoading || parseFloat(transparentBalance || '0') <= 0}
+              title={parseFloat(transparentBalance || '0') <= 0 ? 'No transparent balance to shield' : 'Shield USDC'}
+            >
+              <ArrowRight className="h-5 w-5 md:rotate-0 rotate-90" />Shield
+            </Button>
+          </div>
+
+          {/* Shielded Balance Card */}
+          <div className="rounded-lg border border-red-200/50 bg-gradient-to-br from-red-50/50 to-red-100/30 dark:from-red-950/20 dark:to-red-900/10 dark:border-red-800/50 p-6 shadow-sm flex-1">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/20 dark:bg-red-600/20">
+                  <Shield className="h-5 w-5 text-red-600 dark:text-red-500" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Shielded</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-2xl font-bold">{shieldedBalance} <span className="text-lg font-semibold text-muted-foreground">USDC</span></p>
+                    {isShieldedBalanceLoading && (
+                      <Loader2 className="h-4 w-4 animate-spin text-red-500" aria-label="Loading shielded balance" />
+                    )}
+                  </div>
+                </div>
               </div>
+            </div>
+            {isReady && (
               <Button
                 variant="ghost"
-                className="gap-2"
-                onClick={() => setIsShieldingModalOpen(true)}
-                disabled={isShieldedBalanceLoading || parseFloat(transparentBalance || '0') <= 0}
-                title={parseFloat(transparentBalance || '0') <= 0 ? 'No transparent balance to shield' : 'Shield USDC'}
+                className="w-full gap-2 hover:bg-red-100/50 dark:hover:bg-red-900/20 h-12"
+                onClick={startSync}
+                disabled={shieldedState.isSyncing}
+                title="Sync shielded balance"
               >
-                <span className="text-lg">+</span>
-                <span>shield</span>
+                <RefreshCw className={cn('h-4 w-4', shieldedState.isSyncing && 'animate-spin')} />
+                <span>Sync</span>
               </Button>
-              {isReady && (
-                <Button
-                  variant="ghost"
-                  className="gap-2"
-                  onClick={startSync}
-                  disabled={shieldedState.isSyncing}
-                  title="Sync shielded balance"
-                >
-                  <RefreshCw className={cn('h-4 w-4', shieldedState.isSyncing && 'animate-spin')} />
-                  <span>sync</span>
-                </Button>
-              )}
-            </div>
+            )}
           </div>
         </div>
 
@@ -140,7 +158,7 @@ export function Dashboard() {
         {/* Action Buttons */}
         <div className="flex flex-col gap-3">
           <Link to="/send">
-            <Button variant="primary" className="w-full">
+            <Button variant="primary" className="w-full min-h-16">
               Pay
             </Button>
           </Link>
@@ -182,24 +200,6 @@ export function Dashboard() {
               reloadTrigger={historyReloadTrigger}
             />
           </div>
-        </div>
-
-        {/* Bottom Icons */}
-        <div className="flex items-center justify-end gap-4">
-          <button
-            type="button"
-            className="text-blue-500 hover:text-blue-600"
-            aria-label="Documentation"
-          >
-            <BookOpen className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            className="text-red-500 hover:text-red-600"
-            aria-label="Help"
-          >
-            <HelpCircle className="h-5 w-5" />
-          </button>
         </div>
 
         {/* Shielding Modal */}

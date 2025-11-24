@@ -75,13 +75,6 @@ export async function fetchEvmUsdcBalance(
       return '--'
     }
 
-    // console.info('[EvmBalanceService] Fetching USDC balance', {
-    //   chainKey,
-    //   address: `${address.slice(0, 6)}...${address.slice(-4)}`,
-    //   usdcAddress,
-    //   rpcUrl,
-    // })
-
     // Create provider and contract
     const provider = new ethers.JsonRpcProvider(rpcUrl)
     const contract = new ethers.Contract(
@@ -97,12 +90,6 @@ export async function fetchEvmUsdcBalance(
     const formatted = ethers.formatUnits(balance, 6)
     // Use toFixed(6) to ensure consistent formatting
     const formattedBalance = Number.parseFloat(formatted).toFixed(6)
-
-    // console.info('[EvmBalanceService] Fetched USDC balance', {
-    //   chainKey,
-    //   address: `${address.slice(0, 6)}...${address.slice(-4)}`,
-    //   balance: formattedBalance,
-    // })
 
     return formattedBalance
   } catch (error) {

@@ -513,7 +513,7 @@ export async function broadcastPaymentTransaction(
 
   // Use existing txSubmitter service
   const result = await submitNamadaTx(tx)
-  
+
   // Payment transactions return an object, other types return a string
   if (typeof result === 'object' && 'hash' in result) {
     return result

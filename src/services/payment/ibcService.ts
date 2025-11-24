@@ -13,8 +13,6 @@ import type {
   IbcBuildPayload,
   EncodedTxData,
   IbcTransferProps,
-  // GasConfig,
-  // ChainSettings,
 } from '@/types/shielded'
 import { env } from '@/config/env'
 import { logger } from '@/utils/logger'

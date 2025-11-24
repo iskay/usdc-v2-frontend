@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSetAtom } from 'jotai'
-import { DollarSign, Loader2 } from 'lucide-react'
+import { DollarSign, Loader2, Wallet, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/common/Button'
+import { BackToHome } from '@/components/common/BackToHome'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { DepositConfirmationModal } from '@/components/deposit/DepositConfirmationModal'
 import { useWallet } from '@/hooks/useWallet'
@@ -408,47 +409,68 @@ export function Deposit() {
 
   return (
     <RequireMetaMaskConnection message="Please connect your MetaMask wallet to deposit USDC. EVM deposits require a connected wallet.">
-      <div className="flex flex-col gap-6 p-24">
-        {/* Amount Display Section */}
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500">
-            <DollarSign className="h-5 w-5 text-white" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold">$</span>
-            <input
-              type="text"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="w-32 border-none bg-transparent p-0 text-3xl font-bold focus:outline-none focus:ring-0"
-              placeholder="0.00"
-              inputMode="decimal"
-              disabled={isSubmitting}
-            />
-            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              of ${availableBalance}
-              {isEvmBalanceLoading && (
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-              )}
-            </span>
+      <div className="flex flex-col gap-6 p-24 max-w-[1024px] mx-auto w-full">
+        <BackToHome />
+
+        <header className="space-y-2">
+          <h1 className="text-2xl font-semibold tracking-tight">Deposit USDC</h1>
+          <p className="text-muted-foreground">
+            Deposit USDC from an EVM chain to your Namada address.
+          </p>
+        </header>
+
+        {/* EVM Balance Card */}
+        <div className="rounded-lg border border-blue-200/50 bg-gradient-to-br from-blue-50/50 to-blue-100/30 dark:from-blue-950/20 dark:to-blue-900/10 dark:border-blue-800/50 p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/20 dark:bg-blue-600/20">
+                <Wallet className="h-5 w-5 text-blue-600 dark:text-blue-500" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Available Balance</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-xl font-bold">{availableBalance} <span className="text-base font-semibold text-muted-foreground">USDC</span></p>
+                  {isEvmBalanceLoading && (
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-500" aria-label="Loading balance" />
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Validation error for amount */}
-        {validation.amountError && (
-          <div className="text-sm text-destructive">{validation.amountError}</div>
-        )}
-
         <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
+          {/* Amount Input Section */}
+          <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+            <label className="block text-sm font-medium text-muted-foreground mb-3">Amount</label>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold text-muted-foreground">$</span>
+              <input
+                type="text"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="flex-1 border-none bg-transparent p-0 text-3xl font-bold focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30"
+                placeholder="0.00"
+                inputMode="decimal"
+                disabled={isSubmitting}
+              />
+              <span className="text-sm text-muted-foreground">USDC</span>
+            </div>
+            {/* Validation error for amount */}
+            {validation.amountError && (
+              <div className="text-sm text-destructive mt-2">{validation.amountError}</div>
+            )}
+          </div>
+
           {/* To Namada Address Section */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-baseline justify-between">
-              <label className="text-sm font-medium text-muted-foreground">To Namada address</label>
+          <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+            <div className="flex items-baseline justify-between mb-3">
+              <label className="text-sm font-medium text-muted-foreground">Recipient Address</label>
               <button
                 type="button"
                 onClick={handleAutoFill}
                 disabled={!walletState.namada.isConnected || isSubmitting}
-                className={`text-sm text-muted-foreground hover:text-foreground ${
+                className={`text-sm font-medium text-primary hover:text-primary/80 transition-colors ${
                   !walletState.namada.isConnected || isSubmitting
                     ? 'opacity-50 cursor-not-allowed'
                     : ''
@@ -461,43 +483,46 @@ export function Deposit() {
               type="text"
               value={toAddress}
               onChange={(e) => setToAddress(e.target.value)}
-              className="rounded-lg border border-input bg-background px-4 py-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-full rounded-lg border border-input bg-background px-4 py-3 text-sm font-mono shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring transition-colors"
               placeholder="tnam..."
               disabled={isSubmitting}
             />
             {/* Validation error for address */}
             {validation.addressError && (
-              <div className="text-sm text-destructive">{validation.addressError}</div>
+              <div className="text-sm text-destructive mt-2">{validation.addressError}</div>
             )}
           </div>
 
           {/* Chain Select Component */}
-          <ChainSelect
-            value={selectedChain}
-            onChange={setSelectedChain}
-            disabled={isSubmitting}
-            showEstimatedTime={true}
-            timeType="deposit"
-          />
+          <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+            <label className="block text-sm font-medium text-muted-foreground mb-3">Source Chain</label>
+            <ChainSelect
+              value={selectedChain}
+              onChange={setSelectedChain}
+              disabled={isSubmitting}
+              showEstimatedTime={true}
+              timeType="deposit"
+            />
+          </div>
 
           {/* Fee and Total Summary */}
-          <div className="space-y-2">
+          <div className="rounded-lg border border-border bg-card p-6 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Fee</span>
+              <span className="text-sm text-muted-foreground">Network Fee</span>
               {isEstimatingFee ? (
                 <div className="flex items-center gap-1.5">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">Estimating...</span>
                 </div>
               ) : feeInfo ? (
-                <span className="text-sm font-medium">{estimatedFee}</span>
+                <span className="text-sm font-semibold">{estimatedFee}</span>
               ) : (
                 <span className="text-sm text-muted-foreground">--</span>
               )}
             </div>
-            <div className="flex items-center justify-between border-t border-border pt-2">
-              <span className="text-sm font-medium">Total</span>
-              <span className="text-sm font-semibold">${total}</span>
+            <div className="flex items-center justify-between border-t border-border pt-3">
+              <span className="text-base font-semibold">Total</span>
+              <span className="text-xl font-bold">${total}</span>
             </div>
           </div>
 
@@ -505,10 +530,20 @@ export function Deposit() {
           <Button
             type="submit"
             variant="primary"
-            className="w-full py-6 text-lg"
+            className="w-full py-6 text-lg font-semibold gap-2"
             disabled={!validation.isValid || isSubmitting}
           >
-            {isSubmitting ? 'Processing...' : 'Deposit now'}
+            {isSubmitting ? (
+              <>
+                <Loader2 className="h-5 w-5 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <ArrowRight className="h-5 w-5" />
+                Deposit Now
+              </>
+            )}
           </Button>
         </form>
 

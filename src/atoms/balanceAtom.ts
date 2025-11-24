@@ -49,5 +49,4 @@ export const balanceSyncAtom = atom<BalanceSyncState>({
   lastShieldedSuccessAt: undefined,
 })
 
-// TODO: Implement balance fetching services that update these atoms.
 // TODO: Clear EVM balance when chain switches (chainKey changes).

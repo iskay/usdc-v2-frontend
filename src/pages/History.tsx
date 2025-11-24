@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import { AlertBox } from '@/components/common/AlertBox'
 import { Button } from '@/components/common/Button'
+import { BackToHome } from '@/components/common/BackToHome'
 import { TransactionCard } from '@/components/tx/TransactionCard'
 import { Spinner } from '@/components/common/Spinner'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
@@ -68,39 +70,52 @@ export function History() {
   })
 
   return (
-    <div className="space-y-6 p-24">
+    <div className="space-y-6 p-24 max-w-[1024px] mx-auto w-full">
+      <BackToHome />
+
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">Transaction History</h1>
         <p className="text-muted-foreground">
           Review deposits, payments, and transaction activity across your connected accounts.
         </p>
       </header>
+
+      {/* Filters Section */}
+      <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap gap-2">
+            {FILTERS.map((filter) => (
+              <Button
+                key={filter}
+                variant={activeFilter === filter ? 'primary' : 'ghost'}
+                onClick={() => setActiveFilter(filter)}
+                className="transition-all"
+              >
+                {filter === 'all' ? 'All Activity' : filter === 'deposits' ? 'Deposits' : 'Payments'}
+              </Button>
+            ))}
+          </div>
+          <Button variant="ghost" className="ml-auto" disabled>
+            Export History
+          </Button>
+        </div>
+      </div>
+
+      {/* Alert Box */}
       <AlertBox tone="info" title="Export roadmap">
         TODO: Add CSV export functionality for transaction history.
       </AlertBox>
-      <div className="flex flex-wrap gap-2">
-        {FILTERS.map((filter) => (
-          <Button
-            key={filter}
-            variant={activeFilter === filter ? 'primary' : 'ghost'}
-            onClick={() => setActiveFilter(filter)}
-          >
-            {filter === 'all' ? 'All Activity' : filter === 'deposits' ? 'Deposits' : 'Payments'}
-          </Button>
-        ))}
-        <Button variant="ghost" className="ml-auto" disabled>
-          Export History
-        </Button>
-      </div>
 
       {/* Transaction List */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Spinner label="Loading transaction history..." />
+        <div className="rounded-lg border border-border bg-card p-12 shadow-sm">
+          <div className="flex items-center justify-center">
+            <Spinner label="Loading transaction history..." />
+          </div>
         </div>
       ) : error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center dark:border-red-800 dark:bg-red-950">
-          <p className="text-sm font-medium text-red-900 dark:text-red-100">Error loading transactions</p>
+        <div className="rounded-lg border border-red-200/50 bg-red-50/50 dark:bg-red-950/20 dark:border-red-800/50 p-8 text-center shadow-sm">
+          <p className="text-base font-semibold text-red-900 dark:text-red-100">Error loading transactions</p>
           <p className="mt-2 text-sm text-red-800 dark:text-red-200">{error}</p>
           <Button
             variant="secondary"
@@ -117,8 +132,8 @@ export function History() {
           </Button>
         </div>
       ) : filteredTransactions.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card p-8 text-center">
-          <p className="text-sm text-muted-foreground">
+        <div className="rounded-lg border border-border bg-card p-12 text-center shadow-sm">
+          <p className="text-base text-muted-foreground">
             {activeFilter === 'all'
               ? 'No transactions found. Your transaction history will appear here.'
               : activeFilter === 'deposits'
@@ -127,20 +142,22 @@ export function History() {
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {filteredTransactions.map((tx) => (
-            <TransactionCard
-              key={tx.id}
-              transaction={tx}
-              variant="detailed"
-              showExpandButton={true}
-              onDelete={handleDelete}
-              isModalOpen={openModalTxId === tx.id}
-              onModalOpenChange={(open) => {
-                setOpenModalTxId(open ? tx.id : null)
-              }}
-            />
-          ))}
+        <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+          <div className="space-y-3">
+            {filteredTransactions.map((tx) => (
+              <TransactionCard
+                key={tx.id}
+                transaction={tx}
+                variant="detailed"
+                showExpandButton={true}
+                onDelete={handleDelete}
+                isModalOpen={openModalTxId === tx.id}
+                onModalOpenChange={(open) => {
+                  setOpenModalTxId(open ? tx.id : null)
+                }}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>
