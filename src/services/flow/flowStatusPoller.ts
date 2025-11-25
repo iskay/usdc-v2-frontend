@@ -1,3 +1,24 @@
+/**
+ * @deprecated LEGACY_BACKEND_CODE - This entire file is deprecated and will be removed.
+ * 
+ * **Migration Path:**
+ * - Frontend polling is now handled by `chainPollingService` and `FlowOrchestrator`
+ * - This poller queries backend status endpoint `/api/flow/${flowId}/status`
+ * - New frontend polling directly queries chain RPCs (EVM, Noble, Namada)
+ * - Set `VITE_ENABLE_FRONTEND_POLLING=true` to use frontend polling instead
+ * 
+ * **Removal Plan:**
+ * - This file can be removed once all transactions use frontend polling
+ * - Check `ENABLE_FRONTEND_POLLING` feature flag before removing
+ * - Remove `useTxTracker` hook's backend polling logic
+ * - Remove `getFlowStatus()` API calls
+ * - Remove `flowStatusCacheService` dependency
+ * 
+ * @see chainPollingService
+ * @see FlowOrchestrator
+ * @see ENABLE_FRONTEND_POLLING feature flag
+ */
+
 import type { FlowStatus } from '@/types/flow'
 import { getFlowStatus } from '@/services/api/backendClient'
 import { flowStatusCacheService } from './flowStatusCacheService'
@@ -17,6 +38,8 @@ export type TimeoutCallback = (flowId: string) => void
  * Polling service for flow status with exponential backoff.
  * Polls active flows frequently, backs off for completed/failed flows.
  * Supports per-flow timeout configuration.
+ * 
+ * @deprecated LEGACY_BACKEND_CODE - Use frontend polling via chainPollingService instead
  */
 class FlowStatusPoller {
   private intervals = new Map<string, NodeJS.Timeout>()

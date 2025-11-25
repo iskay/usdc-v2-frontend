@@ -1,6 +1,13 @@
 import type { ClientStageInput, ChainStage } from '@/types/flow'
 import { transactionStorageService } from '@/services/tx/transactionStorageService'
+import {
+  addChainStage,
+  migrateClientStagesToUnified,
+  updateChainStatus,
+} from '@/services/polling/pollingStateManager'
+import { isFrontendPollingEnabled } from '@/services/polling/chainPollingService'
 import { logger } from '@/utils/logger'
+import type { ChainKey } from '@/shared/flowStages'
 
 /**
  * Service for storing client-side stages locally.
@@ -51,14 +58,28 @@ class ClientStageReporter {
         },
       }
 
-      // Append to clientStages array
-      const existingStages = tx.clientStages || []
-      const updatedStages = [...existingStages, clientStage]
+      // Use unified storage if frontend polling is enabled
+      if (isFrontendPollingEnabled() && tx.pollingState) {
+        // Add stage to unified pollingState structure
+        addChainStage(tx.id, chain as ChainKey, clientStage)
+      } else {
+        // Fallback to clientStages for backward compatibility
+        // Also migrate existing clientStages if pollingState exists
+        if (tx.pollingState && tx.clientStages && tx.clientStages.length > 0) {
+          migrateClientStagesToUnified(tx.id)
+          // Re-add the new stage after migration
+          addChainStage(tx.id, chain as ChainKey, clientStage)
+        } else {
+          // Append to clientStages array (legacy path)
+          const existingStages = tx.clientStages || []
+          const updatedStages = [...existingStages, clientStage]
 
-      // Update transaction with new stage
-      transactionStorageService.updateTransaction(tx.id, {
-        clientStages: updatedStages,
-      })
+          // Update transaction with new stage
+          transactionStorageService.updateTransaction(tx.id, {
+            clientStages: updatedStages,
+          })
+        }
+      }
 
       logger.debug('[ClientStageReporter] Stored client stage locally', {
         txId: tx.id,
@@ -135,8 +156,68 @@ class ClientStageReporter {
   ): Promise<void> {
     try {
       const tx = this.findTransaction(identifier)
-      if (!tx || !tx.clientStages || tx.clientStages.length === 0) {
-        logger.warn('[ClientStageReporter] Cannot update stage, transaction or stages not found', {
+      if (!tx) {
+        logger.warn('[ClientStageReporter] Cannot update stage, transaction not found', {
+          identifier,
+          stage,
+          status,
+        })
+        return
+      }
+
+      // Migrate clientStages to unified structure if needed
+      if (tx.clientStages && tx.clientStages.length > 0 && tx.pollingState) {
+        migrateClientStagesToUnified(tx.id)
+        // Reload transaction after migration
+        const updatedTx = transactionStorageService.getTransaction(tx.id)
+        if (!updatedTx) {
+          return
+        }
+        tx = updatedTx
+      }
+
+      // Use unified storage if available
+      if (isFrontendPollingEnabled() && tx.pollingState) {
+        // Find and update stage in unified structure
+        const chainOrder: ChainKey[] = ['evm', 'noble', 'namada']
+        for (const chain of chainOrder) {
+          const chainStatus = tx.pollingState.chainStatus[chain]
+          const stages = chainStatus?.stages || []
+          const stageIndex = stages.findIndex((s) => s.stage === stage && s.source === 'client')
+
+          if (stageIndex >= 0) {
+            const updatedStages = [...stages]
+            updatedStages[stageIndex] = {
+              ...updatedStages[stageIndex],
+              status,
+            }
+
+            updateChainStatus(tx.id, chain, {
+              stages: updatedStages,
+            })
+
+            logger.debug('[ClientStageReporter] Updated client stage status in unified structure', {
+              txId: tx.id,
+              chain,
+              stage,
+              status,
+            })
+            return
+          }
+        }
+
+        logger.warn('[ClientStageReporter] Stage not found in unified structure', {
+          identifier,
+          stage,
+          availableStages: Object.values(tx.pollingState.chainStatus)
+            .flatMap((cs) => cs?.stages?.map((s) => s.stage) || []),
+        })
+        return
+      }
+
+      // Fallback to clientStages (legacy path)
+      if (!tx.clientStages || tx.clientStages.length === 0) {
+        logger.warn('[ClientStageReporter] Cannot update stage, no stages found', {
           identifier,
           stage,
           status,

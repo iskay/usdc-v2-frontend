@@ -9,6 +9,7 @@ import type { StoredTransaction } from './transactionStorageService'
 // import type { FlowStatus, ChainStage } from '@/types/flow'
 // import { logger } from '@/utils/logger'
 import { getChainOrder, getExpectedStages } from '@/shared/flowStages'
+import { getAllStagesFromTransaction } from '@/services/polling/stageUtils'
 
 /**
  * Get the effective status of a transaction.
@@ -282,63 +283,34 @@ export function getStageTimings(
 ): StageTiming[] {
   const timings: StageTiming[] = []
 
-  // First, add client-side stages if present
-  if (tx.clientStages && tx.clientStages.length > 0) {
-    for (const stage of tx.clientStages) {
-      if (stage.occurredAt) {
-        const occurredAt = new Date(stage.occurredAt).getTime()
-        // Extract chain from metadata (stored there for client stages)
-        const chain = (stage.metadata?.chain as 'evm' | 'noble' | 'namada') || 'evm'
-        timings.push({
-          stage: stage.stage,
-          chain,
-          status: stage.status || 'pending',
-          occurredAt,
-        })
-      }
-    }
-  }
+  // Use unified stage reading (handles pollingState, clientStages, and flowStatusSnapshot)
+  const allStages = getAllStagesFromTransaction(tx, flowType)
 
-  // Then, add backend stages from flowStatusSnapshot
-  if (tx.flowStatusSnapshot) {
-    const flowStatus = tx.flowStatusSnapshot
-    // Determine chain order based on flow type
-    const chainOrder = getChainOrder(flowType)
-
-    // Collect all stages with timestamps
-    for (const chain of chainOrder) {
-      const progress = flowStatus.chainProgress[chain]
-      if (!progress) continue
-
-      // Process regular stages
-      if (progress.stages && progress.stages.length > 0) {
-        for (const stage of progress.stages) {
-          if (stage.occurredAt) {
-            const occurredAt = new Date(stage.occurredAt).getTime()
-            timings.push({
-              stage: stage.stage,
-              chain,
-              status: stage.status || 'pending',
-              occurredAt,
-            })
+  // Convert to StageTiming format
+  for (const stage of allStages) {
+    if (stage.occurredAt) {
+      const occurredAt = new Date(stage.occurredAt).getTime()
+      // Extract chain from metadata or determine from stage
+      let chain: 'evm' | 'noble' | 'namada' = 'evm'
+      if (stage.metadata?.chain) {
+        chain = stage.metadata.chain as 'evm' | 'noble' | 'namada'
+      } else {
+        // Try to determine chain from stage name or flowStatusSnapshot
+        const chainOrder = getChainOrder(flowType)
+        for (const c of chainOrder) {
+          if (tx.flowStatusSnapshot?.chainProgress[c]?.stages?.some((s) => s.stage === stage.stage)) {
+            chain = c
+            break
           }
         }
       }
 
-      // Process gasless stages
-      if (progress.gaslessStages && progress.gaslessStages.length > 0) {
-        for (const stage of progress.gaslessStages) {
-          if (stage.occurredAt) {
-            const occurredAt = new Date(stage.occurredAt).getTime()
-            timings.push({
-              stage: stage.stage,
-              chain,
-              status: stage.status || 'pending',
-              occurredAt,
-            })
-          }
-        }
-      }
+      timings.push({
+        stage: stage.stage,
+        chain,
+        status: stage.status || 'pending',
+        occurredAt,
+      })
     }
   }
 
@@ -453,7 +425,19 @@ export function getProgressPercentage(
     return 0
   }
 
-  if (!tx.flowStatusSnapshot) {
+  // Check frontend polling state first (for frontend-managed flows)
+  if (tx.pollingState) {
+    if (tx.pollingState.flowStatus === 'success') {
+      return 100
+    }
+    if (tx.pollingState.flowStatus === 'tx_error' || tx.pollingState.flowStatus === 'polling_error') {
+      return 0
+    }
+    // For pending/cancelled flows, calculate progress from stages
+    // Fall through to stage-based calculation below
+  }
+
+  if (!tx.flowStatusSnapshot && !tx.pollingState) {
     // Estimate progress based on effective transaction status
     const effectiveStatus = getEffectiveStatus(tx)
     const statusProgress: Record<string, number> = {
@@ -468,7 +452,7 @@ export function getProgressPercentage(
     return statusProgress[effectiveStatus] || 0
   }
 
-  // Get all stage timings (includes client stages and backend stages)
+  // Get all stage timings (includes client stages, polling stages, and backend stages)
   const timings = getStageTimings(tx, flowType)
   
   // Get expected backend stages for the flow from progression model
@@ -491,22 +475,30 @@ export function getProgressPercentage(
     return 0
   }
   
-  // Count confirmed backend stages that match expected stages
-  // Exclude client stages (wallet_signing, wallet_broadcasting, wallet_broadcasted, gasless_*)
-  // as they are ephemeral and not part of the backend flow progression
+  // Count confirmed stages that match expected stages
+  // Exclude client-only stages (wallet_signing, wallet_broadcasting, wallet_broadcasted, gasless_*)
+  // as they are ephemeral and not part of the flow progression
+  // Note: Unified stage model includes both client and polling stages, but we only count
+  // stages that are part of the expected flow progression
   const confirmedExpectedStages = timings.filter((t) => {
-    // Skip client-only stages
+    // Skip client-only stages (these are tracked but don't count toward flow progress)
     const isClientStage = t.stage.startsWith('wallet_') || t.stage.startsWith('gasless_')
     if (isClientStage) {
       return false
     }
-    // Only count backend stages that are in the expected stages set and are confirmed
+    // Only count stages that are in the expected stages set and are confirmed
     return t.status === 'confirmed' && expectedStagesSet.has(t.stage)
   }).length
   
   // Calculate progress: confirmed expected stages / total expected stages
   // Cap at 99% until flow is actually completed (to avoid showing 100% prematurely)
   const progress = Math.round((confirmedExpectedStages / totalExpectedStages) * 100)
-  return Math.min(progress, 99) // Cap at 99% until flow status is 'completed'
+  
+  // Check if flow is actually completed (from pollingState or flowStatusSnapshot)
+  const isCompleted = 
+    tx.pollingState?.flowStatus === 'success' ||
+    tx.flowStatusSnapshot?.status === 'completed'
+  
+  return isCompleted ? 100 : Math.min(progress, 99)
 }
 

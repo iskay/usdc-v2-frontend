@@ -581,6 +581,14 @@ export async function savePaymentTransaction(
     isFrontendOnly: storedTx.isFrontendOnly,
   })
 
+  // Start frontend polling if enabled
+  // Extract destination chain from transaction or details
+  const destinationChain = storedTx.chain || details.chainName?.toLowerCase().replace(/\s+/g, '-') || 'sepolia'
+  if (storedTx.hash) {
+    const { startPaymentPolling } = await import('@/services/polling/chainPollingService')
+    await startPaymentPolling(storedTx.id, storedTx.hash, details, storedTx.blockHeight, destinationChain)
+  }
+
   return storedTx
 }
 
@@ -595,6 +603,23 @@ export async function savePaymentTransaction(
  * @param localId - Optional local flow ID (if flow was initiated earlier)
  * @returns Backend flowId if registration successful
  */
+/**
+ * @deprecated LEGACY_BACKEND_CODE - This function registers payments with the backend for backend-managed polling.
+ * 
+ * **Migration Path:**
+ * - Frontend polling is now handled by `chainPollingService.startPaymentPolling()` after saving the transaction
+ * - This function is kept for backward compatibility during migration
+ * - Set `VITE_ENABLE_FRONTEND_POLLING=true` to use frontend polling instead
+ * 
+ * **Removal Plan:**
+ * - This function can be removed once all transactions use frontend polling
+ * - Check `ENABLE_FRONTEND_POLLING` feature flag before removing
+ * - Remove `flowInitiationService.registerWithBackend()` call
+ * - Remove `flowId` dependency from transaction storage
+ * 
+ * @see chainPollingService.startPaymentPolling()
+ * @see ENABLE_FRONTEND_POLLING feature flag
+ */
 export async function postPaymentToBackend(
   txHash: string,
   details: PaymentTransactionDetails,
@@ -602,6 +627,16 @@ export async function postPaymentToBackend(
   blockHeight?: string,
   localId?: string,
 ): Promise<string | undefined> {
+  // Check if frontend polling is enabled (feature flag)
+  const isFrontendPollingEnabled = import.meta.env.VITE_ENABLE_FRONTEND_POLLING === 'true'
+  
+  if (isFrontendPollingEnabled) {
+    logger.info('[PaymentService] Frontend polling enabled, skipping backend registration', {
+      txHash: txHash.slice(0, 16) + '...',
+    })
+    return undefined
+  }
+
   logger.debug('[PaymentService] Posting payment to backend', {
     txHash: txHash.slice(0, 16) + '...',
     destinationChain: details.chainName,

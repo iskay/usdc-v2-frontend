@@ -55,6 +55,7 @@ export const DEPOSIT_STAGES = {
   // Noble Chain Stages
   NOBLE_POLLING: 'noble_polling',
   NOBLE_CCTP_MINTED: 'noble_cctp_minted',
+  NOBLE_FORWARDING_REGISTRATION: 'noble_forwarding_registration',
   NOBLE_IBC_FORWARDED: 'noble_ibc_forwarded',
   
   // Namada Chain Stages
@@ -135,6 +136,7 @@ export const DEPOSIT_PROGRESSION: Record<ChainKey, readonly DepositStage[]> = {
   noble: [
     DEPOSIT_STAGES.NOBLE_POLLING,
     DEPOSIT_STAGES.NOBLE_CCTP_MINTED,
+    DEPOSIT_STAGES.NOBLE_FORWARDING_REGISTRATION,
     DEPOSIT_STAGES.NOBLE_IBC_FORWARDED,
   ],
   namada: [

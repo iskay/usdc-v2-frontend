@@ -12,6 +12,9 @@ import {
   getCurrentStage,
   hasClientTimeout,
 } from '@/services/tx/transactionStatusService'
+import { ChainStatusTimeline } from '@/components/polling/ChainStatusTimeline'
+import { ResumePollingButton } from '@/components/polling/ResumePollingButton'
+import { CancelPollingButton } from '@/components/polling/CancelPollingButton'
 import { cn } from '@/lib/utils'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
@@ -599,6 +602,19 @@ export function TransactionDetailModal({
                   Time in this stage: {currentStage.durationLabel}
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Chain Status Timeline (for frontend polling) */}
+          {transaction.pollingState && (
+            <div className="space-y-4">
+              <ChainStatusTimeline transaction={transaction} />
+              
+              {/* Polling Control Buttons */}
+              <div className="flex items-center gap-2 pt-2">
+                <ResumePollingButton transaction={transaction} size="sm" />
+                <CancelPollingButton transaction={transaction} size="sm" />
+              </div>
             </div>
           )}
 

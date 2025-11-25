@@ -99,6 +99,24 @@ class FlowInitiationService {
   }
 
   /**
+   * @deprecated LEGACY_BACKEND_CODE - This function registers flows with the backend for backend-managed polling.
+   * 
+   * **Migration Path:**
+   * - Frontend polling no longer requires backend registration
+   * - Transactions are tracked directly via `chainPollingService` after saving
+   * - This function is kept for backward compatibility during migration
+   * - Set `VITE_ENABLE_FRONTEND_POLLING=true` to use frontend polling instead
+   * 
+   * **Removal Plan:**
+   * - This function can be removed once all transactions use frontend polling
+   * - Check `ENABLE_FRONTEND_POLLING` feature flag before removing
+   * - Remove `startFlowTracking()` API call
+   * - Remove `flowId` dependency from transaction storage
+   * 
+   * @see chainPollingService.startDepositPolling()
+   * @see chainPollingService.startPaymentPolling()
+   * @see ENABLE_FRONTEND_POLLING feature flag
+   * 
    * Register flow with backend after first transaction is broadcast.
    * Updates transaction with backend flowId.
    * 

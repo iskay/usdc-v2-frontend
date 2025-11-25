@@ -1,0 +1,229 @@
+/**
+ * Polling Status Utilities
+ * 
+ * Helper functions for extracting and formatting polling status information
+ * for display in UI components.
+ */
+
+import type { StoredTransaction } from '@/services/tx/transactionStorageService'
+import type { ChainKey, FlowType } from '@/shared/flowStages'
+import { getChainOrder } from '@/shared/flowStages'
+import type { ChainStatus, FlowPollingStatus } from './types'
+
+/**
+ * Get polling status for a transaction
+ */
+export function getPollingStatus(tx: StoredTransaction): FlowPollingStatus | null {
+  return tx.pollingState?.flowStatus || null
+}
+
+/**
+ * Get chain status for a specific chain
+ */
+export function getChainStatus(
+  tx: StoredTransaction,
+  chain: ChainKey,
+): ChainStatus | null {
+  return tx.pollingState?.chainStatus[chain] || null
+}
+
+/**
+ * Get all chain statuses for a transaction
+ */
+export function getAllChainStatuses(tx: StoredTransaction): Record<ChainKey, ChainStatus | null> {
+  const flowType: FlowType = tx.direction === 'deposit' ? 'deposit' : 'payment'
+  const chainOrder = getChainOrder(flowType)
+  const statuses: Record<ChainKey, ChainStatus | null> = {
+    evm: null,
+    noble: null,
+    namada: null,
+  }
+
+  for (const chain of chainOrder) {
+    statuses[chain] = getChainStatus(tx, chain)
+  }
+
+  return statuses
+}
+
+/**
+ * Get current chain being polled
+ */
+export function getCurrentPollingChain(tx: StoredTransaction): ChainKey | null {
+  return tx.pollingState?.currentChain || null
+}
+
+/**
+ * Get last updated timestamp for polling
+ */
+export function getPollingLastUpdated(tx: StoredTransaction): number | null {
+  return tx.pollingState?.lastUpdatedAt || null
+}
+
+/**
+ * Format chain status for display
+ */
+export function formatChainStatus(status: ChainStatus | null): string {
+  if (!status) {
+    return 'Not started'
+  }
+
+  switch (status.status) {
+    case 'success':
+      return 'Success'
+    case 'tx_error':
+      return `Error: ${status.errorMessage || 'Transaction failed'}`
+    case 'polling_error':
+      return `Polling Error: ${status.errorMessage || 'Unknown error'}`
+    case 'polling_timeout':
+      return `Timeout: ${status.errorMessage || 'Polling timed out'}`
+    case 'cancelled':
+      return 'Cancelled'
+    case 'pending':
+      return 'In progress'
+    default:
+      return 'Unknown'
+  }
+}
+
+/**
+ * Get chain status icon/emoji for display
+ */
+export function getChainStatusIcon(status: ChainStatus | null): string {
+  if (!status) {
+    return '⏳'
+  }
+
+  switch (status.status) {
+    case 'success':
+      return '✓'
+    case 'tx_error':
+    case 'polling_error':
+      return '✗'
+    case 'polling_timeout':
+      return '⏱'
+    case 'cancelled':
+      return '🚫'
+    case 'pending':
+      return '⏳'
+    default:
+      return '?'
+  }
+}
+
+/**
+ * Get chain status color class for display
+ */
+export function getChainStatusColor(status: ChainStatus | null): string {
+  if (!status) {
+    return 'text-muted-foreground'
+  }
+
+  switch (status.status) {
+    case 'success':
+      return 'text-green-600'
+    case 'tx_error':
+    case 'polling_error':
+      return 'text-red-600'
+    case 'polling_timeout':
+      return 'text-yellow-600'
+    case 'cancelled':
+      return 'text-gray-500'
+    case 'pending':
+      return 'text-blue-600'
+    default:
+      return 'text-muted-foreground'
+  }
+}
+
+/**
+ * Format error message with timestamp and error code if available
+ */
+export function formatChainErrorMessage(status: ChainStatus | null): string | null {
+  if (!status || !status.errorMessage) {
+    return null
+  }
+
+  const parts: string[] = [status.errorMessage]
+
+  // Add error category if available
+  if (status.errorCategory) {
+    parts.push(`[${status.errorCategory.toUpperCase()}]`)
+  }
+
+  // Add error code if available
+  if (status.errorCode) {
+    parts.push(`[Code: ${status.errorCode}]`)
+  }
+
+  // Add recovery suggestion if available
+  if (status.recoveryAction && status.recoveryAction !== 'none') {
+    const recoveryHint = getRecoveryHint(status.recoveryAction)
+    if (recoveryHint) {
+      parts.push(`(${recoveryHint})`)
+    }
+  }
+
+  // Add retry count if available
+  if (status.retryCount && status.retryCount > 0) {
+    parts.push(`(Retries: ${status.retryCount})`)
+  }
+
+  // Add timestamp if available
+  const timestamp = status.errorOccurredAt
+    ? new Date(status.errorOccurredAt).toLocaleTimeString()
+    : null
+
+  if (timestamp) {
+    parts.push(`at ${timestamp}`)
+  }
+
+  return parts.join(' ')
+}
+
+/**
+ * Get human-readable recovery hint
+ */
+function getRecoveryHint(recoveryAction: ChainStatus['recoveryAction']): string | null {
+  switch (recoveryAction) {
+    case 'retry':
+      return 'Try again'
+    case 'check_connection':
+      return 'Check your internet connection'
+    case 'check_rpc_status':
+      return 'RPC server may be down'
+    case 'contact_support':
+      return 'Contact support if issue persists'
+    default:
+      return null
+  }
+}
+
+/**
+ * Check if polling is active for a transaction
+ */
+export function isPollingActive(tx: StoredTransaction): boolean {
+  const status = getPollingStatus(tx)
+  return status === 'pending'
+}
+
+/**
+ * Check if polling can be resumed for a transaction
+ */
+export function canResumePolling(tx: StoredTransaction): boolean {
+  const status = getPollingStatus(tx)
+  return (
+    status === 'cancelled' ||
+    status === 'polling_error' ||
+    status === 'polling_timeout'
+  )
+}
+
+/**
+ * Check if polling can be cancelled for a transaction
+ */
+export function canCancelPolling(tx: StoredTransaction): boolean {
+  const status = getPollingStatus(tx)
+  return status === 'pending'
+}
+

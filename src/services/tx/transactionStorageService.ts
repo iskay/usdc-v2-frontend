@@ -15,6 +15,7 @@ import type { TrackedTransaction } from '@/types/tx'
 import type { FlowStatus, ChainStage } from '@/types/flow'
 import type { DepositTransactionDetails } from '@/services/deposit/depositService'
 import type { PaymentTransactionDetails } from '@/services/payment/paymentService'
+import type { PollingState } from '@/services/polling/types'
 import { saveItem, loadItem, deleteItem } from '@/services/storage/localStore'
 import { logger } from '@/utils/logger'
 
@@ -89,6 +90,12 @@ export interface StoredTransaction extends TrackedTransaction {
    * Examples: wallet_signing, wallet_broadcasting, gasless_quote_pending
    */
   clientStages?: ChainStage[]
+  /**
+   * Frontend polling state for resumable chain polling.
+   * Contains per-chain status, errors, timeouts, and polling parameters.
+   * Used for frontend-managed polling (replaces backend flowStatusSnapshot when enabled).
+   */
+  pollingState?: PollingState
   /** Last update timestamp (for sorting and filtering) */
   updatedAt: number
 }

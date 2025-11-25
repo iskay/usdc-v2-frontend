@@ -12,6 +12,8 @@ import { findChainByKey } from '@/config/chains'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 import { jotaiStore } from '@/store/jotaiStore'
 import { logger } from '@/utils/logger'
+import { pauseAllOrchestrators, resumeAllOrchestrators } from '@/services/polling/orchestratorRegistry'
+import { isFrontendPollingEnabled } from '@/services/polling/chainPollingService'
 
 /**
  * Get polling timeout for a transaction based on chain and direction.
@@ -71,6 +73,7 @@ export function useTxTracker(options?: { enablePolling?: boolean }) {
   const [txState, setTxState] = useAtom(txAtom)
   const hasStartedInitialPolling = useRef(false)
   const polledTransactionIds = useRef(new Set<string>())
+  const cleanupFunctionsRef = useRef<Array<() => void>>([])
 
   // Hydrate transaction state from localStorage on mount
   useEffect(() => {
@@ -846,7 +849,7 @@ export function useTxTracker(options?: { enablePolling?: boolean }) {
   )
 
   // Helper function to start polling for in-progress transactions
-  const startPollingForTransactions = useCallback(() => {
+  const startPollingForTransactions = useCallback(async () => {
     logger.debug('[useTxTracker] startPollingForTransactions called', {
       hasStartedInitialPolling: hasStartedInitialPolling.current,
       alreadyPolledTxIds: Array.from(polledTransactionIds.current),
@@ -860,32 +863,83 @@ export function useTxTracker(options?: { enablePolling?: boolean }) {
         status: tx.status,
         flowId: tx.flowId,
         isFrontendOnly: tx.isFrontendOnly,
+        hasPollingState: !!tx.pollingState,
         chain: tx.chain,
         direction: tx.direction,
       })),
     })
 
-    // Filter to only transactions with flowId (can't poll without flowId)
-    // AND that haven't been polled yet (prevent duplicate polling)
-    const pollableTxs = inProgressTxs.filter((tx) => {
+    // Check if frontend polling is enabled
+    const { isFrontendPollingEnabled, resumePolling } = await import('@/services/polling/chainPollingService')
+    const frontendPollingEnabled = isFrontendPollingEnabled()
+
+    // Separate transactions into frontend-managed and backend-managed
+    const frontendTxs: StoredTransaction[] = []
+    const backendTxs: StoredTransaction[] = []
+
+    for (const tx of inProgressTxs) {
+      const hasPollingState = !!tx.pollingState
       const hasFlowId = !!tx.flowId
       const isNotFrontendOnly = !tx.isFrontendOnly
       const hasBeenPolled = polledTransactionIds.current.has(tx.id)
-      const isPollable = hasFlowId && isNotFrontendOnly && !hasBeenPolled
 
-      if (!isPollable) {
+      // Frontend-managed: has pollingState and frontend polling is enabled
+      if (hasPollingState && frontendPollingEnabled && !hasBeenPolled) {
+        frontendTxs.push(tx)
+      }
+      // Backend-managed: has flowId but no pollingState (or frontend polling disabled)
+      else if (hasFlowId && isNotFrontendOnly && !hasBeenPolled && !hasPollingState) {
+        backendTxs.push(tx)
+      } else {
         logger.debug('[useTxTracker] Transaction filtered out', {
           txId: tx.id,
           status: tx.status,
           hasFlowId,
+          hasPollingState,
           isFrontendOnly: tx.isFrontendOnly,
           hasBeenPolled,
-          reason: !hasFlowId ? 'missing flowId' : !isNotFrontendOnly ? 'isFrontendOnly' : 'already polled',
+          frontendPollingEnabled,
+          reason: !hasFlowId && !hasPollingState
+            ? 'missing flowId and pollingState'
+            : !isNotFrontendOnly && !hasPollingState
+            ? 'isFrontendOnly and no pollingState'
+            : hasBeenPolled
+            ? 'already polled'
+            : hasPollingState && !frontendPollingEnabled
+            ? 'has pollingState but frontend polling disabled'
+            : 'unknown',
         })
       }
+    }
 
-      return isPollable
+    logger.info('[useTxTracker] Separated transactions by polling type', {
+      frontendCount: frontendTxs.length,
+      backendCount: backendTxs.length,
+      frontendPollingEnabled,
     })
+
+    // Resume frontend polling for transactions with pollingState
+    for (const tx of frontendTxs) {
+      logger.info('[useTxTracker] Resuming frontend polling for transaction', {
+        txId: tx.id,
+        flowType: tx.pollingState?.flowType,
+        flowStatus: tx.pollingState?.flowStatus,
+        latestCompletedStage: tx.pollingState?.latestCompletedStage,
+      })
+
+      try {
+        await resumePolling(tx.id)
+        polledTransactionIds.current.add(tx.id) // Mark as polled
+      } catch (error) {
+        logger.error('[useTxTracker] Failed to resume frontend polling', {
+          txId: tx.id,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
+    // Filter backend transactions (existing logic)
+    const pollableTxs = backendTxs
 
     logger.debug('[useTxTracker] Filtered to pollable transactions', {
       pollableCount: pollableTxs.length,
@@ -896,12 +950,15 @@ export function useTxTracker(options?: { enablePolling?: boolean }) {
       })),
     })
 
-    if (pollableTxs.length === 0) {
+    if (pollableTxs.length === 0 && frontendTxs.length === 0) {
       logger.info('[useTxTracker] No pollable transactions found after filtering', {
         inProgressCount: inProgressTxs.length,
+        frontendCount: frontendTxs.length,
+        backendCount: backendTxs.length,
         reasons: inProgressTxs.map((tx) => ({
           id: tx.id,
           hasFlowId: !!tx.flowId,
+          hasPollingState: !!tx.pollingState,
           isFrontendOnly: tx.isFrontendOnly,
         })),
       })
@@ -1020,6 +1077,8 @@ export function useTxTracker(options?: { enablePolling?: boolean }) {
   useEffect(() => {
     if (!enablePolling) {
       logger.debug('[useTxTracker] Polling disabled for this hook instance')
+      // Clear any existing cleanup functions
+      cleanupFunctionsRef.current = []
       return
     }
 
@@ -1028,20 +1087,50 @@ export function useTxTracker(options?: { enablePolling?: boolean }) {
       alreadyPolledTxIds: Array.from(polledTransactionIds.current),
     })
 
-    const cleanupFunctions = startPollingForTransactions()
+    // Reset cleanup functions for this effect run
+    cleanupFunctionsRef.current = []
 
-    logger.debug('[useTxTracker] Polling effect completed', {
-      cleanupFunctionsCount: cleanupFunctions.length,
-    })
+    // Handle async startPollingForTransactions
+    startPollingForTransactions()
+      .then((functions) => {
+        cleanupFunctionsRef.current = functions || []
+        logger.debug('[useTxTracker] Polling effect completed', {
+          cleanupFunctionsCount: cleanupFunctionsRef.current.length,
+        })
+      })
+      .catch((error) => {
+        logger.error('[useTxTracker] Failed to start polling', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+        cleanupFunctionsRef.current = []
+      })
 
     // Cleanup: stop all polling jobs on unmount or when enablePolling changes
     return () => {
+      const cleanupFunctions = cleanupFunctionsRef.current
+      if (!Array.isArray(cleanupFunctions)) {
+        logger.warn('[useTxTracker] Cleanup functions is not an array, skipping cleanup', {
+          type: typeof cleanupFunctions,
+        })
+        return
+      }
+
       logger.debug('[useTxTracker] Cleaning up polling jobs', {
         count: cleanupFunctions.length,
       })
       for (const cleanup of cleanupFunctions) {
-        cleanup()
+        if (typeof cleanup === 'function') {
+          try {
+            cleanup()
+          } catch (error) {
+            logger.error('[useTxTracker] Error during cleanup', {
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
+        }
       }
+      // Clear cleanup functions after running them
+      cleanupFunctionsRef.current = []
     }
   }, [enablePolling, startPollingForTransactions]) // Removed txState.history dependency to prevent re-runs on status updates
   // Note: This effect reads directly from storage to resume polling for in-progress transactions
@@ -1107,6 +1196,35 @@ export function useTxTracker(options?: { enablePolling?: boolean }) {
     },
     [],
   )
+
+  // Handle page visibility changes (pause/resume polling)
+  useEffect(() => {
+    if (!enablePolling || !isFrontendPollingEnabled()) {
+      return
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Tab became hidden - pause all polling
+        logger.info('[useTxTracker] Tab hidden, pausing polling')
+        pauseAllOrchestrators()
+      } else {
+        // Tab became visible - resume all polling
+        logger.info('[useTxTracker] Tab visible, resuming polling')
+        resumeAllOrchestrators().catch((error) => {
+          logger.error('[useTxTracker] Error resuming orchestrators', {
+            error: error instanceof Error ? error.message : String(error),
+          })
+        })
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [enablePolling])
 
   return {
     state: txState,

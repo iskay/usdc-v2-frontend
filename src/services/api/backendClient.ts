@@ -68,6 +68,23 @@ export async function fetchTxStatus(txId: string): Promise<TxStatusResponse | un
 }
 
 /**
+ * @deprecated LEGACY_BACKEND_CODE - This function registers flows with the backend for backend-managed polling.
+ * 
+ * **Migration Path:**
+ * - Frontend polling no longer requires backend registration
+ * - Transactions are tracked directly via `chainPollingService` after saving
+ * - This function is kept for backward compatibility during migration
+ * - Set `VITE_ENABLE_FRONTEND_POLLING=true` to use frontend polling instead
+ * 
+ * **Removal Plan:**
+ * - This function can be removed once all transactions use frontend polling
+ * - Check `ENABLE_FRONTEND_POLLING` feature flag before removing
+ * - Remove `/api/track/flow` endpoint calls
+ * 
+ * @see chainPollingService.startDepositPolling()
+ * @see chainPollingService.startPaymentPolling()
+ * @see ENABLE_FRONTEND_POLLING feature flag
+ * 
  * Start flow tracking on backend.
  * Registers a new flow for tracking after the first transaction is broadcast.
  */
@@ -86,6 +103,23 @@ export async function startFlowTracking(
 }
 
 /**
+ * @deprecated LEGACY_BACKEND_CODE - This function queries backend for flow status.
+ * 
+ * **Migration Path:**
+ * - Frontend polling now reads status directly from `pollingState` in transaction storage
+ * - This function is kept for backward compatibility during migration
+ * - Set `VITE_ENABLE_FRONTEND_POLLING=true` to use frontend polling instead
+ * 
+ * **Removal Plan:**
+ * - This function can be removed once all transactions use frontend polling
+ * - Check `ENABLE_FRONTEND_POLLING` feature flag before removing
+ * - Remove `/api/flow/${flowId}/status` endpoint calls
+ * - Remove `flowStatusPoller` usage
+ * 
+ * @see pollingStateManager.getPollingState()
+ * @see pollingStatusUtils.getPollingStatus()
+ * @see ENABLE_FRONTEND_POLLING feature flag
+ * 
  * Get flow status from backend.
  * Returns the current status and chain progress for a flow.
  */

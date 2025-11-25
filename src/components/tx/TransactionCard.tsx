@@ -12,6 +12,8 @@ import {
   hasClientTimeout,
   getTimeoutMessage,
 } from '@/services/tx/transactionStatusService'
+import { ResumePollingButton } from '@/components/polling/ResumePollingButton'
+import { CancelPollingButton } from '@/components/polling/CancelPollingButton'
 import { TransactionDetailModal } from './TransactionDetailModal'
 import { DeleteTransactionConfirmationDialog } from './DeleteTransactionConfirmationDialog'
 import { cn } from '@/lib/utils'
@@ -164,6 +166,13 @@ export const TransactionCard = memo(function TransactionCard({
 
           {/* Right side: Actions */}
           <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Polling control buttons */}
+            {transaction.pollingState && (
+              <>
+                <ResumePollingButton transaction={transaction} size="sm" variant="ghost" />
+                <CancelPollingButton transaction={transaction} size="sm" variant="ghost" />
+              </>
+            )}
             {onDelete && (
               <button
                 type="button"

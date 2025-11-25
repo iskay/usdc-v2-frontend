@@ -203,6 +203,12 @@ export async function saveDepositTransaction(
     isFrontendOnly: storedTx.isFrontendOnly,
   })
 
+  // Start frontend polling if enabled
+  if (storedTx.chain) {
+    const { startDepositPolling } = await import('@/services/polling/chainPollingService')
+    await startDepositPolling(storedTx.id, storedTx.hash || '', details, storedTx.chain)
+  }
+
   return storedTx
 }
 
@@ -249,16 +255,39 @@ export async function saveDepositMetadata(
  * @param tx - The full transaction object (for additional metadata)
  * @returns Backend flowId if registration successful, undefined if frontend-only mode or registration failed
  */
+/**
+ * @deprecated LEGACY_BACKEND_CODE - This function registers deposits with the backend for backend-managed polling.
+ * 
+ * **Migration Path:**
+ * - Frontend polling is now handled by `chainPollingService.startDepositPolling()` after saving the transaction
+ * - This function is kept for backward compatibility during migration
+ * - Set `VITE_ENABLE_FRONTEND_POLLING=true` to use frontend polling instead
+ * 
+ * **Removal Plan:**
+ * - This function can be removed once all transactions use frontend polling
+ * - Check `ENABLE_FRONTEND_POLLING` feature flag before removing
+ * - Remove `flowInitiationService.registerWithBackend()` call
+ * - Remove `flowId` dependency from transaction storage
+ * 
+ * @see chainPollingService.startDepositPolling()
+ * @see ENABLE_FRONTEND_POLLING feature flag
+ */
 export async function postDepositToBackend(
   txHash: string,
   details: DepositTransactionDetails,
   tx?: TrackedTransaction & { depositData?: { nobleForwardingAddress: string; destinationDomain: number; nonce?: string } },
 ): Promise<string | undefined> {
-  // Check if frontend-only mode is enabled
+  // Check if frontend polling is enabled (feature flag)
+  const isFrontendPollingEnabled = import.meta.env.VITE_ENABLE_FRONTEND_POLLING === 'true'
+  
+  // Check if frontend-only mode is enabled (legacy atom)
   const isFrontendOnly = jotaiStore.get(frontendOnlyModeAtom)
-  if (isFrontendOnly) {
-    logger.info('[DepositService] Frontend-only mode enabled, skipping backend registration', {
+  
+  if (isFrontendPollingEnabled || isFrontendOnly) {
+    logger.info('[DepositService] Frontend polling enabled, skipping backend registration', {
       txHash: txHash.slice(0, 16) + '...',
+      isFrontendPollingEnabled,
+      isFrontendOnly,
     })
     return undefined
   }
