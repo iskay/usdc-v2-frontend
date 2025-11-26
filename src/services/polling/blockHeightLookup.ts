@@ -143,7 +143,7 @@ async function getNamadaStartHeight(
 }
 
 /**
- * EVM-specific block height lookup (stubbed)
+ * EVM-specific block height lookup using binary search
  * 
  * @param chainKey - EVM chain key (e.g., 'sepolia')
  * @param creationTimestampMs - Creation timestamp in milliseconds
@@ -155,21 +155,36 @@ async function getEvmStartHeight(
   creationTimestampMs: number,
   blockWindowBackscan: number,
 ): Promise<number> {
-  // TODO: Implement EVM block height lookup from timestamp
-  // Options:
-  // 1. Use ethers.js provider.getBlock() with timestamp
-  // 2. Use chain-specific indexer/explorer API
-  // 3. Use block number estimation based on average block time
-  
-  logger.warn('[BlockHeightLookup] EVM start height lookup not yet implemented', {
-    chainKey,
-    creationTimestampMs,
-    blockWindowBackscan,
-  })
-
-  // For now, return 0 to indicate we should use latest block minus backscan
-  // This matches current behavior in evmPoller.ts
-  return 0
+  try {
+    const { getEvmProvider } = await import('@/services/evm/evmNetworkService')
+    const { binarySearchBlockByTimestamp } = await import('./evmBlockSearch')
+    
+    const provider = await getEvmProvider(chainKey)
+    const blockHeight = await binarySearchBlockByTimestamp(
+      provider,
+      creationTimestampMs,
+      chainKey,
+    )
+    const startHeight = Math.max(0, blockHeight - blockWindowBackscan)
+    
+    logger.info('[BlockHeightLookup] EVM start height from binary search', {
+      chainKey,
+      creationTimestampMs,
+      blockHeight,
+      startHeight,
+      blockWindowBackscan,
+    })
+    
+    return startHeight
+  } catch (error) {
+    logger.error('[BlockHeightLookup] EVM start height lookup failed', {
+      chainKey,
+      creationTimestampMs,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    // Fallback: return 0 to indicate use latest block minus backscan
+    return 0
+  }
 }
 
 /**
@@ -231,6 +246,9 @@ export async function getStartHeightFromTimestamp(
       return await getNobleStartHeight(creationTimestampMs, backscan)
     } else if (
       chainKey === 'sepolia' ||
+      chainKey === 'base-sepolia' ||
+      chainKey === 'avalanche-fuji' ||
+      chainKey === 'polygon-amoy' ||
       chainKey === 'ethereum' ||
       chainKey.startsWith('evm-') ||
       // Add other EVM chain detection logic as needed
@@ -266,7 +284,19 @@ export function supportsTimestampLookup(chainKey: string): boolean {
   if (chainKey === 'namada-testnet' || chainKey.startsWith('namada')) {
     return true // Namada is implemented
   }
-  // EVM and Noble are stubbed
+  // Check if it's an EVM chain
+  if (
+    chainKey === 'sepolia' ||
+    chainKey === 'base-sepolia' ||
+    chainKey === 'avalanche-fuji' ||
+    chainKey === 'polygon-amoy' ||
+    chainKey === 'ethereum' ||
+    chainKey.startsWith('evm-') ||
+    chainKey.match(/^0x[a-fA-F0-9]+$/) // Hex chain ID
+  ) {
+    return true // EVM is implemented
+  }
+  // Noble is stubbed
   return false
 }
 

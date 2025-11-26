@@ -49,10 +49,10 @@ export function getEffectiveStatus(tx: StoredTransaction): StoredTransaction['st
     const flowStatus = tx.pollingState.flowStatus
     if (flowStatus === 'success') {
       return 'finalized'
-    } else if (flowStatus === 'tx_error' || flowStatus === 'polling_error') {
-      return 'error'
-    } else if (flowStatus === 'polling_timeout') {
-      return 'undetermined'
+    } else if (flowStatus === 'tx_error') {
+      return 'error' // Transaction actually failed
+    } else if (flowStatus === 'polling_error' || flowStatus === 'polling_timeout') {
+      return 'undetermined' // Couldn't verify status - tx may have succeeded
     } else if (flowStatus === 'user_action_required' || flowStatus === 'cancelled') {
       // Still in progress, waiting for user action or can be resumed
       return 'broadcasted'

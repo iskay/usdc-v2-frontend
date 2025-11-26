@@ -288,10 +288,27 @@ async function pollForPaymentIbcSend(
 ): Promise<ChainPollResult> {
   const { namadaBlockHeight, namadaIbcTxHash } = params.metadata
 
-  if (namadaBlockHeight === undefined || !namadaIbcTxHash) {
+  // Early validation: ensure required prerequisites are present
+  // Don't fall through to deposit flow if missing
+  if (namadaBlockHeight === undefined || namadaBlockHeight === null) {
+    logger.error('[NamadaPoller] namadaBlockHeight is required for payment flow', {
+      flowId: params.flowId,
+      namadaBlockHeight,
+    })
     return createErrorResult(
       'polling_error',
-      'namadaBlockHeight and namadaIbcTxHash are required for payment flow',
+      'namadaBlockHeight is required for payment flow. The block height where the payment transaction was submitted must be provided.',
+    )
+  }
+
+  if (!namadaIbcTxHash) {
+    logger.error('[NamadaPoller] namadaIbcTxHash is required for payment flow', {
+      flowId: params.flowId,
+      namadaIbcTxHash,
+    })
+    return createErrorResult(
+      'polling_error',
+      'namadaIbcTxHash is required for payment flow. The inner transaction hash must be provided.',
     )
   }
 
@@ -477,16 +494,20 @@ export class NamadaPoller implements ChainPoller {
 
     const rpcClient = createTendermintRpcClient(rpcUrl)
 
-    // Determine flow type based on available metadata
-    // Payment flow: has namadaBlockHeight and namadaIbcTxHash
-    // Deposit flow: otherwise
-    const isPaymentFlow =
+    // Determine flow type: Priority 1 - explicit flowType from metadata
+    // Priority 2 - metadata-based detection (for backward compatibility)
+    const flowType = namadaParams.metadata.flowType as 'deposit' | 'payment' | undefined
+    const hasPaymentMetadata =
       namadaParams.metadata.namadaBlockHeight !== undefined &&
       Boolean(namadaParams.metadata.namadaIbcTxHash)
+    
+    const isPaymentFlow = flowType === 'payment' || 
+      (flowType !== 'deposit' && hasPaymentMetadata)
 
     if (isPaymentFlow) {
       logger.info('[NamadaPoller] Using payment flow (IBC send lookup)', {
         flowId: params.flowId,
+        flowType: flowType || 'detected from metadata',
         blockHeight: namadaParams.metadata.namadaBlockHeight,
         txHash: namadaParams.metadata.namadaIbcTxHash,
       })
@@ -494,6 +515,7 @@ export class NamadaPoller implements ChainPoller {
     } else {
       logger.info('[NamadaPoller] Using deposit flow (write_acknowledgement polling)', {
         flowId: params.flowId,
+        flowType: flowType || 'detected from metadata',
         startHeight: namadaParams.metadata.startHeight,
         packetSequence: namadaParams.metadata.packetSequence,
       })

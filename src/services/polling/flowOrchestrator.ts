@@ -890,7 +890,14 @@ export class FlowOrchestrator {
 
     // Get existing chain params or create new
     const chainKey = await this.getChainKey(chain)
-    const chainParams = state.chainParams[chain] || {
+    const initialChain = this.flowType === 'deposit' ? 'evm' : 'namada'
+    
+    // For the initial chain, preserve initial metadata from chainParams
+    // For other chains, create minimal metadata
+    const existingChainParams = state.chainParams[chain]
+    const initialChainMetadata = chain === initialChain ? state.chainParams[initialChain]?.metadata : undefined
+    
+    const chainParams = existingChainParams || {
       flowId: this.txId,
       chain,
       timeoutMs,
@@ -899,6 +906,8 @@ export class FlowOrchestrator {
       metadata: {
         chainKey,
         flowType: this.flowType,
+        // For initial chain, include initial metadata (namadaBlockHeight, namadaIbcTxHash, etc.)
+        ...(initialChainMetadata || {}),
       },
     }
 
@@ -907,7 +916,6 @@ export class FlowOrchestrator {
     
     // For the first chain in a flow, also check initial metadata from the initial chain
     // This ensures txHash and other initial metadata is preserved
-    const initialChain = this.flowType === 'deposit' ? 'evm' : 'namada'
     const initialMetadata = chain === initialChain ? state.chainParams[initialChain]?.metadata || {} : {}
     
     // For deposit flows, also include metadata from previous chains
@@ -958,15 +966,76 @@ export class FlowOrchestrator {
       }
     }
     
+    // For payment flows starting on Namada, preserve the chainKey from initial metadata
+    // before merging other metadata that might overwrite it
+    const preservedChainKey = 
+      (this.flowType === 'payment' && chain === 'namada' && initialMetadata.chainKey) 
+        ? initialMetadata.chainKey 
+        : undefined
+    
+    // Build metadata with proper precedence:
+    // 1. chainParams.metadata (base, includes initial metadata for initial chain)
+    // 2. existingMetadata (from previous polling attempts)
+    // 3. previousChainMetadata (from previous chains in flow)
+    // 4. initialMetadata (explicit initial metadata, highest priority for initial chain)
     let metadata = {
-      ...initialMetadata,
-      ...previousChainMetadata,
-      ...existingMetadata,
       ...chainParams.metadata,
+      ...existingMetadata,
+      ...previousChainMetadata,
+      ...initialMetadata, // Highest priority - preserves namadaBlockHeight, namadaIbcTxHash, etc.
+    }
+    
+    // Debug logging for payment flow Namada
+    if (this.flowType === 'payment' && chain === 'namada') {
+      logger.debug('[FlowOrchestrator] Building Namada payment params - metadata check', {
+        txId: this.txId,
+        chain,
+        hasInitialMetadata: !!initialMetadata && Object.keys(initialMetadata).length > 0,
+        initialMetadataKeys: Object.keys(initialMetadata),
+        hasNamadaBlockHeight: 'namadaBlockHeight' in initialMetadata,
+        hasNamadaIbcTxHash: 'namadaIbcTxHash' in initialMetadata,
+        namadaBlockHeight: initialMetadata.namadaBlockHeight,
+        namadaIbcTxHash: initialMetadata.namadaIbcTxHash,
+        chainParamsMetadataKeys: Object.keys(chainParams.metadata),
+        finalMetadataKeys: Object.keys(metadata),
+        finalHasNamadaBlockHeight: 'namadaBlockHeight' in metadata,
+        finalHasNamadaIbcTxHash: 'namadaIbcTxHash' in metadata,
+        finalNamadaBlockHeight: metadata.namadaBlockHeight,
+        finalNamadaIbcTxHash: metadata.namadaIbcTxHash,
+      })
+    }
+    
+    // Restore preserved chainKey if it was overwritten
+    if (preservedChainKey) {
+      metadata.chainKey = preservedChainKey
+      logger.debug('[FlowOrchestrator] Preserved chain key from initial metadata for Namada payment flow', {
+        txId: this.txId,
+        chain,
+        chainKey: preservedChainKey,
+      })
     }
     
     // Ensure chainKey and flowType are set (may have been overridden)
-    metadata.chainKey = await this.getChainKey(chain)
+    if (!metadata.chainKey) {
+      metadata.chainKey = await this.getChainKey(chain)
+    } else if (this.flowType === 'payment' && chain === 'namada') {
+      // For Namada in payment flows, verify the chainKey is correct
+      // It should be 'namada-testnet', not an EVM chain like 'avalanche-fuji'
+      if (metadata.chainKey !== 'namada-testnet' && 
+          (metadata.chainKey.includes('evm') || metadata.chainKey === 'avalanche-fuji' || metadata.chainKey.includes('fuji'))) {
+        const correctChainKey = await this.getChainKey(chain)
+        logger.warn('[FlowOrchestrator] Correcting incorrect chain key for Namada in payment flow', {
+          txId: this.txId,
+          chain,
+          incorrectChainKey: metadata.chainKey,
+          correctChainKey,
+        })
+        metadata.chainKey = correctChainKey
+      }
+    } else {
+      // For other chains/flows, ensure chainKey is set correctly
+      metadata.chainKey = await this.getChainKey(chain)
+    }
     metadata.flowType = this.flowType
     
     // Fallback: For EVM deposit flows, get txHash from transaction if missing
@@ -978,6 +1047,33 @@ export class FlowOrchestrator {
           txHash: tx.hash,
         })
         metadata.txHash = tx.hash
+      }
+    }
+
+    // Fallback: For Namada payment flows, get namadaBlockHeight and namadaIbcTxHash from transaction if missing
+    if (chain === 'namada' && this.flowType === 'payment') {
+      const namadaParams = metadata as NamadaPollParams['metadata']
+      const tx = transactionStorageService.getTransaction(this.txId)
+      
+      if (!namadaParams.namadaIbcTxHash && tx?.hash) {
+        logger.debug('[FlowOrchestrator] Using namadaIbcTxHash from transaction as fallback', {
+          txId: this.txId,
+          txHash: tx.hash,
+        })
+        namadaParams.namadaIbcTxHash = tx.hash
+        metadata.namadaIbcTxHash = tx.hash
+      }
+      
+      if (!namadaParams.namadaBlockHeight && tx?.blockHeight) {
+        const blockHeight = Number.parseInt(tx.blockHeight, 10)
+        if (!isNaN(blockHeight)) {
+          logger.debug('[FlowOrchestrator] Using namadaBlockHeight from transaction as fallback', {
+            txId: this.txId,
+            blockHeight,
+          })
+          namadaParams.namadaBlockHeight = blockHeight
+          metadata.namadaBlockHeight = blockHeight
+        }
       }
     }
 
@@ -1124,6 +1220,119 @@ export class FlowOrchestrator {
       }
     }
 
+    // For EVM payment flows, ensure required metadata is present
+    if (chain === 'evm' && this.flowType === 'payment') {
+      const evmParams = metadata as EvmPollParams['metadata']
+      const tx = transactionStorageService.getTransaction(this.txId)
+      const chainKey = evmParams.chainKey as string | undefined
+      
+      // Load usdcAddress from chain config if missing
+      if (!evmParams.usdcAddress && chainKey) {
+        try {
+          const { fetchEvmChainsConfig } = await import('@/services/config/chainConfigService')
+          const { findChainByKey } = await import('@/config/chains')
+          const evmConfig = await fetchEvmChainsConfig()
+          const evmChain = findChainByKey(evmConfig, chainKey)
+          
+          if (evmChain?.contracts?.usdc) {
+            logger.debug('[FlowOrchestrator] Loading usdcAddress from chain config', {
+              txId: this.txId,
+              chainKey,
+              usdcAddress: evmChain.contracts.usdc,
+            })
+            evmParams.usdcAddress = evmChain.contracts.usdc
+            metadata.usdcAddress = evmChain.contracts.usdc
+          }
+        } catch (error) {
+          logger.warn('[FlowOrchestrator] Failed to load usdcAddress from chain config', {
+            txId: this.txId,
+            chainKey,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+      
+      // Load messageTransmitterAddress from chain config if missing
+      if (!evmParams.messageTransmitterAddress && chainKey) {
+        try {
+          const { fetchEvmChainsConfig } = await import('@/services/config/chainConfigService')
+          const { findChainByKey } = await import('@/config/chains')
+          const evmConfig = await fetchEvmChainsConfig()
+          const evmChain = findChainByKey(evmConfig, chainKey)
+          
+          if (evmChain?.contracts?.messageTransmitter) {
+            logger.debug('[FlowOrchestrator] Loading messageTransmitterAddress from chain config', {
+              txId: this.txId,
+              chainKey,
+              messageTransmitterAddress: evmChain.contracts.messageTransmitter,
+            })
+            evmParams.messageTransmitterAddress = evmChain.contracts.messageTransmitter
+            metadata.messageTransmitterAddress = evmChain.contracts.messageTransmitter
+          }
+        } catch (error) {
+          logger.warn('[FlowOrchestrator] Failed to load messageTransmitterAddress from chain config', {
+            txId: this.txId,
+            chainKey,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+      
+      // Load recipient from payment details if missing
+      if (!evmParams.recipient) {
+        const recipient = tx?.paymentDetails?.destinationAddress
+        if (recipient) {
+          logger.debug('[FlowOrchestrator] Loading recipient from payment details', {
+            txId: this.txId,
+            recipient,
+          })
+          evmParams.recipient = recipient
+          metadata.recipient = recipient
+        }
+      }
+      
+      // Load amountBaseUnits from payment details if missing
+      if (!evmParams.amountBaseUnits && tx?.paymentDetails?.amount) {
+        const amountInBaseUnits = Math.round(parseFloat(tx.paymentDetails.amount) * 1_000_000).toString()
+        logger.debug('[FlowOrchestrator] Loading amountBaseUnits from payment details', {
+          txId: this.txId,
+          amountBaseUnits: amountInBaseUnits,
+        })
+        evmParams.amountBaseUnits = amountInBaseUnits
+        metadata.amountBaseUnits = amountInBaseUnits
+      }
+      
+      // Calculate startBlock for EVM payment flows if missing
+      // Use timestamp-based calculation for resumable polling
+      if (!evmParams.startBlock && chainKey && tx?.createdAt) {
+        try {
+          const { getStartHeightFromTimestamp } = await import('./blockHeightLookup')
+          // createdAt is already in milliseconds (number)
+          const creationTimestampMs = tx.createdAt
+          const startBlock = await getStartHeightFromTimestamp(chainKey, creationTimestampMs)
+          
+          logger.debug('[FlowOrchestrator] Calculated EVM startBlock from timestamp', {
+            txId: this.txId,
+            chainKey,
+            creationTimestampMs,
+            createdAt: tx.createdAt,
+            startBlock,
+          })
+          
+          evmParams.startBlock = startBlock
+          metadata.startBlock = startBlock
+        } catch (error) {
+          logger.warn('[FlowOrchestrator] Failed to calculate EVM startBlock from timestamp, will use default', {
+            txId: this.txId,
+            chainKey,
+            createdAt: tx.createdAt,
+            error: error instanceof Error ? error.message : String(error),
+          })
+          // If calculation fails, let the poller use its default (latestBlock - 1)
+        }
+      }
+    }
+
     return {
       ...chainParams,
       flowId: this.txId,
@@ -1144,7 +1353,13 @@ export class FlowOrchestrator {
     
     // Try to get from chain params metadata
     if (state?.chainParams[chain]?.metadata?.chainKey) {
-      return state.chainParams[chain].metadata.chainKey as string
+      const chainKey = state.chainParams[chain].metadata.chainKey as string
+      logger.debug('[FlowOrchestrator] Using chain key from chainParams', {
+        txId: this.txId,
+        chain,
+        chainKey,
+      })
+      return chainKey
     }
     
     // Try to get from initial chain params
@@ -1153,7 +1368,14 @@ export class FlowOrchestrator {
       // For deposit: EVM chain key, Noble/Namada use defaults
       // For payment: Namada chain key, Noble/EVM use defaults
       if (chain === initialChain) {
-        return state.chainParams[initialChain].metadata.chainKey as string
+        const chainKey = state.chainParams[initialChain].metadata.chainKey as string
+        logger.debug('[FlowOrchestrator] Using chain key from initial chain params', {
+          txId: this.txId,
+          chain,
+          initialChain,
+          chainKey,
+        })
+        return chainKey
       }
     }
     
@@ -1184,24 +1406,36 @@ export class FlowOrchestrator {
       }
       
       // For payment flows, check paymentDetails for chain information
-      if (this.flowType === 'payment' && chain === 'namada') {
-        // Check if transaction.chain is the actual chain key
-        if (tx.chain && tx.chain !== 'evm' && tx.chain !== 'noble' && tx.chain !== 'namada') {
-          logger.debug('[FlowOrchestrator] Using chain key from transaction.chain', {
-            txId: this.txId,
-            chain: tx.chain,
-          })
-          return tx.chain
-        }
-        // Fallback to paymentDetails.chainName
-        if (tx.paymentDetails?.chainName) {
-          const chainKey = tx.paymentDetails.chainName.toLowerCase().replace(/\s+/g, '-')
-          logger.debug('[FlowOrchestrator] Using chain key from paymentDetails.chainName', {
-            txId: this.txId,
-            chainName: tx.paymentDetails.chainName,
-            chainKey,
-          })
-          return chainKey
+      if (this.flowType === 'payment') {
+        if (chain === 'namada') {
+          // For Namada in payment flows, tx.chain might be the chainId (e.g., "housefire-alpaca.cc0d3e0c033be")
+          // and paymentDetails.chainName might be the destination EVM chain (e.g., "Avalanche Fuji")
+          // So we should NOT use either - use chainParams or default instead
+          // Skip all tx-based checks for Namada in payment flows
+        } else if (chain === 'evm') {
+          // For EVM in payment flows, check initial metadata for evmChainKey
+          const initialChain = 'namada'
+          if (state?.chainParams[initialChain]?.metadata?.evmChainKey) {
+            const chainKey = state.chainParams[initialChain].metadata.evmChainKey as string
+            logger.debug('[FlowOrchestrator] Using EVM chain key from initial metadata', {
+              txId: this.txId,
+              chain,
+              chainKey,
+            })
+            return chainKey
+          }
+          
+          // Fallback to paymentDetails.chainName
+          if (tx.paymentDetails?.chainName) {
+            // Convert chain name to chain key (e.g., "Avalanche Fuji" -> "avalanche-fuji")
+            const chainKey = tx.paymentDetails.chainName.toLowerCase().replace(/\s+/g, '-')
+            logger.debug('[FlowOrchestrator] Using chain key from paymentDetails.chainName', {
+              txId: this.txId,
+              chainName: tx.paymentDetails.chainName,
+              chainKey,
+            })
+            return chainKey
+          }
         }
       }
     }
@@ -1649,10 +1883,12 @@ export class FlowOrchestrator {
       let topLevelStatus: StoredTransaction['status']
       if (overallErrorType === 'user_action_required') {
         topLevelStatus = 'broadcasted' // Still in progress, waiting for user
-      } else if (overallErrorType === 'tx_error' || overallErrorType === 'polling_error') {
-        topLevelStatus = 'error'
+      } else if (overallErrorType === 'tx_error') {
+        topLevelStatus = 'error' // Transaction actually failed
+      } else if (overallErrorType === 'polling_error' || overallErrorType === 'polling_timeout') {
+        topLevelStatus = 'undetermined' // Couldn't verify status - tx may have succeeded
       } else {
-        topLevelStatus = 'undetermined' // polling_timeout
+        topLevelStatus = 'undetermined'
       }
       
       // Update top-level transaction status to reflect polling state
@@ -1665,6 +1901,94 @@ export class FlowOrchestrator {
       }
       
       return
+    }
+
+    // Check if current chain has errored and blocks the flow from continuing
+    // This handles cases where the first chain (or a blocking chain) errors before other chains start
+    const currentChain = state.currentChain
+    let blockingChain: ChainKey | null = null
+    let blockingChainStatus: ChainStatus | null = null
+    
+    if (currentChain) {
+      const currentChainStatus = state.chainStatus[currentChain]
+      if (
+        currentChainStatus &&
+        (currentChainStatus.status === 'tx_error' ||
+          currentChainStatus.status === 'polling_error' ||
+          currentChainStatus.status === 'polling_timeout' ||
+          currentChainStatus.status === 'user_action_required')
+      ) {
+        blockingChain = currentChain
+        blockingChainStatus = currentChainStatus
+      }
+    } else {
+      // If currentChain is not set, check the first chain in the flow that has errored
+      for (const chain of chainOrder) {
+        const chainStatus = state.chainStatus[chain]
+        if (
+          chainStatus &&
+          (chainStatus.status === 'tx_error' ||
+            chainStatus.status === 'polling_error' ||
+            chainStatus.status === 'polling_timeout' ||
+            chainStatus.status === 'user_action_required')
+        ) {
+          blockingChain = chain
+          blockingChainStatus = chainStatus
+          break // Use first errored chain
+        }
+      }
+    }
+    
+    if (blockingChain && blockingChainStatus) {
+      // Check if this chain blocks the flow (next chain requires prerequisites)
+      const blockingChainIndex = chainOrder.indexOf(blockingChain)
+      if (blockingChainIndex >= 0 && blockingChainIndex < chainOrder.length - 1) {
+        const nextChain = chainOrder[blockingChainIndex + 1]
+        const requiresPrerequisites = await this.nextChainRequiresPrerequisites(blockingChain, nextChain)
+        
+        if (requiresPrerequisites) {
+          // Blocking chain errored and blocks the flow - update flowStatus immediately
+          logger.warn('[FlowOrchestrator] Blocking chain errored and blocks flow - updating flowStatus', {
+            txId: this.txId,
+            failedChain: blockingChain,
+            nextChain,
+            chainStatus: blockingChainStatus.status,
+          })
+          
+          const errorType = blockingChainStatus.status as 'user_action_required' | 'tx_error' | 'polling_error' | 'polling_timeout'
+          updatePollingState(this.txId, {
+            flowStatus: errorType,
+            currentChain: undefined,
+            error: {
+              type: errorType,
+              message: blockingChainStatus.errorMessage || `Chain ${blockingChain} encountered an error`,
+              occurredAt: blockingChainStatus.errorOccurredAt || blockingChainStatus.timeoutOccurredAt || Date.now(),
+            },
+          })
+          
+          // Map polling error types to top-level status
+          let topLevelStatus: StoredTransaction['status']
+          if (errorType === 'user_action_required') {
+            topLevelStatus = 'broadcasted' // Still in progress, waiting for user
+          } else if (errorType === 'tx_error') {
+            topLevelStatus = 'error' // Transaction actually failed
+          } else if (errorType === 'polling_error' || errorType === 'polling_timeout') {
+            topLevelStatus = 'undetermined' // Couldn't verify status - tx may have succeeded
+          } else {
+            topLevelStatus = 'undetermined'
+          }
+          
+          // Update top-level transaction status to reflect polling state
+          const tx = transactionStorageService.getTransaction(this.txId)
+          if (tx && !tx.flowStatusSnapshot) {
+            transactionStorageService.updateTransaction(this.txId, {
+              status: topLevelStatus,
+            })
+          }
+          
+          return
+        }
+      }
     }
 
     // Check if flow is stuck (all chains have status but none are pending or success)
@@ -1702,17 +2026,17 @@ export class FlowOrchestrator {
         updatePollingState(this.txId, {
           flowStatus: 'tx_error',
         })
-        topLevelStatus = 'error'
+        topLevelStatus = 'error' // Transaction actually failed
       } else if (hasPollingError) {
         updatePollingState(this.txId, {
           flowStatus: 'polling_error',
         })
-        topLevelStatus = 'error'
+        topLevelStatus = 'undetermined' // Couldn't verify status - tx may have succeeded
       } else if (hasTimeout) {
         updatePollingState(this.txId, {
           flowStatus: 'polling_timeout',
         })
-        topLevelStatus = 'undetermined'
+        topLevelStatus = 'undetermined' // Couldn't verify status - tx may have succeeded
       }
       
       // Update top-level transaction status to reflect polling state

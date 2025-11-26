@@ -625,6 +625,14 @@ async function pollForPaymentWithPacketSequence(
               txHash: tx.hash,
             })
 
+            // Update NOBLE_POLLING stage to confirmed
+            stages[0] = {
+              stage: PAYMENT_STAGES.NOBLE_POLLING,
+              status: 'confirmed',
+              source: 'poller',
+              occurredAt: stages[0]?.occurredAt || new Date().toISOString(), // Preserve original timestamp
+            }
+
             stages.push({
               stage: PAYMENT_STAGES.NOBLE_RECEIVED,
               status: 'confirmed',

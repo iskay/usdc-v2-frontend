@@ -72,6 +72,7 @@ export async function startDepositPolling(
       amountBaseUnits: amountInBaseUnits,
       usdcAddress: tx.depositData?.usdcAddress,
       messageTransmitterAddress: tx.depositData?.messageTransmitterAddress,
+      flowType: 'deposit', // Explicitly set flow type
       // Namada-specific metadata (for later chain polling)
       namadaReceiver: details.destinationAddress,
       expectedAmountUusdc,
@@ -150,15 +151,33 @@ export async function startPaymentPolling(
       return
     }
 
+    // Validate blockHeight is present (required for payment flow)
+    // Try to get it from parameter, transaction, or throw error
+    const finalBlockHeight = blockHeight || tx.blockHeight
+    if (!finalBlockHeight) {
+      logger.error('[ChainPollingService] blockHeight is required for payment flow polling', {
+        txId,
+        txHash,
+        hasBlockHeightParam: !!blockHeight,
+        hasTxBlockHeight: !!tx.blockHeight,
+      })
+      throw new Error(
+        'blockHeight is required for payment flow polling. The block height where the payment transaction was submitted must be provided.',
+      )
+    }
+
     // Build initial metadata for Namada chain
     const amountInBaseUnits = Math.round(parseFloat(details.amount) * 1_000_000).toString()
 
     const initialMetadata: Record<string, unknown> = {
       chainKey: 'namada-testnet', // Payment starts on Namada
       namadaIbcTxHash: txHash, // Inner tx hash
-      namadaBlockHeight: blockHeight ? Number.parseInt(blockHeight, 10) : undefined,
+      namadaBlockHeight: Number.parseInt(finalBlockHeight, 10),
       recipient: details.destinationAddress,
-      amountBaseUnits,
+      amountBaseUnits: amountInBaseUnits,
+      flowType: 'payment', // Explicitly set flow type
+      // Store EVM chain key for later use (destination chain)
+      evmChainKey: chainKey, // Destination EVM chain key
       // For payment flow, Namada poller will extract packet_sequence
       // and pass it to Noble poller, which will extract CCTP nonce
       // and pass it to EVM poller

@@ -366,6 +366,14 @@ async function pollUsdcMintByNonce(
             nonce: parsed.nonce,
           })
 
+          // Update EVM_MINT_POLLING stage to confirmed
+          stages[0] = {
+            stage: PAYMENT_STAGES.EVM_MINT_POLLING,
+            status: 'confirmed',
+            source: 'poller',
+            occurredAt: stages[0]?.occurredAt || new Date().toISOString(), // Preserve original timestamp
+          }
+
           stages.push({
             stage: PAYMENT_STAGES.EVM_MINT_CONFIRMED,
             status: 'confirmed',
@@ -533,6 +541,14 @@ async function pollUsdcMintByTransfer(
               txHash: log.transactionHash,
               blockNumber: blockNumber.toString(),
             })
+
+            // Update EVM_MINT_POLLING stage to confirmed
+            stages[0] = {
+              stage: PAYMENT_STAGES.EVM_MINT_POLLING,
+              status: 'confirmed',
+              source: 'poller',
+              occurredAt: stages[0]?.occurredAt || new Date().toISOString(), // Preserve original timestamp
+            }
 
             stages.push({
               stage: PAYMENT_STAGES.EVM_MINT_CONFIRMED,
