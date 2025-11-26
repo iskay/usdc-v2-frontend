@@ -30,7 +30,7 @@ export function mapFlowStatusToUIStages(
   tx?: StoredTransaction,
 ): UIStage[] {
   const stages: UIStage[] = []
-
+  
   // If transaction is provided, use unified stage reading
   if (tx) {
     const allStages = getAllStagesFromTransaction(tx, flowType)
@@ -87,42 +87,42 @@ export function mapFlowStatusToUIStages(
       })
     }
   }
-
+  
   // Then, add backend stages from flowStatusSnapshot
   if (flowStatus) {
-    // Determine chain order based on flow type
-    const chainOrder = getChainOrder(flowType)
+  // Determine chain order based on flow type
+  const chainOrder = getChainOrder(flowType)
 
-    // Process each chain in order
-    for (const chain of chainOrder) {
-      const progress = flowStatus.chainProgress[chain]
-      if (!progress) continue
+  // Process each chain in order
+  for (const chain of chainOrder) {
+    const progress = flowStatus.chainProgress[chain]
+    if (!progress) continue
 
-      // Add regular stages
-      if (progress.stages && progress.stages.length > 0) {
-        for (const stage of progress.stages) {
-          stages.push({
-            chain,
-            stage: stage.stage,
-            status: stage.status || 'pending',
-            txHash: stage.txHash,
-            occurredAt: stage.occurredAt,
-            message: stage.message,
-          })
-        }
+    // Add regular stages
+    if (progress.stages && progress.stages.length > 0) {
+      for (const stage of progress.stages) {
+        stages.push({
+          chain,
+          stage: stage.stage,
+          status: stage.status || 'pending',
+          txHash: stage.txHash,
+          occurredAt: stage.occurredAt,
+          message: stage.message,
+        })
       }
+    }
 
-      // Add gasless stages (if any)
-      if (progress.gaslessStages && progress.gaslessStages.length > 0) {
-        for (const stage of progress.gaslessStages) {
-          stages.push({
-            chain,
-            stage: stage.stage,
-            status: stage.status || 'pending',
-            txHash: stage.txHash,
-            occurredAt: stage.occurredAt,
-            message: stage.message,
-          })
+    // Add gasless stages (if any)
+    if (progress.gaslessStages && progress.gaslessStages.length > 0) {
+      for (const stage of progress.gaslessStages) {
+        stages.push({
+          chain,
+          stage: stage.stage,
+          status: stage.status || 'pending',
+          txHash: stage.txHash,
+          occurredAt: stage.occurredAt,
+          message: stage.message,
+        })
         }
       }
     }
@@ -211,11 +211,11 @@ export function getFlowProgress(
 
   // Check flowStatus if provided
   if (flowStatus) {
-    if (flowStatus.status === 'completed') {
-      return 100
-    }
-    if (flowStatus.status === 'failed') {
-      return 0
+  if (flowStatus.status === 'completed') {
+    return 100
+  }
+  if (flowStatus.status === 'failed') {
+    return 0
     }
   }
 
@@ -251,8 +251,8 @@ export function getEstimatedTimeRemaining(
   }
   
   if (flowStatus) {
-    if (flowStatus.status === 'completed' || flowStatus.status === 'failed') {
-      return '0'
+  if (flowStatus.status === 'completed' || flowStatus.status === 'failed') {
+    return '0'
     }
   }
 

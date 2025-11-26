@@ -53,6 +53,7 @@ export interface EvmChainConfig {
   gasless?: GaslessConfig
   estimatedTimes?: EstimatedTimesConfig
   pollingTimeout?: PollingTimeoutConfig
+  pollingConfig?: PollingConfig
   logo?: string
   testnet?: boolean
 }
@@ -91,6 +92,10 @@ export function getDefaultChainKey(file: EvmChainsFile | undefined): string | un
 }
 
 // Tendermint chain types
+export interface PollingConfig {
+  blockWindowBackscan?: number // Number of blocks to scan backwards on startup
+}
+
 export interface TendermintChainConfig {
   key: string
   name: string
@@ -99,6 +104,7 @@ export interface TendermintChainConfig {
   rpcUrls: string[]
   explorer?: ExplorerConfig
   pollingTimeout?: PollingTimeoutConfig
+  pollingConfig?: PollingConfig
   testnet?: boolean
 }
 

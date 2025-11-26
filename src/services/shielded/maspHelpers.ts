@@ -17,7 +17,7 @@ export async function fetchBlockHeightByTimestamp(timestamp: number): Promise<nu
     // Convert timestamp to seconds (if it's in milliseconds)
     const timestampSeconds = timestamp > 1000000000000 ? Math.floor(timestamp / 1000) : timestamp
 
-    const response = await fetch(`${indexerUrl}/block/height/by_timestamp/${timestampSeconds}`)
+    const response = await fetch(`${indexerUrl}/api/v1/block/timestamp/${timestampSeconds}`)
 
     if (!response.ok) {
       if (response.status === 404) {

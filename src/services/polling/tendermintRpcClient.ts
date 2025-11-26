@@ -101,20 +101,53 @@ export function createTendermintRpcClient(rpcUrl: string): TendermintRpcClient {
       params,
     }
 
-    const response = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-      signal: abortSignal,
-    })
+    // Check abort signal before making request
+    if (abortSignal?.aborted) {
+      throw new Error('Polling cancelled')
+    }
+
+    let response: Response
+    try {
+      response = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        signal: abortSignal,
+      })
+    } catch (fetchError) {
+      // Handle AbortError from fetch
+      if (fetchError instanceof Error && (fetchError.name === 'AbortError' || abortSignal?.aborted)) {
+        throw new Error('Polling cancelled')
+      }
+      throw fetchError
+    }
+
+    // Check abort signal after fetch (in case it was aborted during the request)
+    if (abortSignal?.aborted) {
+      throw new Error('Polling cancelled')
+    }
 
     if (!response.ok) {
       throw new Error(`Tendermint RPC error: ${response.status} ${response.statusText}`)
     }
 
-    const data = await response.json()
+    let data: any
+    try {
+      data = await response.json()
+    } catch (parseError) {
+      // If abort happened during JSON parsing, check signal
+      if (abortSignal?.aborted) {
+        throw new Error('Polling cancelled')
+      }
+      throw parseError
+    }
+
+    // Check abort signal after parsing response
+    if (abortSignal?.aborted) {
+      throw new Error('Polling cancelled')
+    }
 
     if (data.error) {
       throw new Error(
@@ -132,31 +165,100 @@ export function createTendermintRpcClient(rpcUrl: string): TendermintRpcClient {
       perPage: number = 30,
       abortSignal?: AbortSignal,
     ): Promise<TendermintTx[]> {
-      // Format query: wrap entire query string in double quotes
+      // Format query: wrap entire query string in double quotes (matching backend exactly)
+      // Example input query: circle.cctp.v1.MessageReceived.nonce='\"704111\"'
+      // Example formatted: "circle.cctp.v1.MessageReceived.nonce='\"704111\"'"
       const formattedQuery = `"${query}"`
-
-      const params: Record<string, unknown> = {
-        query: formattedQuery,
-        page: page.toString(),
-        per_page: perPage.toString(),
-        order_by: 'desc',
-      }
+      
+      // Manually construct the URL-encoded query parameter (matching backend exactly)
+      // Format: "circle.cctp.v1.MessageReceived.nonce%3D%27\"704111\"%27"
+      // - Outer quotes are literal (encoded for HTTP)
+      // - = is encoded as %3D
+      // - ' is encoded as %27
+      // - \" stays as \" (backslash + quote, not encoded)
+      // Strategy: encode everything, then replace encoded backslashes with literal backslashes
+      let queryParam = encodeURIComponent(formattedQuery)
+      // Replace %5C (encoded backslash) with literal backslash
+      queryParam = queryParam.replace(/%5C/g, '\\')
+      
+      // Build URL with query parameter only (page/per_page/order_by removed as they cause query to fail)
+      const url = `/tx_search?query=${queryParam}`
+      
+      // Construct full URL
+      const baseURL = rpcUrl.endsWith('/') ? rpcUrl.slice(0, -1) : rpcUrl
+      const fullUrl = `${baseURL}${url}`
+      
+      logger.debug('[TendermintRpcClient] tx_search request (GET)', {
+        rawQuery: query,
+        formattedQuery,
+        queryParam,
+        fullUrl,
+        page,
+        perPage,
+      })
 
       try {
-        const result = await retryWithBackoff(
-          () => callRpc<{ txs?: TendermintTx[]; total_count?: string }>('tx_search', params, abortSignal),
-          3,
-          500,
-          5000,
-          abortSignal,
-        )
+        // Check abort signal before making request
+        if (abortSignal?.aborted) {
+          throw new Error('Polling cancelled')
+        }
 
-        // Handle different response structures
-        const txs = result?.txs || []
+        let response: Response
+        try {
+          response = await fetch(fullUrl, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            signal: abortSignal,
+          })
+        } catch (fetchError) {
+          // Handle AbortError from fetch
+          if (fetchError instanceof Error && (fetchError.name === 'AbortError' || abortSignal?.aborted)) {
+            throw new Error('Polling cancelled')
+          }
+          throw fetchError
+        }
+
+        // Check abort signal after fetch
+        if (abortSignal?.aborted) {
+          throw new Error('Polling cancelled')
+        }
+
+        if (!response.ok) {
+          throw new Error(`Tendermint RPC error: ${response.status} ${response.statusText}`)
+        }
+
+        let data: any
+        try {
+          data = await response.json()
+        } catch (parseError) {
+          if (abortSignal?.aborted) {
+            throw new Error('Polling cancelled')
+          }
+          throw parseError
+        }
+
+        // Check abort signal after parsing response
+        if (abortSignal?.aborted) {
+          throw new Error('Polling cancelled')
+        }
+
+        if (data.error) {
+          throw new Error(
+            `Tendermint RPC error (${data.error.code}): ${data.error.message}`,
+          )
+        }
+
+        // Handle different response structures (matching backend)
+        const txs = data?.txs || data?.result?.txs || []
+        
         logger.debug('[TendermintRpcClient] tx_search result', {
           query,
           txCount: txs.length,
+          totalCount: data?.total_count || data?.result?.total_count,
         })
+        
         return txs
       } catch (error) {
         logger.warn('[TendermintRpcClient] tx_search failed', {

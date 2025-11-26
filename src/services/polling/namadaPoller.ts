@@ -5,7 +5,7 @@
  * Implements ChainPoller interface for modularity.
  * 
  * Supports:
- * - Deposit flow: write_acknowledgement by packet_sequence (or packet_data fallback)
+ * - Deposit flow: write_acknowledgement by packet_sequence (requires packetSequence from Noble)
  * - Payment flow: send_packet by inner-tx-hash at specific block height
  */
 
@@ -39,7 +39,8 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Poll for deposit flow: write_acknowledgement by packet_sequence or packet_data
+ * Poll for deposit flow: write_acknowledgement by packet_sequence
+ * Requires packetSequence from Noble polling result.
  */
 async function pollForDeposit(
   params: NamadaPollParams,
@@ -59,8 +60,6 @@ async function pollForDeposit(
     flowId: params.flowId,
     startHeight: params.metadata.startHeight,
     packetSequence: params.metadata.packetSequence,
-    forwardingAddress: params.metadata.forwardingAddress,
-    namadaReceiver: params.metadata.namadaReceiver,
   })
 
   const stages: ChainStage[] = [
@@ -74,19 +73,23 @@ async function pollForDeposit(
 
   const deadline = Date.now() + timeoutMs
   let nextHeight = params.metadata.startHeight || 0
-  const denom = 'uusdc'
-  const expectedAmount = params.metadata.expectedAmountUusdc
 
   let ackFound = false
   let foundAt: number | undefined
   let namadaTxHash: string | undefined
 
-  // Warn if packetSequence is not provided (backward compatibility)
-  if (!params.metadata.packetSequence) {
-    logger.warn('[NamadaPoller] packetSequence not provided, falling back to packet_data matching', {
+  // Require packetSequence - fail early if not provided
+  if (params.metadata.packetSequence === undefined || params.metadata.packetSequence === null) {
+    logger.error('[NamadaPoller] packetSequence is required for Namada deposit polling', {
       flowId: params.flowId,
     })
+    return createErrorResult(
+      'polling_error',
+      'Missing required parameter: packetSequence. Noble polling must complete first.',
+    )
   }
+
+  const requiredPacketSequence = params.metadata.packetSequence
 
   try {
     while (Date.now() < deadline && !ackFound) {
@@ -136,156 +139,79 @@ async function pollForDeposit(
             }>
           }).end_block_events || []
 
-          // If packetSequence is provided, use efficient matching logic
-          if (params.metadata.packetSequence !== undefined) {
-            // Search for write_acknowledgement event matching packet_sequence
-            for (const ev of endEvents) {
-              if (ev?.type !== 'write_acknowledgement') continue
+          // Search for write_acknowledgement event matching packet_sequence
+          for (const ev of endEvents) {
+            if (ev?.type !== 'write_acknowledgement') continue
 
-              const attrs = indexAttributes(ev.attributes)
-              const packetSeqStr = attrs['packet_sequence']
-              const packetAck = attrs['packet_ack']
-              const innerTxHashAttr = attrs['inner-tx-hash']
+            const attrs = indexAttributes(ev.attributes)
+            const packetSeqStr = attrs['packet_sequence']
+            const packetAck = attrs['packet_ack']
+            const innerTxHashAttr = attrs['inner-tx-hash']
 
-              // Match by packet_sequence
-              if (!packetSeqStr) continue
-              const packetSeq = Number.parseInt(packetSeqStr, 10)
-              if (packetSeq !== params.metadata.packetSequence) continue
+            // Match by packet_sequence
+            if (!packetSeqStr) continue
+            const packetSeq = Number.parseInt(packetSeqStr, 10)
+            if (packetSeq !== requiredPacketSequence) continue
 
-              logger.debug('[NamadaPoller] Found write_acknowledgement with matching packet_sequence', {
+            logger.debug('[NamadaPoller] Found write_acknowledgement with matching packet_sequence', {
+              flowId: params.flowId,
+              height: nextHeight,
+              packetSequence: packetSeq,
+              packetAck,
+              hasInnerTxHash: !!innerTxHashAttr,
+            })
+
+            // Verify packet_ack is success code
+            if (packetAck !== '{"result":"AQ=="}') {
+              logger.error('[NamadaPoller] Packet acknowledgement indicates failure', {
                 flowId: params.flowId,
                 height: nextHeight,
                 packetSequence: packetSeq,
                 packetAck,
-                hasInnerTxHash: !!innerTxHashAttr,
               })
+              cleanup()
+              return createErrorResult(
+                'tx_error',
+                `Packet acknowledgement indicates failure: ${packetAck}`,
+              )
+            }
 
-              // Verify packet_ack is success code
-              if (packetAck !== '{"result":"AQ=="}') {
-                logger.error('[NamadaPoller] Packet acknowledgement indicates failure', {
-                  flowId: params.flowId,
-                  height: nextHeight,
-                  packetSequence: packetSeq,
-                  packetAck,
-                })
-                cleanup()
-                return createErrorResult(
-                  'tx_error',
-                  `Packet acknowledgement indicates failure: ${packetAck}`,
-                )
-              }
-
-              // Extract inner-tx-hash from write_acknowledgement event
-              if (innerTxHashAttr) {
-                namadaTxHash = innerTxHashAttr
-              } else {
-                logger.warn('[NamadaPoller] inner-tx-hash not found in write_acknowledgement event', {
-                  flowId: params.flowId,
-                  height: nextHeight,
-                  packetSequence: packetSeq,
-                })
-              }
-
-              ackFound = true
-              foundAt = nextHeight
-              logger.info('[NamadaPoller] Namada write_acknowledgement matched by packet_sequence', {
+            // Extract inner-tx-hash from write_acknowledgement event
+            if (innerTxHashAttr) {
+              namadaTxHash = innerTxHashAttr
+            } else {
+              logger.warn('[NamadaPoller] inner-tx-hash not found in write_acknowledgement event', {
                 flowId: params.flowId,
                 height: nextHeight,
                 packetSequence: packetSeq,
-                txHash: namadaTxHash,
               })
-
-              stages.push({
-                stage: DEPOSIT_STAGES.NAMADA_RECEIVED,
-                status: 'confirmed',
-                source: 'poller',
-                txHash: namadaTxHash,
-                occurredAt: new Date().toISOString(),
-              })
-              break
-            }
-          } else {
-            // Fallback to old packet_data matching logic (backward compatibility)
-            // First pass: Extract inner-tx-hash from message event
-            let innerTxHash: string | undefined
-            for (const ev of endEvents) {
-              if (ev?.type === 'message') {
-                const attrs = indexAttributes(ev.attributes)
-                const inner = attrs['inner-tx-hash']
-                if (inner) {
-                  innerTxHash = inner
-                  break
-                }
-              }
             }
 
-            // Second pass: Find and process write_acknowledgement event
-            for (const ev of endEvents) {
-              if (ev?.type !== 'write_acknowledgement') continue
+            ackFound = true
+            foundAt = nextHeight
+            logger.info('[NamadaPoller] Namada write_acknowledgement matched by packet_sequence', {
+              flowId: params.flowId,
+              height: nextHeight,
+              packetSequence: packetSeq,
+              txHash: namadaTxHash,
+            })
 
-              const attrs = indexAttributes(ev.attributes)
-              const ack = attrs['packet_ack']
-              const pdata = attrs['packet_data']
-              const ok = ack === '{"result":"AQ=="}'
-
-              if (!ok) continue
-
-              try {
-                // Handle both direct JSON and JSON string in 'value' field
-                let parsed: Record<string, unknown>
-                if (typeof pdata === 'string') {
-                  parsed = JSON.parse(pdata) as Record<string, unknown>
-                } else if (pdata && typeof pdata === 'object' && 'value' in pdata) {
-                  parsed = JSON.parse((pdata as { value: string }).value) as Record<string, unknown>
-                } else {
-                  parsed = (pdata as Record<string, unknown>) || {}
-                }
-
-                const recv = parsed?.receiver
-                const send = parsed?.sender
-                const d = parsed?.denom
-                const amount = parsed?.amount
-
-                const receiverMatches =
-                  params.metadata.namadaReceiver && recv === params.metadata.namadaReceiver
-                const senderMatches =
-                  params.metadata.forwardingAddress && send === params.metadata.forwardingAddress
-                const denomMatches = d === denom
-
-                // Handle amount comparison - expectedAmount might include "uusdc" suffix
-                let amountMatches = true
-                if (expectedAmount) {
-                  const expectedNumeric = expectedAmount.replace('uusdc', '')
-                  const actualNumeric = amount?.toString().replace('uusdc', '') || ''
-                  amountMatches = expectedNumeric === actualNumeric
-                }
-
-                if (receiverMatches && senderMatches && denomMatches && amountMatches) {
-                  ackFound = true
-                  foundAt = nextHeight
-                  namadaTxHash = innerTxHash
-                  logger.info('[NamadaPoller] Namada write_acknowledgement matched (fallback: packet_data)', {
-                    flowId: params.flowId,
-                    height: nextHeight,
-                    txHash: namadaTxHash,
-                  })
-
-                  stages.push({
-                    stage: DEPOSIT_STAGES.NAMADA_RECEIVED,
-                    status: 'confirmed',
-                    source: 'poller',
-                    txHash: namadaTxHash,
-                    occurredAt: new Date().toISOString(),
-                  })
-                  break
-                }
-              } catch (error) {
-                logger.debug('[NamadaPoller] packet_data parse failed', {
-                  flowId: params.flowId,
-                  error: error instanceof Error ? error.message : String(error),
-                })
-              }
+            // Update NAMADA_POLLING stage to confirmed
+            stages[0] = {
+              stage: DEPOSIT_STAGES.NAMADA_POLLING,
+              status: 'confirmed',
+              source: 'poller',
+              occurredAt: new Date().toISOString(),
             }
+
+            stages.push({
+              stage: DEPOSIT_STAGES.NAMADA_RECEIVED,
+              status: 'confirmed',
+              source: 'poller',
+              txHash: namadaTxHash,
+              occurredAt: new Date().toISOString(),
+            })
+            break
           }
         } catch (error) {
           logger.warn('[NamadaPoller] Fetch failed for height after retries, skipping block', {

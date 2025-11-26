@@ -22,7 +22,7 @@ import { getAllStagesFromTransaction } from '@/services/polling/stageUtils'
  * @returns Effective transaction status (from flowStatusSnapshot if available, else top-level status)
  */
 export function getEffectiveStatus(tx: StoredTransaction): StoredTransaction['status'] {
-  // If flowStatusSnapshot exists and has a status, use it as authoritative source
+  // Priority 1: flowStatusSnapshot (backend API) - most authoritative
   if (tx.flowStatusSnapshot?.status) {
     // Map backend flow status to transaction status
     const flowStatus = tx.flowStatusSnapshot.status
@@ -44,7 +44,23 @@ export function getEffectiveStatus(tx: StoredTransaction): StoredTransaction['st
     }
   }
   
-  // Fallback to top-level status when flowStatusSnapshot is not available
+  // Priority 2: pollingState.flowStatus (frontend polling) - for frontend-only transactions
+  if (tx.pollingState?.flowStatus) {
+    const flowStatus = tx.pollingState.flowStatus
+    if (flowStatus === 'success') {
+      return 'finalized'
+    } else if (flowStatus === 'tx_error' || flowStatus === 'polling_error') {
+      return 'error'
+    } else if (flowStatus === 'polling_timeout') {
+      return 'undetermined'
+    } else if (flowStatus === 'user_action_required' || flowStatus === 'cancelled') {
+      // Still in progress, waiting for user action or can be resumed
+      return 'broadcasted'
+    }
+    // flowStatus === 'pending' - fall through to check top-level status
+  }
+  
+  // Priority 3: Top-level status (fallback)
   return tx.status
 }
 
@@ -290,17 +306,31 @@ export function getStageTimings(
   for (const stage of allStages) {
     if (stage.occurredAt) {
       const occurredAt = new Date(stage.occurredAt).getTime()
+      
       // Extract chain from metadata or determine from stage
       let chain: 'evm' | 'noble' | 'namada' = 'evm'
       if (stage.metadata?.chain) {
         chain = stage.metadata.chain as 'evm' | 'noble' | 'namada'
       } else {
-        // Try to determine chain from stage name or flowStatusSnapshot
-        const chainOrder = getChainOrder(flowType)
-        for (const c of chainOrder) {
-          if (tx.flowStatusSnapshot?.chainProgress[c]?.stages?.some((s) => s.stage === stage.stage)) {
-            chain = c
-            break
+        // Try to determine chain from pollingState (stages are stored per chain)
+        if (tx.pollingState) {
+          const chainOrder = getChainOrder(flowType)
+          for (const c of chainOrder) {
+            const chainStatus = tx.pollingState.chainStatus[c]
+            if (chainStatus?.stages?.some((s) => s.stage === stage.stage)) {
+              chain = c
+              break
+            }
+          }
+        }
+        // Fallback: Try to determine chain from stage name or flowStatusSnapshot
+        if (chain === 'evm' && tx.flowStatusSnapshot) {
+          const chainOrder = getChainOrder(flowType)
+          for (const c of chainOrder) {
+            if (tx.flowStatusSnapshot?.chainProgress[c]?.stages?.some((s) => s.stage === stage.stage)) {
+              chain = c
+              break
+            }
           }
         }
       }

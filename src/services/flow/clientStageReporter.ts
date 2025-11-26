@@ -71,13 +71,13 @@ class ClientStageReporter {
           addChainStage(tx.id, chain as ChainKey, clientStage)
         } else {
           // Append to clientStages array (legacy path)
-          const existingStages = tx.clientStages || []
-          const updatedStages = [...existingStages, clientStage]
+      const existingStages = tx.clientStages || []
+      const updatedStages = [...existingStages, clientStage]
 
-          // Update transaction with new stage
-          transactionStorageService.updateTransaction(tx.id, {
-            clientStages: updatedStages,
-          })
+      // Update transaction with new stage
+      transactionStorageService.updateTransaction(tx.id, {
+        clientStages: updatedStages,
+      })
         }
       }
 
@@ -155,7 +155,7 @@ class ClientStageReporter {
     status: 'pending' | 'confirmed' | 'failed',
   ): Promise<void> {
     try {
-      const tx = this.findTransaction(identifier)
+      let tx = this.findTransaction(identifier)
       if (!tx) {
         logger.warn('[ClientStageReporter] Cannot update stage, transaction not found', {
           identifier,

@@ -10,8 +10,11 @@
         "baseUrl": "https://testnet.namada.world"
       },
       "pollingTimeout": {
-        "depositTimeoutMs": 600000,
-        "paymentTimeoutMs": 600000
+        "depositTimeoutMs": 120000,
+        "paymentTimeoutMs": 120000
+      },
+      "pollingConfig": {
+        "blockWindowBackscan": 20
       },
       "testnet": true
     },
@@ -27,6 +30,9 @@
       "pollingTimeout": {
         "depositTimeoutMs": 1200000,
         "paymentTimeoutMs": 1200000
+      },
+      "pollingConfig": {
+        "blockWindowBackscan": 50
       },
       "testnet": true
     }

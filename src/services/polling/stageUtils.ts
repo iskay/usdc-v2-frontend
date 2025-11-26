@@ -10,6 +10,7 @@ import type { ChainStage } from '@/types/flow'
 import type { ChainKey } from '@/shared/flowStages'
 import { getChainOrder } from '@/shared/flowStages'
 import { migrateClientStagesToUnified } from './pollingStateManager'
+import { transactionStorageService } from '@/services/tx/transactionStorageService'
 
 /**
  * Get all stages from a transaction (unified format)
@@ -27,36 +28,53 @@ export function getAllStagesFromTransaction(
   const stages: ChainStage[] = []
 
   // Migrate clientStages to unified structure if needed
-  if (tx.clientStages && tx.clientStages.length > 0 && tx.pollingState) {
-    migrateClientStagesToUnified(tx.id)
+  let currentTx = tx
+  if (currentTx.clientStages && currentTx.clientStages.length > 0 && currentTx.pollingState) {
+    migrateClientStagesToUnified(currentTx.id)
     // Reload transaction after migration
-    const updatedTx = tx // Will be reloaded by caller if needed
-    if (updatedTx.pollingState) {
-      tx = updatedTx
+    const updatedTx = transactionStorageService.getTransaction(currentTx.id)
+    if (updatedTx) {
+      currentTx = updatedTx
     }
   }
 
   // Read from unified pollingState structure if available
-  if (tx.pollingState) {
+  if (currentTx.pollingState) {
     const chainOrder = getChainOrder(flowType)
     for (const chain of chainOrder) {
-      const chainStatus = tx.pollingState.chainStatus[chain]
+      const chainStatus = currentTx.pollingState.chainStatus[chain]
       if (chainStatus?.stages && chainStatus.stages.length > 0) {
-        stages.push(...chainStatus.stages)
+        // Add chain information to each stage's metadata so it can be displayed correctly
+        const stagesWithChain = chainStatus.stages.map((stage) => ({
+          ...stage,
+          metadata: {
+            ...stage.metadata,
+            chain, // Preserve chain information for display
+          },
+        }))
+        stages.push(...stagesWithChain)
+        
+        // Debug logging to trace stage reading
+        console.debug('[StageUtils] Read stages from pollingState', {
+          chain,
+          stageCount: chainStatus.stages.length,
+          stageNames: chainStatus.stages.map((s) => s.stage),
+          stagesWithOccurredAt: chainStatus.stages.filter((s) => s.occurredAt).map((s) => s.stage),
+        })
       }
     }
   }
 
   // Fallback: read from clientStages (legacy)
-  if (stages.length === 0 && tx.clientStages && tx.clientStages.length > 0) {
-    stages.push(...tx.clientStages)
+  if (stages.length === 0 && currentTx.clientStages && currentTx.clientStages.length > 0) {
+    stages.push(...currentTx.clientStages)
   }
 
   // Also read from flowStatusSnapshot (backend-managed flows)
-  if (tx.flowStatusSnapshot) {
+  if (currentTx.flowStatusSnapshot) {
     const chainOrder = getChainOrder(flowType)
     for (const chain of chainOrder) {
-      const progress = tx.flowStatusSnapshot.chainProgress[chain]
+      const progress = currentTx.flowStatusSnapshot.chainProgress[chain]
       if (!progress) continue
 
       // Add regular stages

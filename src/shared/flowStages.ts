@@ -52,6 +52,10 @@ export const DEPOSIT_STAGES = {
   EVM_BURN_POLLING: 'evm_burn_polling',
   EVM_BURN_CONFIRMED: 'evm_burn_confirmed',
   
+  // Iris Attestation Stages (replaces EVM polling)
+  IRIS_ATTESTATION_POLLING: 'iris_attestation_polling',
+  IRIS_ATTESTATION_COMPLETE: 'iris_attestation_complete',
+  
   // Noble Chain Stages
   NOBLE_POLLING: 'noble_polling',
   NOBLE_CCTP_MINTED: 'noble_cctp_minted',
@@ -130,8 +134,9 @@ export function getChainOrder(flowType: FlowType): readonly ChainKey[] {
  */
 export const DEPOSIT_PROGRESSION: Record<ChainKey, readonly DepositStage[]> = {
   evm: [
-    DEPOSIT_STAGES.EVM_BURN_POLLING,
     DEPOSIT_STAGES.EVM_BURN_CONFIRMED,
+    DEPOSIT_STAGES.IRIS_ATTESTATION_POLLING,
+    DEPOSIT_STAGES.IRIS_ATTESTATION_COMPLETE,
   ],
   noble: [
     DEPOSIT_STAGES.NOBLE_POLLING,

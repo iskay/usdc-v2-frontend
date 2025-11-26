@@ -36,6 +36,7 @@ export const env = {
   },
   debug: () => readEnvVar('VITE_DEBUG') === 'true' || readEnvVar('VITE_DEBUG') === '1',
   logLevel: () => readEnvVar('VITE_LOG_LEVEL') || 'info',
+  irisAttestationBaseUrl: () => readEnvVar('VITE_IRIS_ATTESTATION_BASE_URL') || 'https://iris-api.circle.com/attestations/',
 }
 
 // TODO: Add typed helpers for chain configs and secret handling once values are defined.

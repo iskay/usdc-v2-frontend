@@ -63,7 +63,12 @@ export async function registerNobleForwarding(
     // 4. Wait for confirmation
     // 5. Update polling state
 
-    // For now, simulate successful registration
+    // For now, return success result (stub for testing)
+    logger.info('[NobleForwardingRegistration] Registration stub returning success result', {
+      txId: params.txId,
+    })
+
+    // Generate a mock transaction hash
     const mockTxHash = '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')
 
     // Update polling state to mark registration stage as confirmed

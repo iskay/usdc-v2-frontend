@@ -1094,7 +1094,7 @@ export function useTxTracker(options?: { enablePolling?: boolean }) {
     startPollingForTransactions()
       .then((functions) => {
         cleanupFunctionsRef.current = functions || []
-        logger.debug('[useTxTracker] Polling effect completed', {
+    logger.debug('[useTxTracker] Polling effect completed', {
           cleanupFunctionsCount: cleanupFunctionsRef.current.length,
         })
       })
@@ -1103,7 +1103,7 @@ export function useTxTracker(options?: { enablePolling?: boolean }) {
           error: error instanceof Error ? error.message : String(error),
         })
         cleanupFunctionsRef.current = []
-      })
+    })
 
     // Cleanup: stop all polling jobs on unmount or when enablePolling changes
     return () => {
@@ -1121,12 +1121,12 @@ export function useTxTracker(options?: { enablePolling?: boolean }) {
       for (const cleanup of cleanupFunctions) {
         if (typeof cleanup === 'function') {
           try {
-            cleanup()
+        cleanup()
           } catch (error) {
             logger.error('[useTxTracker] Error during cleanup', {
               error: error instanceof Error ? error.message : String(error),
             })
-          }
+      }
         }
       }
       // Clear cleanup functions after running them

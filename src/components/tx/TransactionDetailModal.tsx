@@ -15,6 +15,7 @@ import {
 import { ChainStatusTimeline } from '@/components/polling/ChainStatusTimeline'
 import { ResumePollingButton } from '@/components/polling/ResumePollingButton'
 import { CancelPollingButton } from '@/components/polling/CancelPollingButton'
+import { RetryPollingButton } from '@/components/polling/RetryPollingButton'
 import { cn } from '@/lib/utils'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
@@ -284,6 +285,7 @@ export function TransactionDetailModal({
   let sendTxHash: string | undefined
   let receiveTxHash: string | undefined
 
+  // Priority 1: Check flowStatusSnapshot (backend-managed flows)
   if (transaction.flowStatusSnapshot) {
     const { chainProgress } = transaction.flowStatusSnapshot
     if (transaction.direction === 'deposit') {
@@ -297,7 +299,33 @@ export function TransactionDetailModal({
     }
   }
 
-  // Fallback to transaction.hash if flowStatusSnapshot doesn't have the hashes
+  // Priority 2: Check pollingState (frontend-managed flows)
+  if (transaction.pollingState) {
+    const { chainStatus } = transaction.pollingState
+    if (transaction.direction === 'deposit') {
+      // Deposits: Send Tx = evm, Receive Tx = namada
+      if (!sendTxHash) {
+        sendTxHash = chainStatus.evm?.metadata?.txHash as string | undefined ||
+          chainStatus.evm?.stages?.find(s => s.txHash)?.txHash
+      }
+      if (!receiveTxHash) {
+        receiveTxHash = chainStatus.namada?.metadata?.txHash as string | undefined ||
+          chainStatus.namada?.stages?.find(s => s.stage === 'namada_received' && s.txHash)?.txHash
+      }
+    } else {
+      // Payments: Send Tx = namada, Receive Tx = evm
+      if (!sendTxHash) {
+        sendTxHash = chainStatus.namada?.metadata?.txHash as string | undefined ||
+          chainStatus.namada?.stages?.find(s => s.txHash)?.txHash
+      }
+      if (!receiveTxHash) {
+        receiveTxHash = chainStatus.evm?.metadata?.txHash as string | undefined ||
+          chainStatus.evm?.stages?.find(s => s.txHash)?.txHash
+      }
+    }
+  }
+
+  // Fallback to transaction.hash if neither source has the send hash
   if (!sendTxHash && transaction.hash) {
     sendTxHash = transaction.hash
   }
@@ -612,6 +640,7 @@ export function TransactionDetailModal({
               
               {/* Polling Control Buttons */}
               <div className="flex items-center gap-2 pt-2">
+                <RetryPollingButton transaction={transaction} size="sm" />
                 <ResumePollingButton transaction={transaction} size="sm" />
                 <CancelPollingButton transaction={transaction} size="sm" />
               </div>

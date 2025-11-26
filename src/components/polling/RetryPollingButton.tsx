@@ -1,0 +1,101 @@
+/**
+ * Retry Polling Button Component
+ * 
+ * Button to retry polling for a transaction that has errored or timed out.
+ * Restarts the entire polling flow from the beginning.
+ */
+
+import { useState } from 'react'
+import { RotateCcw } from 'lucide-react'
+import type { StoredTransaction } from '@/services/tx/transactionStorageService'
+import { retryPolling } from '@/services/polling/chainPollingService'
+import { canRetryPolling } from '@/services/polling/pollingStatusUtils'
+import { useToast } from '@/hooks/useToast'
+import { cn } from '@/lib/utils'
+
+export interface RetryPollingButtonProps {
+  transaction: StoredTransaction
+  variant?: 'default' | 'outline' | 'ghost'
+  size?: 'sm' | 'md' | 'lg'
+  className?: string
+}
+
+export function RetryPollingButton({
+  transaction,
+  variant = 'default',
+  size = 'sm',
+  className,
+}: RetryPollingButtonProps) {
+  const [isLoading, setIsLoading] = useState(false)
+  const { notify } = useToast()
+
+  const handleRetry = async () => {
+    if (!canRetryPolling(transaction)) {
+      notify({
+        title: 'Cannot Retry',
+        description: 'This transaction cannot be retried.',
+        level: 'error',
+      })
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      await retryPolling(transaction.id)
+      notify({
+        title: 'Polling Retried',
+        description: 'Transaction polling has been restarted from the beginning.',
+        level: 'success',
+      })
+    } catch (error) {
+      notify({
+        title: 'Retry Failed',
+        description: error instanceof Error ? error.message : 'Failed to retry polling.',
+        level: 'error',
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  if (!transaction.pollingState || !canRetryPolling(transaction)) {
+    return null
+  }
+
+  const sizeClasses = {
+    sm: 'px-2 py-1 text-xs',
+    md: 'px-3 py-1.5 text-sm',
+    lg: 'px-4 py-2 text-base',
+  }
+
+  const variantClasses = {
+    default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+    outline: 'border border-border bg-background hover:bg-muted',
+    ghost: 'hover:bg-muted',
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleRetry}
+      disabled={isLoading}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-md font-medium transition-colors',
+        'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+        'disabled:opacity-50 disabled:cursor-not-allowed',
+        sizeClasses[size],
+        variantClasses[variant],
+        className,
+      )}
+      aria-label="Retry polling"
+    >
+      <RotateCcw className={cn(
+        'h-3 w-3',
+        size === 'lg' && 'h-4 w-4',
+        isLoading && 'animate-spin',
+      )} />
+      <span>{isLoading ? 'Retrying...' : 'Retry Polling'}</span>
+    </button>
+  )
+}
+

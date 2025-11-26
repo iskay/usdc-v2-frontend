@@ -12,10 +12,27 @@ import type { BasePollParams, ChainPollResult } from './types'
 import { logger } from '@/utils/logger'
 
 /**
- * Sleep utility
+ * Sleep utility with abort signal support
  */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+export function sleep(ms: number, abortSignal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (abortSignal?.aborted) {
+      reject(new Error('Polling cancelled'))
+      return
+    }
+
+    const timeoutId = setTimeout(() => {
+      resolve()
+    }, ms)
+
+    // Listen for abort signal
+    if (abortSignal) {
+      abortSignal.addEventListener('abort', () => {
+        clearTimeout(timeoutId)
+        reject(new Error('Polling cancelled'))
+      })
+    }
+  })
 }
 
 /**
@@ -264,14 +281,50 @@ export async function retryWithBackoff<T>(
   let lastError: unknown
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    // Check abort signal
+    // Check abort signal at start of each retry attempt
     if (abortSignal?.aborted) {
+      logger.info('[BasePoller] Abort signal detected at start of retry attempt, stopping', {
+        attempt,
+        maxRetries,
+        abortSignalAborted: abortSignal.aborted,
+      })
       throw new Error('Polling cancelled')
     }
 
     try {
       return await fn()
     } catch (error) {
+      // CRITICAL: Check abort signal IMMEDIATELY after error - before any retry decision
+      // This ensures we stop immediately if cancellation happened during the request
+      if (abortSignal?.aborted) {
+        logger.info('[BasePoller] Abort signal detected after error (CRITICAL CHECKPOINT), not retrying', {
+          attempt,
+          maxRetries,
+          errorType: error instanceof Error ? error.constructor.name : typeof error,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorName: error instanceof Error ? error.name : 'N/A',
+          abortSignalAborted: abortSignal.aborted,
+        })
+        throw new Error('Polling cancelled')
+      }
+
+      // Check if error is due to abort (AbortError from fetch or DOMException)
+      const isAbortError = 
+        (error instanceof Error && error.name === 'AbortError') ||
+        (error instanceof DOMException && error.name === 'AbortError') ||
+        (error instanceof Error && error.message === 'Polling cancelled') ||
+        (error instanceof Error && error.message.includes('cancelled'))
+
+      if (isAbortError) {
+        logger.debug('[BasePoller] Request was aborted', {
+          attempt,
+          maxRetries,
+          errorName: error instanceof Error ? error.name : typeof error,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        })
+        throw new Error('Polling cancelled')
+      }
+
       lastError = error
 
       // Don't retry permanent errors
@@ -305,14 +358,52 @@ export async function retryWithBackoff<T>(
       // Calculate delay with exponential backoff
       const delayMs = Math.min(initialDelayMs * Math.pow(2, attempt), maxDelayMs)
 
+      // Check abort signal BEFORE deciding to retry
+      if (abortSignal?.aborted) {
+        logger.debug('[BasePoller] Abort signal detected before retry delay, stopping', {
+          attempt,
+          maxRetries,
+          wouldRetry: attempt < maxRetries,
+        })
+        throw new Error('Polling cancelled')
+      }
+
       logger.debug('[BasePoller] Retrying after error', {
         attempt: attempt + 1,
         maxRetries,
         delayMs,
         error: error instanceof Error ? error.message : String(error),
+        abortSignalAborted: abortSignal?.aborted,
       })
 
-      await sleep(delayMs)
+      // Check abort signal before sleeping
+      if (abortSignal?.aborted) {
+        logger.debug('[BasePoller] Abort signal detected before sleep, stopping', {
+          attempt,
+        })
+        throw new Error('Polling cancelled')
+      }
+
+      try {
+        await sleep(delayMs, abortSignal)
+      } catch (sleepError) {
+        // If sleep was aborted, throw cancellation error
+        if (sleepError instanceof Error && sleepError.message === 'Polling cancelled') {
+          logger.debug('[BasePoller] Sleep was aborted, stopping retry', {
+            attempt,
+          })
+          throw sleepError
+        }
+        // Otherwise, continue with retry
+      }
+
+      // Check abort signal after sleep (in case it was aborted during sleep)
+      if (abortSignal?.aborted) {
+        logger.debug('[BasePoller] Abort signal detected after sleep, stopping', {
+          attempt,
+        })
+        throw new Error('Polling cancelled')
+      }
     }
   }
 

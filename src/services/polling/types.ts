@@ -17,6 +17,7 @@ export type FlowPollingStatus =
   | 'tx_error' // Transaction error (chain rejected tx)
   | 'polling_error' // Polling infrastructure error (RPC unresponsive, rate limit)
   | 'polling_timeout' // Timeout before determining success/error
+  | 'user_action_required' // User action required to proceed (e.g., forwarding registration)
   | 'cancelled' // User cancelled (can be resumed)
 
 /**
@@ -28,6 +29,7 @@ export type ChainStatusValue =
   | 'tx_error' // Transaction error detected on this chain
   | 'polling_error' // Polling infrastructure error on this chain
   | 'polling_timeout' // Polling timed out on this chain
+  | 'user_action_required' // User action required to proceed (e.g., forwarding registration)
   | 'cancelled' // Chain polling was cancelled
 
 /**
@@ -38,7 +40,7 @@ export interface ChainStatus {
   /** Current status of this chain */
   status: ChainStatusValue
   /** Error type if status indicates an error */
-  errorType?: 'tx_error' | 'polling_error' | 'polling_timeout'
+  errorType?: 'tx_error' | 'polling_error' | 'polling_timeout' | 'user_action_required'
   /** Error message if status indicates an error */
   errorMessage?: string
   /** Error code if available (e.g., HTTP status code, RPC error code) */
@@ -96,7 +98,7 @@ export interface PollingState {
   globalTimeoutAt?: number
   /** Flow-level error details (if applicable) */
   error?: {
-    type: 'tx_error' | 'polling_error' | 'polling_timeout'
+    type: 'tx_error' | 'polling_error' | 'polling_timeout' | 'user_action_required'
     message: string
     occurredAt: number
     chain?: ChainKey
@@ -204,7 +206,7 @@ export interface ChainPollResult {
   metadata: ChainPollMetadata
   /** Error details if polling failed */
   error?: {
-    type: 'tx_error' | 'polling_error' | 'polling_timeout'
+    type: 'tx_error' | 'polling_error' | 'polling_timeout' | 'user_action_required'
     message: string
     occurredAt: number
   }

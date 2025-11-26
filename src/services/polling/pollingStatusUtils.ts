@@ -208,15 +208,46 @@ export function isPollingActive(tx: StoredTransaction): boolean {
 }
 
 /**
+ * Check if any chain has errored or timed out
+ */
+function hasChainError(tx: StoredTransaction): boolean {
+  if (!tx.pollingState) {
+    return false
+  }
+
+  const chainStatuses = tx.pollingState.chainStatus
+  return Object.values(chainStatuses).some(
+    (status) =>
+      status?.status === 'tx_error' ||
+      status?.status === 'polling_error' ||
+      status?.status === 'polling_timeout',
+  )
+}
+
+/**
  * Check if polling can be resumed for a transaction
  */
 export function canResumePolling(tx: StoredTransaction): boolean {
   const status = getPollingStatus(tx)
-  return (
+  
+  // Check overall flow status
+  if (
     status === 'cancelled' ||
     status === 'polling_error' ||
-    status === 'polling_timeout'
-  )
+    status === 'polling_timeout' ||
+    status === 'tx_error' ||
+    status === 'user_action_required'
+  ) {
+    return true
+  }
+
+  // Fallback: Check individual chain statuses if flowStatus is still pending
+  // This handles cases where orchestrator hasn't updated flowStatus yet
+  if (status === 'pending' && hasChainError(tx)) {
+    return true
+  }
+
+  return false
 }
 
 /**
@@ -224,6 +255,59 @@ export function canResumePolling(tx: StoredTransaction): boolean {
  */
 export function canCancelPolling(tx: StoredTransaction): boolean {
   const status = getPollingStatus(tx)
-  return status === 'pending'
+  
+  // Can cancel only if polling is actively running (pending)
+  // Don't show cancel button for errored/timeout states (use retry instead)
+  if (status === 'pending') {
+    return true
+  }
+
+  // Fallback: Check individual chain statuses if flowStatus is still pending
+  // but don't show cancel if any chain has errored (use retry/resume instead)
+  if (status === 'pending') {
+    // Only show cancel if no chains have errored yet (still actively polling)
+    const chainStatuses = tx.pollingState?.chainStatus
+    if (chainStatuses) {
+      const hasAnyError = Object.values(chainStatuses).some(
+        (chainStatus) =>
+          chainStatus?.status === 'tx_error' ||
+          chainStatus?.status === 'polling_error' ||
+          chainStatus?.status === 'polling_timeout',
+      )
+      // Only allow cancel if no errors yet (still actively polling)
+      return !hasAnyError
+    }
+    return true
+  }
+
+  return false
+}
+
+/**
+ * Check if polling can be retried (restarted from beginning)
+ */
+export function canRetryPolling(tx: StoredTransaction): boolean {
+  const status = getPollingStatus(tx)
+  
+  // Can retry if there's an error, timeout, cancellation, user action required, or success
+  // (success allows re-polling to verify current state)
+  if (
+    status === 'polling_error' ||
+    status === 'polling_timeout' ||
+    status === 'tx_error' ||
+    status === 'cancelled' ||
+    status === 'user_action_required' ||
+    status === 'success'
+  ) {
+    return true
+  }
+
+  // Fallback: Check individual chain statuses if flowStatus is still pending
+  // This handles cases where orchestrator hasn't updated flowStatus yet
+  if (status === 'pending' && hasChainError(tx)) {
+    return true
+  }
+
+  return false
 }
 
