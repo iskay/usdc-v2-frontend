@@ -170,6 +170,7 @@ function parseMessageReceivedEvent(log: ethers.Log): ParsedMessageReceived | nul
 
 /**
  * Query MessageReceived events filtered by nonce
+ * First tries the configured MessageTransmitter address, then falls back to searching all addresses
  */
 async function queryMessageReceivedByNonce(
   provider: ethers.JsonRpcProvider,
@@ -182,7 +183,8 @@ async function queryMessageReceivedByNonce(
 ): Promise<ethers.Log[]> {
   const nonceTopic = toPaddedNonceTopic(params.nonce)
 
-  const filter: ethers.Filter = {
+  // First, try filtering by configured MessageTransmitter address (expected location)
+  const filterWithAddress: ethers.Filter = {
     address: params.messageTransmitterAddress.toLowerCase(),
     topics: [MESSAGE_RECEIVED_TOPIC, null, nonceTopic],
     fromBlock: params.fromBlock !== undefined ? toHexQuantity(params.fromBlock) : undefined,
@@ -197,16 +199,60 @@ async function queryMessageReceivedByNonce(
   })
 
   try {
-    const logs = await provider.getLogs(filter)
-    logger.debug('[EvmPoller] MessageReceived events found by nonce', {
+    const logs = await provider.getLogs(filterWithAddress)
+    logger.debug('[EvmPoller] MessageReceived events found by nonce at configured address', {
       nonce: params.nonce,
       logCount: logs.length,
+      messageTransmitterAddress: params.messageTransmitterAddress,
     })
-    return logs
+    
+    // If we found logs, return them
+    if (logs.length > 0) {
+      return logs
+    }
+    
+    // If no logs found at configured address, try searching all addresses
+    logger.debug('[EvmPoller] No MessageReceived events found at configured address, searching all addresses', {
+      nonce: params.nonce,
+      configuredMessageTransmitter: params.messageTransmitterAddress,
+    })
+    
+    const filterWithoutAddress: ethers.Filter = {
+      topics: [MESSAGE_RECEIVED_TOPIC, null, nonceTopic],
+      fromBlock: params.fromBlock !== undefined ? toHexQuantity(params.fromBlock) : undefined,
+      toBlock: params.toBlock !== undefined ? toHexQuantity(params.toBlock) : undefined,
+    }
+    
+    const allLogs = await provider.getLogs(filterWithoutAddress)
+    
+    if (allLogs.length > 0) {
+      // Log which addresses actually emitted the event
+      const eventAddresses = new Set<string>()
+      for (const log of allLogs) {
+        if (log.address) {
+          eventAddresses.add(log.address.toLowerCase())
+        }
+      }
+      
+      logger.warn('[EvmPoller] MessageReceived events found at different address(es) than configured MessageTransmitter', {
+        nonce: params.nonce,
+        configuredMessageTransmitter: params.messageTransmitterAddress,
+        actualEventAddresses: Array.from(eventAddresses),
+        logCount: allLogs.length,
+      })
+    }
+    
+    logger.debug('[EvmPoller] MessageReceived events found by nonce (all addresses)', {
+      nonce: params.nonce,
+      logCount: allLogs.length,
+    })
+    
+    return allLogs
   } catch (error) {
     logger.warn('[EvmPoller] Failed to query MessageReceived events by nonce', {
       error: error instanceof Error ? error.message : String(error),
       nonce: params.nonce,
+      messageTransmitterAddress: params.messageTransmitterAddress,
     })
     throw error
   }

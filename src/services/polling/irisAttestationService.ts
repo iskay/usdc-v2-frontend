@@ -147,6 +147,7 @@ export async function extractMessageSent(
     const messageTransmitterAddressLower = messageTransmitterAddress.toLowerCase()
     let messageSentLog: ethers.Log | undefined
 
+    // First, try to find MessageSent from MessageTransmitter address (expected location)
     for (const log of receipt.logs) {
       const logAddress = log.address?.toLowerCase()
       if (
@@ -158,10 +159,61 @@ export async function extractMessageSent(
       }
     }
 
+    // If not found at expected address, search ALL logs for MessageSent event topic
+    // This handles cases where the event might be emitted from a different address
+    // (e.g., if config has wrong address, or proxy pattern is used)
+    if (!messageSentLog) {
+      logger.debug('[IrisAttestation] MessageSent not found at MessageTransmitter address, searching all logs', {
+        txHash,
+        chainKey,
+        messageTransmitterAddress,
+        totalLogs: receipt.logs.length,
+      })
+
+      // Log all unique addresses and event topics for debugging
+      const logAddresses = new Set<string>()
+      const eventTopics = new Set<string>()
+      for (const log of receipt.logs) {
+        if (log.address) {
+          logAddresses.add(log.address.toLowerCase())
+        }
+        if (log.topics?.[0]) {
+          eventTopics.add(log.topics[0])
+        }
+      }
+
+      logger.debug('[IrisAttestation] Transaction receipt log analysis', {
+        txHash,
+        chainKey,
+        uniqueAddresses: Array.from(logAddresses),
+        uniqueEventTopics: Array.from(eventTopics),
+        messageSentTopic: MESSAGE_SENT_EVENT_TOPIC,
+        hasMessageSentTopic: eventTopics.has(MESSAGE_SENT_EVENT_TOPIC),
+      })
+
+      // Search all logs for MessageSent event topic
+      for (const log of receipt.logs) {
+        if (log.topics?.[0] === MESSAGE_SENT_EVENT_TOPIC) {
+          messageSentLog = log
+          logger.warn('[IrisAttestation] MessageSent event found at different address than configured MessageTransmitter', {
+            txHash,
+            chainKey,
+            configuredMessageTransmitter: messageTransmitterAddress,
+            actualEventAddress: log.address,
+            eventTopic: log.topics[0],
+          })
+          break
+        }
+      }
+    }
+
     if (!messageSentLog) {
       // Try fallback: extract nonce from DepositForBurn event
-      logger.debug('[IrisAttestation] MessageSent event not found, trying DepositForBurn fallback', {
+      logger.debug('[IrisAttestation] MessageSent event not found in any log, trying DepositForBurn fallback', {
         txHash,
+        chainKey,
+        messageTransmitterAddress,
+        totalLogs: receipt.logs.length,
       })
       return extractNonceFromDepositForBurn(receipt, chainKey, chain)
     }
