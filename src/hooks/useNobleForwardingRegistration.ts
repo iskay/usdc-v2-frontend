@@ -8,9 +8,9 @@
 import { useState, useCallback } from 'react'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import {
-  registerNobleForwarding,
+  executeRegistrationJob,
   isNobleForwardingRegistered,
-  type NobleForwardingRegistrationParams,
+  type NobleForwardingRegistrationJobParams,
 } from '@/services/polling/nobleForwardingRegistration'
 import { useToast } from '@/hooks/useToast'
 import { logger } from '@/utils/logger'
@@ -57,7 +57,7 @@ export function useNobleForwardingRegistration(
     // Get forwarding address from transaction metadata
     const forwardingAddress =
       transaction.depositDetails?.nobleForwardingAddress ||
-      transaction.pollingState.chainParams.noble?.metadata?.forwardingAddress
+      transaction.pollingState.metadata?.forwardingAddress
 
     if (!forwardingAddress) {
       logger.warn('[useNobleForwardingRegistration] No forwarding address found', {
@@ -67,7 +67,20 @@ export function useNobleForwardingRegistration(
     }
 
     try {
-      const registered = await isNobleForwardingRegistered(forwardingAddress)
+      const recipientAddress =
+        transaction.depositDetails?.destinationAddress ||
+        transaction.pollingState.metadata?.namadaReceiver ||
+        transaction.pollingState.metadata?.recipient
+      
+      if (!recipientAddress) {
+        logger.warn('[useNobleForwardingRegistration] No recipient address found for registration check', {
+          txId: transaction.id,
+        })
+        return false
+      }
+      
+      const channelId = transaction.pollingState.chainStatus.noble?.metadata?.channelId as string | undefined
+      const registered = await isNobleForwardingRegistered(forwardingAddress, channelId, recipientAddress)
       return registered
     } catch (error) {
       logger.error('[useNobleForwardingRegistration] Failed to check registration status', {
@@ -116,23 +129,35 @@ export function useNobleForwardingRegistration(
         throw new Error('Missing required parameters for registration')
       }
 
-      const params: NobleForwardingRegistrationParams = {
+      const params: NobleForwardingRegistrationJobParams = {
         txId: transaction.id,
         forwardingAddress,
         recipientAddress,
         channelId: transaction.pollingState.chainParams.noble?.metadata?.channelId as string | undefined,
+        fallback: transaction.pollingState.chainParams.noble?.metadata?.fallback as string | undefined,
       }
 
-      const result = await registerNobleForwarding(params)
+      const result = await executeRegistrationJob(params)
 
       if (result.success) {
-        notify({
-          title: 'Registration Initiated',
-          description: 'Noble forwarding registration has been initiated.',
-          level: 'success',
-        })
+        if (result.alreadyRegistered) {
+          notify({
+            title: 'Already Registered',
+            description: 'Noble forwarding address is already registered.',
+            level: 'info',
+          })
+        } else {
+          notify({
+            title: 'Registration Successful',
+            description: result.registrationTx.txHash
+              ? `Registration transaction submitted: ${result.registrationTx.txHash.slice(0, 16)}...`
+              : 'Noble forwarding registration completed.',
+            level: 'success',
+          })
+        }
       } else {
-        throw new Error(result.error || 'Registration failed')
+        const errorMessage = result.metadata.errorMessage || 'Registration failed'
+        throw new Error(errorMessage)
       }
     } catch (error) {
       logger.error('[useNobleForwardingRegistration] Registration failed', {

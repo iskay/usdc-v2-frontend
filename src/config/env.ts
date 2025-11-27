@@ -37,6 +37,16 @@ export const env = {
   debug: () => readEnvVar('VITE_DEBUG') === 'true' || readEnvVar('VITE_DEBUG') === '1',
   logLevel: () => readEnvVar('VITE_LOG_LEVEL') || 'info',
   irisAttestationBaseUrl: () => readEnvVar('VITE_IRIS_ATTESTATION_BASE_URL') || 'https://iris-api.circle.com/attestations/',
+  // Noble forwarding registration config
+  nobleRegMinUusdc: () => {
+    const value = readEnvVar('VITE_NOBLE_REG_MIN_UUSDC')
+    return value ? BigInt(value) : BigInt(20000) // 0.02 USDC default
+  },
+  nobleRegGasLimit: () => {
+    const value = readEnvVar('VITE_NOBLE_REG_GAS_LIMIT')
+    return value ? Number.parseInt(value, 10) : 200000
+  },
+  nobleRegFeeUusdc: () => readEnvVar('VITE_NOBLE_REG_FEE_UUSDC') || '20000', // 0.02 USDC default
 }
 
 // TODO: Add typed helpers for chain configs and secret handling once values are defined.

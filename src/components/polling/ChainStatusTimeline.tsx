@@ -153,6 +153,7 @@ export const ChainStatusTimeline = memo(function ChainStatusTimeline({
               transaction.pollingState.flowStatus === 'success' ? 'text-green-600' :
               transaction.pollingState.flowStatus === 'tx_error' || transaction.pollingState.flowStatus === 'polling_error' ? 'text-red-600' :
               transaction.pollingState.flowStatus === 'polling_timeout' ? 'text-yellow-600' :
+              transaction.pollingState.flowStatus === 'user_action_required' ? 'text-orange-600' :
               transaction.pollingState.flowStatus === 'cancelled' ? 'text-gray-500' :
               'text-blue-600'
             )}>
@@ -160,6 +161,7 @@ export const ChainStatusTimeline = memo(function ChainStatusTimeline({
                transaction.pollingState.flowStatus === 'tx_error' ? 'Transaction Error' :
                transaction.pollingState.flowStatus === 'polling_error' ? 'Polling Error' :
                transaction.pollingState.flowStatus === 'polling_timeout' ? 'Timeout' :
+               transaction.pollingState.flowStatus === 'user_action_required' ? 'User Action Required' :
                transaction.pollingState.flowStatus === 'cancelled' ? 'Cancelled' :
                'In Progress'}
             </span>

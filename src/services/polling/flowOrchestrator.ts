@@ -11,6 +11,7 @@ import type {
   ChainPoller,
   ChainPollParams,
   ChainPollResult,
+  ChainPollMetadata,
   FlowPollingStatus,
   ChainStatus,
   ChainStatusValue,
@@ -24,6 +25,7 @@ import {
   getExpectedStages,
   getChainForStage,
   type FlowStage,
+  DEPOSIT_STAGES,
 } from '@/shared/flowStages'
 import {
   updatePollingState,
@@ -113,33 +115,27 @@ export class FlowOrchestrator {
       fullInitialMetadata: initialMetadata,
     })
     
+    // Store initial metadata in top-level metadata field (single source of truth)
     updatePollingState(this.txId, {
       flowStatus: 'pending',
       chainStatus: {},
       flowType: this.flowType,
       chainParams: {},
+      metadata: initialMetadata ? (initialMetadata as ChainPollMetadata) : undefined,
       startedAt: Date.now(),
       lastUpdatedAt: Date.now(),
-      ...(initialMetadata && {
-        chainParams: {
-          [initialChain]: {
-            metadata: initialMetadata,
-          } as any,
-        },
-      }),
     })
     
     // Verify it was stored correctly
     const verifyState = getPollingState(this.txId)
     logger.info('[FlowOrchestrator] Verified initial metadata storage', {
       txId: this.txId,
-      hasChainParams: !!verifyState?.chainParams,
-      hasInitialChainParams: !!verifyState?.chainParams[initialChain],
-      storedMetadataKeys: verifyState?.chainParams[initialChain]?.metadata ? Object.keys(verifyState.chainParams[initialChain].metadata) : [],
-      storedMetadataHasInitialFields: verifyState?.chainParams[initialChain]?.metadata ? {
-        expectedAmountUusdc: 'expectedAmountUusdc' in verifyState.chainParams[initialChain].metadata,
-        namadaReceiver: 'namadaReceiver' in verifyState.chainParams[initialChain].metadata,
-        forwardingAddress: 'forwardingAddress' in verifyState.chainParams[initialChain].metadata,
+      hasMetadata: !!verifyState?.metadata,
+      storedMetadataKeys: verifyState?.metadata ? Object.keys(verifyState.metadata) : [],
+      storedMetadataHasInitialFields: verifyState?.metadata ? {
+        expectedAmountUusdc: 'expectedAmountUusdc' in verifyState.metadata,
+        namadaReceiver: 'namadaReceiver' in verifyState.metadata,
+        forwardingAddress: 'forwardingAddress' in verifyState.metadata,
       } : {},
     })
   }
@@ -262,22 +258,15 @@ export class FlowOrchestrator {
     })
 
     try {
-      // Get current state to preserve chainParams (initial metadata)
+      // Get current state to preserve metadata
       const currentState = getPollingState(this.txId)
       
-      // If chainParams don't exist or are missing initial metadata, ensure they're set
-      const initialChain = this.flowType === 'deposit' ? 'evm' : 'namada'
-      let chainParamsToUse = currentState?.chainParams || {}
-      
-      // Check if initial metadata exists, if not, we need to ensure it's set
+      // Check if metadata exists, if not, try to restore from transaction details
       // (This can happen if startFlow is called before initializePollingState, or if state was reset)
-      if (!chainParamsToUse[initialChain]?.metadata || Object.keys(chainParamsToUse[initialChain].metadata).length === 0) {
-        logger.warn('[FlowOrchestrator] Initial metadata missing in chainParams, attempting to restore', {
+      if (!currentState?.metadata || Object.keys(currentState.metadata).length === 0) {
+        logger.warn('[FlowOrchestrator] Metadata missing, attempting to restore from transaction', {
           txId: this.txId,
-          initialChain,
-          hasChainParams: !!chainParamsToUse[initialChain],
-          hasMetadata: !!chainParamsToUse[initialChain]?.metadata,
-          metadataKeys: chainParamsToUse[initialChain]?.metadata ? Object.keys(chainParamsToUse[initialChain].metadata) : [],
+          hasMetadata: !!currentState?.metadata,
         })
         
         // Try to get initial metadata from transaction details as fallback
@@ -288,7 +277,7 @@ export class FlowOrchestrator {
           const expectedAmountUusdc = `${amountInBaseUnits}uusdc`
           const chainKey = tx.chain || details.chainName.toLowerCase().replace(/\s+/g, '-')
           
-          const restoredMetadata = {
+          const restoredMetadata: ChainPollMetadata = {
             chainKey,
             txHash: tx.hash,
             recipient: tx.depositData?.nobleForwardingAddress || details.destinationAddress,
@@ -298,15 +287,12 @@ export class FlowOrchestrator {
             namadaReceiver: details.destinationAddress,
             expectedAmountUusdc,
             forwardingAddress: tx.depositData?.nobleForwardingAddress,
+            flowType: this.flowType,
           }
           
-          chainParamsToUse = {
-            ...chainParamsToUse,
-            [initialChain]: {
-              ...chainParamsToUse[initialChain],
-              metadata: restoredMetadata,
-            },
-          }
+          updatePollingState(this.txId, {
+            metadata: restoredMetadata,
+          })
           
           logger.info('[FlowOrchestrator] Restored initial metadata from transaction', {
             txId: this.txId,
@@ -315,7 +301,7 @@ export class FlowOrchestrator {
         }
       }
       
-      // Reset polling state but preserve chainParams (contains initial metadata)
+      // Reset polling state but preserve metadata (single source of truth)
       updatePollingState(this.txId, {
         flowStatus: 'pending',
         chainStatus: {},
@@ -323,21 +309,19 @@ export class FlowOrchestrator {
         currentChain: undefined,
         startedAt: Date.now(),
         lastUpdatedAt: Date.now(),
-        // Preserve chainParams to keep initial metadata (txHash, chainKey, etc.)
-        chainParams: chainParamsToUse,
+        // Preserve metadata and chainParams (for poller config)
       })
       
-      // Verify initial metadata is preserved
+      // Verify metadata is preserved
       const verifyState = getPollingState(this.txId)
-      logger.info('[FlowOrchestrator] Verified chainParams after startFlow', {
+      logger.info('[FlowOrchestrator] Verified metadata after startFlow', {
         txId: this.txId,
-        hasChainParams: !!verifyState?.chainParams,
-        hasInitialChainParams: !!verifyState?.chainParams[initialChain],
-        storedMetadataKeys: verifyState?.chainParams[initialChain]?.metadata ? Object.keys(verifyState.chainParams[initialChain].metadata) : [],
-        storedMetadataHasInitialFields: verifyState?.chainParams[initialChain]?.metadata ? {
-          expectedAmountUusdc: 'expectedAmountUusdc' in verifyState.chainParams[initialChain].metadata,
-          namadaReceiver: 'namadaReceiver' in verifyState.chainParams[initialChain].metadata,
-          forwardingAddress: 'forwardingAddress' in verifyState.chainParams[initialChain].metadata,
+        hasMetadata: !!verifyState?.metadata,
+        storedMetadataKeys: verifyState?.metadata ? Object.keys(verifyState.metadata) : [],
+        storedMetadataHasInitialFields: verifyState?.metadata ? {
+          expectedAmountUusdc: 'expectedAmountUusdc' in verifyState.metadata,
+          namadaReceiver: 'namadaReceiver' in verifyState.metadata,
+          forwardingAddress: 'forwardingAddress' in verifyState.metadata,
         } : {},
       })
 
@@ -463,7 +447,9 @@ export class FlowOrchestrator {
       const chain = chainOrder[i]
       await this.executeChainJob(chain, true)
 
-      // Check if chain timed out, errored, or requires user action
+      // CRITICAL: Read fresh state after chain job completes to ensure we have latest metadata
+      // This is especially important when moving to the next chain, as the previous chain
+      // may have updated metadata that we need for prerequisites
       const currentState = getPollingState(this.txId)
       const chainStatus = currentState?.chainStatus[chain]
       
@@ -472,8 +458,104 @@ export class FlowOrchestrator {
         chainStatus?.status === 'polling_error' ||
         chainStatus?.status === 'user_action_required'
       ) {
-        // user_action_required always stops the flow (requires user intervention)
-        if (chainStatus.status === 'user_action_required') {
+        // user_action_required - attempt automatic retry for Noble forwarding registration
+        if (chainStatus.status === 'user_action_required' && chain === 'noble') {
+          logger.info('[FlowOrchestrator] Noble requires user action - attempting automatic registration retry', {
+            txId: this.txId,
+            chain,
+            errorMessage: chainStatus.errorMessage,
+          })
+          
+          // Check if this is a forwarding registration issue
+          const nobleMetadata = currentState?.chainStatus.noble?.metadata
+          const forwardingAddress = nobleMetadata?.forwardingAddress as string | undefined
+          const namadaReceiver = nobleMetadata?.namadaReceiver as string | undefined
+          
+          if (forwardingAddress && namadaReceiver) {
+            try {
+              const { executeRegistrationJob } = await import('./nobleForwardingRegistration')
+              
+              logger.info('[FlowOrchestrator] Automatically retrying Noble forwarding registration', {
+                txId: this.txId,
+                forwardingAddress: forwardingAddress.slice(0, 16) + '...',
+                recipientAddress: namadaReceiver.slice(0, 16) + '...',
+              })
+              
+              const registrationResult = await executeRegistrationJob({
+                txId: this.txId,
+                forwardingAddress,
+                recipientAddress: namadaReceiver,
+                channelId: nobleMetadata?.channelId as string | undefined,
+                fallback: nobleMetadata?.fallback as string | undefined,
+                abortSignal: this.abortController.signal,
+              })
+              
+              if (registrationResult.success) {
+                logger.info('[FlowOrchestrator] Automatic registration retry succeeded, continuing flow', {
+                  txId: this.txId,
+                  alreadyRegistered: registrationResult.alreadyRegistered,
+                  txHash: registrationResult.registrationTx.txHash,
+                })
+                
+                // Update chain status to success and continue flow
+                updateChainStatus(this.txId, 'noble', {
+                  status: 'success',
+                  errorMessage: undefined,
+                  errorOccurredAt: undefined,
+                })
+                
+                // Update the forwarding registration stage
+                const existingStages = currentState?.chainStatus.noble?.stages || []
+                const regStageIndex = existingStages.findIndex(
+                  (s) => s.stage === DEPOSIT_STAGES.NOBLE_FORWARDING_REGISTRATION,
+                )
+                
+                if (regStageIndex >= 0) {
+                  const updatedStages = [...existingStages]
+                  updatedStages[regStageIndex] = {
+                    ...updatedStages[regStageIndex],
+                    status: 'confirmed',
+                    txHash: registrationResult.registrationTx.txHash,
+                  }
+                  
+                  updateChainStatus(this.txId, 'noble', {
+                    stages: updatedStages,
+                    completedStages: [
+                      ...(currentState?.chainStatus.noble?.completedStages || []),
+                      DEPOSIT_STAGES.NOBLE_FORWARDING_REGISTRATION,
+                    ],
+                  })
+                }
+                
+                // Continue flow execution (don't break)
+                continue
+              } else {
+                logger.warn('[FlowOrchestrator] Automatic registration retry failed, stopping flow', {
+                  txId: this.txId,
+                  error: registrationResult.metadata.errorMessage,
+                })
+                // Stop flow execution - user must take action before proceeding
+                break
+              }
+            } catch (error) {
+              logger.error('[FlowOrchestrator] Automatic registration retry threw error, stopping flow', {
+                txId: this.txId,
+                error: error instanceof Error ? error.message : String(error),
+              })
+              // Stop flow execution - user must take action before proceeding
+              break
+            }
+          } else {
+            logger.warn('[FlowOrchestrator] Cannot auto-retry registration - missing metadata', {
+              txId: this.txId,
+              hasForwardingAddress: !!forwardingAddress,
+              hasNamadaReceiver: !!namadaReceiver,
+            })
+            // Stop flow execution - user must take action before proceeding
+            break
+          }
+        } else {
+          // Other user_action_required cases or non-Noble chains - stop flow
           logger.info('[FlowOrchestrator] Chain requires user action - stopping flow', {
             txId: this.txId,
             chain,
@@ -583,9 +665,8 @@ export class FlowOrchestrator {
     if (chain === 'namada' && this.flowType === 'deposit') {
       const tx = transactionStorageService.getTransaction(this.txId)
       
-      // Required: namadaReceiver (can come from multiple sources)
-      const namadaReceiver = state.chainParams.namada?.metadata?.namadaReceiver ||
-                             state.chainParams.evm?.metadata?.namadaReceiver ||
+      // Required: namadaReceiver (from metadata or transaction)
+      const namadaReceiver = state.metadata?.namadaReceiver ||
                              tx?.depositDetails?.destinationAddress
       
       if (!namadaReceiver) {
@@ -603,14 +684,24 @@ export class FlowOrchestrator {
 
       // Required: packetSequence from Noble (must be provided)
       const nobleStatus = state.chainStatus.noble
-      const nobleResult = state.chainParams.noble?.metadata
-      const hasPacketSequence = nobleResult && 'packetSequence' in nobleResult && nobleResult.packetSequence
+      const hasPacketSequence = state.metadata?.packetSequence !== undefined
+      
+      // Enhanced logging to debug metadata issues
+      logger.debug('[FlowOrchestrator] Checking Namada prerequisites', {
+        txId: this.txId,
+        nobleStatus: nobleStatus?.status,
+        hasPacketSequence,
+        packetSequence: state.metadata?.packetSequence,
+        metadataKeys: state.metadata ? Object.keys(state.metadata) : [],
+      })
       
       if (!hasPacketSequence) {
         logger.warn('[FlowOrchestrator] Cannot start Namada polling: packetSequence missing (Noble must complete first)', {
           txId: this.txId,
           nobleStatus: nobleStatus?.status,
-          hasNobleMetadata: !!nobleResult,
+          hasNobleMetadata: !!state.metadata?.packetSequence,
+          metadataKeys: state.metadata ? Object.keys(state.metadata) : [],
+          packetSequenceValue: state.metadata?.packetSequence,
         })
         updateChainStatus(this.txId, chain, {
           status: 'polling_error',
@@ -622,8 +713,7 @@ export class FlowOrchestrator {
       }
       
       // Required: startHeight (will be calculated if missing)
-      const namadaParams = state.chainParams.namada?.metadata as NamadaPollParams['metadata'] | undefined
-      const hasStartHeight = namadaParams?.startHeight !== undefined && namadaParams.startHeight > 0
+      const hasStartHeight = state.metadata?.startHeight !== undefined && (state.metadata.startHeight as number) > 0
       
       if (!hasStartHeight) {
         // Validate that we can calculate it
@@ -655,8 +745,7 @@ export class FlowOrchestrator {
     // Noble deposit flow prerequisites
     if (chain === 'noble' && this.flowType === 'deposit') {
       const evmStatus = state.chainStatus.evm
-      const evmResult = state.chainParams.evm?.metadata
-      const hasCctpNonce = evmResult && 'cctpNonce' in evmResult && evmResult.cctpNonce
+      const hasCctpNonce = state.metadata?.cctpNonce !== undefined
 
       if (!hasCctpNonce && evmStatus?.status !== 'success') {
         logger.warn('[FlowOrchestrator] Cannot start Noble polling: CCTP nonce missing and EVM not completed', {
@@ -744,7 +833,7 @@ export class FlowOrchestrator {
     try {
       // Get chain timeout (use chain as fallback if chainKey not available yet)
       chainTimeout = await getChainTimeout(
-        state.chainParams[chain]?.metadata?.chainKey || chain,
+        state.metadata?.chainKey || chain,
         this.flowType,
       )
 
@@ -883,160 +972,124 @@ export class FlowOrchestrator {
     timeoutMs: number,
     resume: boolean,
   ): Promise<ChainPollParams> {
+    // CRITICAL: Read fresh state to ensure we have the latest metadata
+    // getPollingState handles migration automatically
     const state = getPollingState(this.txId)
     if (!state) {
       throw new Error('Polling state not found')
     }
 
-    // Get existing chain params or create new
-    const chainKey = await this.getChainKey(chain)
-    const initialChain = this.flowType === 'deposit' ? 'evm' : 'namada'
-    
-    // For the initial chain, preserve initial metadata from chainParams
-    // For other chains, create minimal metadata
+    // Get existing chain params (for poller config only - timeout, interval, abortSignal)
     const existingChainParams = state.chainParams[chain]
-    const initialChainMetadata = chain === initialChain ? state.chainParams[initialChain]?.metadata : undefined
+    const chainKey = await this.getChainKey(chain)
     
-    const chainParams = existingChainParams || {
+    // Start with metadata from pollingState.metadata (single source of truth)
+    // If metadata is missing, this is a critical error - log it
+    let metadata: ChainPollMetadata = state.metadata ? { ...state.metadata } : {}
+    
+    if (!state.metadata || Object.keys(state.metadata).length === 0) {
+      // This is a critical error - metadata should always be present
+      // Log detailed state information for debugging
+      logger.error('[FlowOrchestrator] CRITICAL: Metadata missing when building poll params', {
+        txId: this.txId,
+        chain,
+        hasState: !!state,
+        stateKeys: state ? Object.keys(state) : [],
+        hasChainParams: !!state.chainParams,
+        chainParamsKeys: state.chainParams ? Object.keys(state.chainParams) : [],
+        // Check if metadata exists in chainParams (old structure that needs migration)
+        hasEvmChainParams: !!state.chainParams?.evm,
+        evmChainParamsKeys: state.chainParams?.evm ? Object.keys(state.chainParams.evm) : [],
+        // Re-read state directly from transaction to see if it's a timing issue
+        directTxState: (() => {
+          const tx = transactionStorageService.getTransaction(this.txId)
+          return {
+            hasPollingState: !!tx?.pollingState,
+            hasMetadata: !!tx?.pollingState?.metadata,
+            metadataKeys: tx?.pollingState?.metadata ? Object.keys(tx.pollingState.metadata) : [],
+          }
+        })(),
+      })
+      
+      // Try to restore from transaction as fallback
+      const tx = transactionStorageService.getTransaction(this.txId)
+      if (tx && this.flowType === 'deposit' && tx.depositDetails) {
+        logger.warn('[FlowOrchestrator] Attempting to restore metadata from transaction', {
+          txId: this.txId,
+        })
+        const details = tx.depositDetails
+        const amountInBaseUnits = Math.round(parseFloat(details.amount) * 1_000_000).toString()
+        const expectedAmountUusdc = `${amountInBaseUnits}uusdc`
+        const restoredChainKey = tx.chain || details.chainName.toLowerCase().replace(/\s+/g, '-')
+        
+        metadata = {
+          chainKey: restoredChainKey,
+          txHash: tx.hash,
+          recipient: tx.depositData?.nobleForwardingAddress || details.destinationAddress,
+          amountBaseUnits: amountInBaseUnits,
+          usdcAddress: tx.depositData?.usdcAddress,
+          messageTransmitterAddress: tx.depositData?.messageTransmitterAddress,
+          namadaReceiver: details.destinationAddress,
+          expectedAmountUusdc,
+          forwardingAddress: tx.depositData?.nobleForwardingAddress,
+          flowType: this.flowType,
+        }
+        
+        // Save restored metadata
+        updatePollingState(this.txId, {
+          metadata,
+        })
+      }
+    }
+    
+    logger.info('[FlowOrchestrator] Building poll params - reading from single metadata source', {
+      txId: this.txId,
+      chain,
+      hasMetadata: !!state.metadata,
+      metadataKeys: state.metadata ? Object.keys(state.metadata) : [],
+      actualMetadataKeys: Object.keys(metadata),
+      hasInitialFields: {
+        expectedAmountUusdc: 'expectedAmountUusdc' in metadata,
+        namadaReceiver: 'namadaReceiver' in metadata,
+        forwardingAddress: 'forwardingAddress' in metadata,
+      },
+    })
+    
+    // CRITICAL: For each chain, use the correct chain key for that specific chain
+    // metadata.chainKey may contain the EVM chain key (for deposit flows), but Noble/Namada need their own keys
+    // Override chainKey in metadata for the current chain being polled
+    metadata.chainKey = chainKey  // Use the correct chain key for this specific chain
+    metadata.flowType = this.flowType
+    
+    logger.info('[FlowOrchestrator] Set chainKey for poll params', {
+      txId: this.txId,
+      chain,
+      chainKey,
+      previousChainKey: state.metadata?.chainKey,
+      metadataChainKeyAfterSet: metadata.chainKey,
+    })
+    
+    // Create or update chainParams (for poller config only - no metadata)
+    let chainParams = existingChainParams || {
       flowId: this.txId,
       chain,
       timeoutMs,
       intervalMs: 5000,
       abortSignal: this.abortController.signal,
-      metadata: {
-        chainKey,
-        flowType: this.flowType,
-        // For initial chain, include initial metadata (namadaBlockHeight, namadaIbcTxHash, etc.)
-        ...(initialChainMetadata || {}),
-      },
+    }
+    
+    // Save chainParams if it was created (for resumability)
+    if (!existingChainParams) {
+      updatePollingState(this.txId, {
+        chainParams: {
+          ...state.chainParams,
+          [chain]: chainParams,
+        },
+      })
     }
 
-    // Merge with existing metadata
-    const existingMetadata = state.chainParams[chain]?.metadata || {}
-    
-    // For the first chain in a flow, also check initial metadata from the initial chain
-    // This ensures txHash and other initial metadata is preserved
-    const initialMetadata = chain === initialChain ? state.chainParams[initialChain]?.metadata || {} : {}
-    
-    // For deposit flows, also include metadata from previous chains
-    // EVM -> Noble: pass cctpNonce from EVM + initial metadata (expectedAmountUusdc, namadaReceiver, forwardingAddress)
-    // Noble -> Namada: pass packetSequence from Noble + initial metadata from EVM
-    let previousChainMetadata: Record<string, unknown> = {}
-    if (this.flowType === 'deposit') {
-      if (chain === 'noble') {
-        // Noble needs cctpNonce from EVM + initial metadata (expectedAmountUusdc, namadaReceiver, forwardingAddress)
-        // Get initial metadata from EVM's chainParams (set during initialization)
-        const evmInitialMetadata = state.chainParams.evm?.metadata || {}
-        
-        // Logging to trace metadata propagation
-        logger.info('[FlowOrchestrator] Building Noble params - EVM metadata check', {
-          txId: this.txId,
-          hasEvmMetadata: !!state.chainParams.evm?.metadata,
-          evmMetadataKeys: Object.keys(evmInitialMetadata),
-          hasExpectedAmountUusdc: 'expectedAmountUusdc' in evmInitialMetadata,
-          hasNamadaReceiver: 'namadaReceiver' in evmInitialMetadata,
-          hasForwardingAddress: 'forwardingAddress' in evmInitialMetadata,
-          expectedAmountUusdc: evmInitialMetadata.expectedAmountUusdc,
-          namadaReceiver: evmInitialMetadata.namadaReceiver,
-          forwardingAddress: evmInitialMetadata.forwardingAddress,
-          fullEvmMetadata: evmInitialMetadata,
-        })
-        
-        previousChainMetadata = {
-          ...evmInitialMetadata, // This includes initial metadata + any result metadata from EVM
-        }
-      } else if (chain === 'namada') {
-        // Namada needs packetSequence from Noble (and namadaReceiver from initial)
-        // Include both EVM initial metadata and Noble result metadata
-        previousChainMetadata = {
-          ...(state.chainParams.evm?.metadata || {}), // Includes initial metadata
-          ...(state.chainParams.noble?.metadata || {}),
-        }
-      }
-    } else if (this.flowType === 'payment') {
-      if (chain === 'noble') {
-        // Noble needs packetSequence from Namada
-        previousChainMetadata = state.chainParams.namada?.metadata || {}
-      } else if (chain === 'evm') {
-        // EVM needs cctpNonce from Noble
-        previousChainMetadata = {
-          ...(state.chainParams.namada?.metadata || {}),
-          ...(state.chainParams.noble?.metadata || {}),
-        }
-      }
-    }
-    
-    // For payment flows starting on Namada, preserve the chainKey from initial metadata
-    // before merging other metadata that might overwrite it
-    const preservedChainKey = 
-      (this.flowType === 'payment' && chain === 'namada' && initialMetadata.chainKey) 
-        ? initialMetadata.chainKey 
-        : undefined
-    
-    // Build metadata with proper precedence:
-    // 1. chainParams.metadata (base, includes initial metadata for initial chain)
-    // 2. existingMetadata (from previous polling attempts)
-    // 3. previousChainMetadata (from previous chains in flow)
-    // 4. initialMetadata (explicit initial metadata, highest priority for initial chain)
-    let metadata = {
-      ...chainParams.metadata,
-      ...existingMetadata,
-      ...previousChainMetadata,
-      ...initialMetadata, // Highest priority - preserves namadaBlockHeight, namadaIbcTxHash, etc.
-    }
-    
-    // Debug logging for payment flow Namada
-    if (this.flowType === 'payment' && chain === 'namada') {
-      logger.debug('[FlowOrchestrator] Building Namada payment params - metadata check', {
-        txId: this.txId,
-        chain,
-        hasInitialMetadata: !!initialMetadata && Object.keys(initialMetadata).length > 0,
-        initialMetadataKeys: Object.keys(initialMetadata),
-        hasNamadaBlockHeight: 'namadaBlockHeight' in initialMetadata,
-        hasNamadaIbcTxHash: 'namadaIbcTxHash' in initialMetadata,
-        namadaBlockHeight: initialMetadata.namadaBlockHeight,
-        namadaIbcTxHash: initialMetadata.namadaIbcTxHash,
-        chainParamsMetadataKeys: Object.keys(chainParams.metadata),
-        finalMetadataKeys: Object.keys(metadata),
-        finalHasNamadaBlockHeight: 'namadaBlockHeight' in metadata,
-        finalHasNamadaIbcTxHash: 'namadaIbcTxHash' in metadata,
-        finalNamadaBlockHeight: metadata.namadaBlockHeight,
-        finalNamadaIbcTxHash: metadata.namadaIbcTxHash,
-      })
-    }
-    
-    // Restore preserved chainKey if it was overwritten
-    if (preservedChainKey) {
-      metadata.chainKey = preservedChainKey
-      logger.debug('[FlowOrchestrator] Preserved chain key from initial metadata for Namada payment flow', {
-        txId: this.txId,
-        chain,
-        chainKey: preservedChainKey,
-      })
-    }
-    
-    // Ensure chainKey and flowType are set (may have been overridden)
-    if (!metadata.chainKey) {
-      metadata.chainKey = await this.getChainKey(chain)
-    } else if (this.flowType === 'payment' && chain === 'namada') {
-      // For Namada in payment flows, verify the chainKey is correct
-      // It should be 'namada-testnet', not an EVM chain like 'avalanche-fuji'
-      if (metadata.chainKey !== 'namada-testnet' && 
-          (metadata.chainKey.includes('evm') || metadata.chainKey === 'avalanche-fuji' || metadata.chainKey.includes('fuji'))) {
-        const correctChainKey = await this.getChainKey(chain)
-        logger.warn('[FlowOrchestrator] Correcting incorrect chain key for Namada in payment flow', {
-          txId: this.txId,
-          chain,
-          incorrectChainKey: metadata.chainKey,
-          correctChainKey,
-        })
-        metadata.chainKey = correctChainKey
-      }
-    } else {
-      // For other chains/flows, ensure chainKey is set correctly
-      metadata.chainKey = await this.getChainKey(chain)
-    }
-    metadata.flowType = this.flowType
+    // chainKey and flowType are already set above - no need to override
+    // The chainKey is set to the correct value for the current chain being polled
     
     // Fallback: For EVM deposit flows, get txHash from transaction if missing
     if (chain === 'evm' && this.flowType === 'deposit' && !metadata.txHash) {
@@ -1103,17 +1156,14 @@ export class FlowOrchestrator {
               startHeight,
             } as NamadaPollParams['metadata']
 
-            // Store in chain params for future use
-            const updatedChainParams = {
-              ...chainParams,
-              metadata,
-            }
+            // Store startHeight in metadata for future use
             updatePollingState(this.txId, {
-              chainParams: {
-                ...state.chainParams,
-                [chain]: updatedChainParams,
+              metadata: {
+                ...metadata,
+                startHeight,
               },
             })
+            metadata.startHeight = startHeight
           } catch (error) {
             logger.warn('[FlowOrchestrator] Failed to calculate Namada start height, using fallback', {
               txId: this.txId,
@@ -1129,94 +1179,32 @@ export class FlowOrchestrator {
       }
     }
 
-    // For Noble deposit flows, ensure cctpNonce is passed from EVM result
+    // For Noble deposit flows, ensure cctpNonce is present (should already be in metadata from EVM)
     if (chain === 'noble' && this.flowType === 'deposit') {
-      const nobleParams = metadata as NoblePollParams['metadata']
-      const evmMetadata = state.chainParams.evm?.metadata || {}
-      
-      // Explicitly pass initial metadata fields that Noble needs for packet_data matching
-      // These should be in EVM's metadata (set during initialization), but ensure they're present
-      const requiredInitialFields = {
-        expectedAmountUusdc: evmMetadata.expectedAmountUusdc,
-        namadaReceiver: evmMetadata.namadaReceiver,
-        forwardingAddress: evmMetadata.forwardingAddress,
-      }
-      
-      // Only add fields that exist (don't add undefined values)
-      const fieldsToAdd: Record<string, unknown> = {}
-      if (requiredInitialFields.expectedAmountUusdc) {
-        fieldsToAdd.expectedAmountUusdc = requiredInitialFields.expectedAmountUusdc
-      }
-      if (requiredInitialFields.namadaReceiver) {
-        fieldsToAdd.namadaReceiver = requiredInitialFields.namadaReceiver
-      }
-      if (requiredInitialFields.forwardingAddress) {
-        fieldsToAdd.forwardingAddress = requiredInitialFields.forwardingAddress
-      }
-      
-      if (Object.keys(fieldsToAdd).length > 0) {
-        logger.info('[FlowOrchestrator] Adding initial metadata fields to Noble params', {
+      // cctpNonce should already be in metadata from EVM polling result
+      if (!metadata.cctpNonce) {
+        logger.warn('[FlowOrchestrator] cctpNonce missing from metadata for Noble deposit flow', {
           txId: this.txId,
-          fieldsAdded: Object.keys(fieldsToAdd),
-        })
-        metadata = {
-          ...metadata,
-          ...fieldsToAdd,
-        } as NoblePollParams['metadata']
-      } else {
-        logger.warn('[FlowOrchestrator] Initial metadata fields missing from EVM metadata for Noble', {
-          txId: this.txId,
-          evmMetadataKeys: Object.keys(evmMetadata),
-          hasExpectedAmountUusdc: 'expectedAmountUusdc' in evmMetadata,
-          hasNamadaReceiver: 'namadaReceiver' in evmMetadata,
-          hasForwardingAddress: 'forwardingAddress' in evmMetadata,
-        })
-      }
-      
-      // Pass cctpNonce from EVM result (required for Noble deposit polling)
-      if (evmMetadata.cctpNonce !== undefined) {
-        if (!nobleParams.cctpNonce) {
-          logger.debug('[FlowOrchestrator] Passing cctpNonce from EVM to Noble', {
-            txId: this.txId,
-            cctpNonce: evmMetadata.cctpNonce,
-          })
-          metadata = {
-            ...metadata,
-            cctpNonce: evmMetadata.cctpNonce as number,
-          } as NoblePollParams['metadata']
-        }
-      } else {
-        logger.warn('[FlowOrchestrator] cctpNonce not found in EVM metadata for Noble deposit flow', {
-          txId: this.txId,
-          evmMetadataKeys: Object.keys(evmMetadata),
+          metadataKeys: Object.keys(metadata),
         })
       }
     }
 
     // For Namada deposit flows, ensure required metadata is present
     if (chain === 'namada' && this.flowType === 'deposit') {
-      const namadaParams = metadata as NamadaPollParams['metadata']
-      
-      // Ensure namadaReceiver is set (from initial metadata or transaction)
-      if (!namadaParams.namadaReceiver) {
+      // namadaReceiver and packetSequence should already be in metadata from previous chains
+      if (!metadata.namadaReceiver) {
         const tx = transactionStorageService.getTransaction(this.txId)
-        const namadaReceiver = tx?.depositDetails?.destinationAddress ||
-                               state.chainParams.evm?.metadata?.namadaReceiver
+        const namadaReceiver = tx?.depositDetails?.destinationAddress
         if (namadaReceiver) {
-          metadata = {
-            ...metadata,
-            namadaReceiver,
-          } as NamadaPollParams['metadata']
+          metadata.namadaReceiver = namadaReceiver
         }
       }
-
-      // Pass packetSequence from Noble result (required)
-      const nobleResult = state.chainParams.noble?.metadata
-      if (nobleResult && 'packetSequence' in nobleResult && nobleResult.packetSequence) {
-        metadata = {
-          ...metadata,
-          packetSequence: nobleResult.packetSequence as number,
-        } as NamadaPollParams['metadata']
+      if (!metadata.packetSequence) {
+        logger.warn('[FlowOrchestrator] packetSequence missing from metadata for Namada deposit flow', {
+          txId: this.txId,
+          metadataKeys: Object.keys(metadata),
+        })
       }
     }
 
@@ -1304,16 +1292,22 @@ export class FlowOrchestrator {
       
       // Calculate startBlock for EVM payment flows if missing
       // Use timestamp-based calculation for resumable polling
-      if (!evmParams.startBlock && chainKey && tx?.createdAt) {
+      // CRITICAL: For payment flows, use evmChainKey (destination chain), not chainKey which may be noble-testnet
+      const evmChainKeyForStartHeight = this.flowType === 'payment' && metadata.evmChainKey
+        ? metadata.evmChainKey as string
+        : chainKey
+      
+      if (!evmParams.startBlock && evmChainKeyForStartHeight && tx?.createdAt) {
         try {
           const { getStartHeightFromTimestamp } = await import('./blockHeightLookup')
           // createdAt is already in milliseconds (number)
           const creationTimestampMs = tx.createdAt
-          const startBlock = await getStartHeightFromTimestamp(chainKey, creationTimestampMs)
+          const startBlock = await getStartHeightFromTimestamp(evmChainKeyForStartHeight, creationTimestampMs)
           
           logger.debug('[FlowOrchestrator] Calculated EVM startBlock from timestamp', {
             txId: this.txId,
-            chainKey,
+            chainKey: evmChainKeyForStartHeight,
+            flowType: this.flowType,
             creationTimestampMs,
             createdAt: tx.createdAt,
             startBlock,
@@ -1324,7 +1318,8 @@ export class FlowOrchestrator {
         } catch (error) {
           logger.warn('[FlowOrchestrator] Failed to calculate EVM startBlock from timestamp, will use default', {
             txId: this.txId,
-            chainKey,
+            chainKey: evmChainKeyForStartHeight,
+            flowType: this.flowType,
             createdAt: tx.createdAt,
             error: error instanceof Error ? error.message : String(error),
           })
@@ -1333,11 +1328,23 @@ export class FlowOrchestrator {
       }
     }
 
+    // Return ChainPollParams with metadata from pollingState.metadata
+    // CRITICAL: Log the final metadata being returned to verify chainKey is correct
+    logger.info('[FlowOrchestrator] Returning ChainPollParams', {
+      txId: this.txId,
+      chain,
+      metadataChainKey: metadata.chainKey,
+      chainKeyVariable: chainKey,
+      metadataKeys: Object.keys(metadata),
+    })
+    
     return {
       ...chainParams,
       flowId: this.txId,
       chain,
+      flowType: this.flowType,
       timeoutMs,
+      intervalMs: chainParams.intervalMs || 5000,
       abortSignal: this.abortController.signal,
       metadata,
     }
@@ -1351,28 +1358,58 @@ export class FlowOrchestrator {
   private async getChainKey(chain: ChainKey): Promise<string> {
     const state = getPollingState(this.txId)
     
-    // Try to get from chain params metadata
-    if (state?.chainParams[chain]?.metadata?.chainKey) {
-      const chainKey = state.chainParams[chain].metadata.chainKey as string
-      logger.debug('[FlowOrchestrator] Using chain key from chainParams', {
-        txId: this.txId,
-        chain,
-        chainKey,
-      })
-      return chainKey
-    }
-    
-    // Try to get from initial chain params
-    const initialChain = this.flowType === 'deposit' ? 'evm' : 'namada'
-    if (state?.chainParams[initialChain]?.metadata?.chainKey) {
-      // For deposit: EVM chain key, Noble/Namada use defaults
-      // For payment: Namada chain key, Noble/EVM use defaults
-      if (chain === initialChain) {
-        const chainKey = state.chainParams[initialChain].metadata.chainKey as string
-        logger.debug('[FlowOrchestrator] Using chain key from initial chain params', {
+    // CRITICAL: For Tendermint chains (Noble, Namada), always use their own chain keys from config
+    // Don't use metadata.chainKey which may contain the EVM chain key
+    if (chain === 'noble' || chain === 'namada') {
+      try {
+        const tendermintConfig = await fetchTendermintChainsConfig()
+        if (chain === 'noble') {
+          const defaultNobleKey = getDefaultNobleChainKey(tendermintConfig)
+          if (defaultNobleKey) {
+            logger.debug('[FlowOrchestrator] Using default Noble chain key from config', {
+              txId: this.txId,
+              chainKey: defaultNobleKey,
+            })
+            return defaultNobleKey
+          }
+        } else if (chain === 'namada') {
+          const defaultNamadaKey = getDefaultNamadaChainKey(tendermintConfig)
+          if (defaultNamadaKey) {
+            logger.debug('[FlowOrchestrator] Using default Namada chain key from config', {
+              txId: this.txId,
+              chainKey: defaultNamadaKey,
+            })
+            return defaultNamadaKey
+          }
+        }
+      } catch (error) {
+        logger.warn('[FlowOrchestrator] Failed to load Tendermint config for default chain key', {
           txId: this.txId,
           chain,
-          initialChain,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+    
+    // For EVM chains, check metadata for chain key
+    if (chain === 'evm') {
+      // For payment flows, use evmChainKey (destination chain)
+      if (this.flowType === 'payment' && state?.metadata?.evmChainKey) {
+        const chainKey = state.metadata.evmChainKey as string
+        logger.debug('[FlowOrchestrator] Using EVM chain key from metadata.evmChainKey (payment flow)', {
+          txId: this.txId,
+          chain,
+          chainKey,
+        })
+        return chainKey
+      }
+      
+      // For deposit flows, use chainKey (source chain)
+      if (this.flowType === 'deposit' && state?.metadata?.chainKey) {
+        const chainKey = state.metadata.chainKey as string
+        logger.debug('[FlowOrchestrator] Using chain key from pollingState.metadata (deposit flow)', {
+          txId: this.txId,
+          chain,
           chainKey,
         })
         return chainKey
@@ -1413,11 +1450,10 @@ export class FlowOrchestrator {
           // So we should NOT use either - use chainParams or default instead
           // Skip all tx-based checks for Namada in payment flows
         } else if (chain === 'evm') {
-          // For EVM in payment flows, check initial metadata for evmChainKey
-          const initialChain = 'namada'
-          if (state?.chainParams[initialChain]?.metadata?.evmChainKey) {
-            const chainKey = state.chainParams[initialChain].metadata.evmChainKey as string
-            logger.debug('[FlowOrchestrator] Using EVM chain key from initial metadata', {
+          // For EVM in payment flows, check metadata for evmChainKey
+          if (state?.metadata?.evmChainKey) {
+            const chainKey = state.metadata.evmChainKey as string
+            logger.debug('[FlowOrchestrator] Using EVM chain key from metadata', {
               txId: this.txId,
               chain,
               chainKey,
@@ -1440,36 +1476,9 @@ export class FlowOrchestrator {
       }
     }
     
-    // For Tendermint chains (Noble, Namada), use defaults from config
+    // Fallback: For Tendermint chains, try config again (shouldn't reach here if above worked)
     if (chain === 'noble' || chain === 'namada') {
-      try {
-        const tendermintConfig = await fetchTendermintChainsConfig()
-        if (chain === 'noble') {
-          const defaultNobleKey = getDefaultNobleChainKey(tendermintConfig)
-          if (defaultNobleKey) {
-            logger.debug('[FlowOrchestrator] Using default Noble chain key from config', {
-              txId: this.txId,
-              chainKey: defaultNobleKey,
-            })
-            return defaultNobleKey
-          }
-        } else if (chain === 'namada') {
-          const defaultNamadaKey = getDefaultNamadaChainKey(tendermintConfig)
-          if (defaultNamadaKey) {
-            logger.debug('[FlowOrchestrator] Using default Namada chain key from config', {
-              txId: this.txId,
-              chainKey: defaultNamadaKey,
-            })
-            return defaultNamadaKey
-          }
-        }
-      } catch (error) {
-        logger.warn('[FlowOrchestrator] Failed to load Tendermint config for default chain key', {
-          txId: this.txId,
-          chain,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
+      throw new Error(`Failed to determine chain key for ${chain} chain`)
     }
     
     // Hardcoded fallback for Tendermint chains if config loading fails
@@ -1577,55 +1586,63 @@ export class FlowOrchestrator {
         })
       }
 
-      // Merge metadata into chain params for next chain
-      // IMPORTANT: Preserve existing metadata (including initial metadata) when merging result metadata
+      // Update metadata in pollingState.metadata (single source of truth)
+      // Merge result metadata with existing metadata to preserve initial fields
       if (result.metadata) {
-        // Re-read state to ensure we have the latest
+        // CRITICAL: Read fresh state AFTER updateChainStatus to ensure we have the latest metadata
+        // This ensures we're merging with the most up-to-date state
         const latestState = getPollingState(this.txId)
-        const existingChainParams = latestState?.chainParams[chain]
-        const existingMetadata = existingChainParams?.metadata || {}
+        const existingMetadata = latestState?.metadata || {}
         
-        logger.info('[FlowOrchestrator] Merging chain result metadata', {
+        // Merge: existing metadata (preserves initial fields) + result metadata (adds new fields)
+        // CRITICAL: Filter out undefined values from result.metadata to avoid overwriting with undefined
+        const filteredResultMetadata: ChainPollMetadata = {}
+        for (const key in result.metadata) {
+          const value = result.metadata[key]
+          // Only include non-undefined values (null is allowed, but undefined should be filtered)
+          if (value !== undefined) {
+            filteredResultMetadata[key] = value
+          }
+        }
+        
+        const mergedMetadata: ChainPollMetadata = {
+          ...existingMetadata,
+          ...filteredResultMetadata,
+        }
+        
+        logger.info('[FlowOrchestrator] Updating metadata with chain result', {
           txId: this.txId,
           chain,
           existingMetadataKeys: Object.keys(existingMetadata),
-          existingMetadataHasInitialFields: {
-            expectedAmountUusdc: 'expectedAmountUusdc' in existingMetadata,
-            namadaReceiver: 'namadaReceiver' in existingMetadata,
-            forwardingAddress: 'forwardingAddress' in existingMetadata,
-          },
           resultMetadataKeys: Object.keys(result.metadata),
-          existingMetadata: existingMetadata, // Log full existing metadata for debugging
-        })
-        
-        // Merge: existing metadata (includes initial) + result metadata
-        const mergedMetadata = {
-          ...existingMetadata,  // Preserve initial metadata (expectedAmountUusdc, namadaReceiver, forwardingAddress, etc.)
-          ...result.metadata,   // Add result metadata (cctpNonce, irisLookupID, etc.)
-        }
-        
-        const chainParams = {
-          ...existingChainParams,  // Preserve other chainParams fields (flowId, chain, timeoutMs, etc.)
-          metadata: mergedMetadata,
-        }
-        
-        updatePollingState(this.txId, {
-          chainParams: {
-            ...latestState?.chainParams || {},
-            [chain]: chainParams,
-          },
-        })
-        
-        logger.info('[FlowOrchestrator] Merged chain result metadata', {
-          txId: this.txId,
-          chain,
           mergedMetadataKeys: Object.keys(mergedMetadata),
           preservedInitialFields: {
             expectedAmountUusdc: 'expectedAmountUusdc' in mergedMetadata,
             namadaReceiver: 'namadaReceiver' in mergedMetadata,
             forwardingAddress: 'forwardingAddress' in mergedMetadata,
           },
-          mergedMetadata: mergedMetadata, // Log full merged metadata for debugging
+          packetSequenceInResult: 'packetSequence' in result.metadata,
+          packetSequenceInExisting: 'packetSequence' in existingMetadata,
+          packetSequenceInMerged: 'packetSequence' in mergedMetadata,
+          packetSequenceValue: mergedMetadata.packetSequence,
+          packetSequenceType: typeof mergedMetadata.packetSequence,
+          resultPacketSequence: result.metadata.packetSequence,
+        })
+        
+        // Update pollingState.metadata (single source of truth)
+        updatePollingState(this.txId, {
+          metadata: mergedMetadata,
+        })
+        
+        // CRITICAL: Verify the update was persisted by reading state again
+        // This ensures subsequent reads (like in validatePrerequisites) will see the updated metadata
+        const verifyState = getPollingState(this.txId)
+        logger.debug('[FlowOrchestrator] Verified metadata update', {
+          txId: this.txId,
+          chain,
+          hasPacketSequence: verifyState?.metadata?.packetSequence !== undefined,
+          packetSequence: verifyState?.metadata?.packetSequence,
+          metadataKeys: verifyState?.metadata ? Object.keys(verifyState.metadata) : [],
         })
       }
     } else if (result.error) {
@@ -1676,17 +1693,13 @@ export class FlowOrchestrator {
         }),
       })
 
-      // Preserve metadata in chain params even on error (for resumability)
+      // Preserve metadata even on error (for resumability)
       if (result.metadata && Object.keys(result.metadata).length > 0) {
-        const chainParams = state.chainParams[chain] || ({} as any)
-        chainParams.metadata = {
-          ...chainParams.metadata,
-          ...result.metadata,
-        }
+        const existingMetadata = state.metadata || {}
         updatePollingState(this.txId, {
-          chainParams: {
-            ...state.chainParams,
-            [chain]: chainParams,
+          metadata: {
+            ...existingMetadata,
+            ...result.metadata,
           },
         })
       }
@@ -2020,8 +2033,8 @@ export class FlowOrchestrator {
         updatePollingState(this.txId, {
           flowStatus: 'user_action_required',
         })
-        // User action required - transaction is still in progress, keep as broadcasted
-        topLevelStatus = 'broadcasted'
+        // User action required - set status to user_action_required
+        topLevelStatus = 'user_action_required'
       } else if (hasTxError) {
         updatePollingState(this.txId, {
           flowStatus: 'tx_error',

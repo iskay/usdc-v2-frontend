@@ -6,6 +6,7 @@ import {
   isSuccess,
   isError,
   getStatusLabel,
+  getEffectiveStatus,
   getTotalDurationLabel,
   getProgressPercentage,
   getStageTimings,
@@ -16,6 +17,7 @@ import { ChainStatusTimeline } from '@/components/polling/ChainStatusTimeline'
 import { ResumePollingButton } from '@/components/polling/ResumePollingButton'
 import { CancelPollingButton } from '@/components/polling/CancelPollingButton'
 import { RetryPollingButton } from '@/components/polling/RetryPollingButton'
+import { RegisterNobleForwardingButton } from '@/components/polling/RegisterNobleForwardingButton'
 import { cn } from '@/lib/utils'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
@@ -334,13 +336,18 @@ export function TransactionDetailModal({
   let statusIcon = <Clock className="h-5 w-5" />
   let statusColor = 'text-muted-foreground'
 
+  const effectiveStatus = getEffectiveStatus(transaction)
+  
   if (isSuccess(transaction)) {
     statusIcon = <CheckCircle2 className="h-5 w-5" />
     statusColor = 'text-green-600'
   } else if (isError(transaction)) {
     statusIcon = <XCircle className="h-5 w-5" />
     statusColor = 'text-red-600'
-  } else if (transaction.status === 'undetermined' || transaction.isFrontendOnly) {
+  } else if (effectiveStatus === 'user_action_required') {
+    statusIcon = <AlertCircle className="h-5 w-5" />
+    statusColor = 'text-orange-600'
+  } else if (effectiveStatus === 'undetermined' || transaction.isFrontendOnly) {
     statusIcon = <AlertCircle className="h-5 w-5" />
     statusColor = 'text-yellow-600'
   }
@@ -644,6 +651,92 @@ export function TransactionDetailModal({
                 <ResumePollingButton transaction={transaction} size="sm" />
                 <CancelPollingButton transaction={transaction} size="sm" />
               </div>
+
+              {/* Noble Forwarding Registration Status */}
+              {transaction.pollingState.chainStatus.noble?.metadata?.nobleForwardingRegistration && (
+                <div className="rounded-md border border-border bg-muted/50 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-semibold">Noble Forwarding Registration</h4>
+                      {(() => {
+                        const reg = transaction.pollingState!.chainStatus.noble!.metadata!.nobleForwardingRegistration as any
+                        if (reg.alreadyRegistered) {
+                          return (
+                            <p className="mt-1 text-xs text-green-600">
+                              Already registered
+                            </p>
+                          )
+                        }
+                        if (reg.registrationTx?.txHash) {
+                          return (
+                            <p className="mt-1 text-xs text-green-600">
+                              Registered: {reg.registrationTx.txHash.slice(0, 16)}...
+                            </p>
+                          )
+                        }
+                        if (reg.balanceCheck?.performed && !reg.balanceCheck.sufficient) {
+                          return (
+                            <p className="mt-1 text-xs text-orange-600">
+                              Insufficient balance: {reg.balanceCheck.balanceUusdc || '0'} uusdc &lt; {reg.balanceCheck.minRequiredUusdc || '0'} uusdc required
+                            </p>
+                          )
+                        }
+                        if (reg.errorMessage) {
+                          return (
+                            <p className="mt-1 text-xs text-red-600">
+                              Error: {reg.errorMessage}
+                            </p>
+                          )
+                        }
+                        return (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Registration pending
+                          </p>
+                        )
+                      })()}
+                    </div>
+                    {(() => {
+                      const reg = transaction.pollingState!.chainStatus.noble!.metadata!.nobleForwardingRegistration as any
+                      const forwardingAddress = transaction.pollingState!.metadata?.forwardingAddress as string | undefined
+                      const recipientAddress = transaction.depositDetails?.destinationAddress || transaction.pollingState!.metadata?.namadaReceiver as string | undefined
+                      
+                      if (!forwardingAddress || !recipientAddress) {
+                        return null
+                      }
+                      
+                      // Show button if registration failed or hasn't been attempted
+                      if (!reg.registrationTx?.txHash && !reg.alreadyRegistered) {
+                        return (
+                          <RegisterNobleForwardingButton
+                            txId={transaction.id}
+                            forwardingAddress={forwardingAddress}
+                            recipientAddress={recipientAddress}
+                            channelId={transaction.pollingState!.chainStatus.noble?.metadata?.channelId as string | undefined}
+                            fallback={transaction.pollingState!.chainStatus.noble?.metadata?.fallback as string | undefined}
+                            size="sm"
+                            variant="outline"
+                          />
+                        )
+                      }
+                      return null
+                    })()}
+                  </div>
+                  
+                  {/* Balance Check Details */}
+                  {(() => {
+                    const reg = transaction.pollingState!.chainStatus.noble!.metadata!.nobleForwardingRegistration as any
+                    if (reg.balanceCheck?.performed) {
+                      return (
+                        <div className="mt-2 pt-2 border-t border-border text-xs text-muted-foreground">
+                          <p>Balance: {reg.balanceCheck.balanceUusdc || '0'} uusdc</p>
+                          <p>Required: {reg.balanceCheck.minRequiredUusdc || '0'} uusdc</p>
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
+                </div>
+              )}
             </div>
           )}
 

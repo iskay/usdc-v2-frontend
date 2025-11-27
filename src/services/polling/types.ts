@@ -88,11 +88,13 @@ export interface PollingState {
   currentChain?: ChainKey
   /** Flow type (deposit or payment) */
   flowType: FlowType
-  /** Polling parameters per chain (for resumability) */
+  /** Single source of truth: Progressive metadata that starts with initial fields and gets filled in as chains complete */
+  metadata?: ChainPollMetadata
+  /** Polling parameters per chain (for resumability) - NO metadata field */
   chainParams: {
-    evm?: EvmPollParams
-    noble?: NoblePollParams
-    namada?: NamadaPollParams
+    evm?: Omit<EvmPollParams, 'metadata'>
+    noble?: Omit<NoblePollParams, 'metadata'>
+    namada?: Omit<NamadaPollParams, 'metadata'>
   }
   /** Global timeout timestamp (milliseconds since epoch) */
   globalTimeoutAt?: number
@@ -222,50 +224,26 @@ export interface ChainPollResult {
 
 /**
  * EVM-specific polling parameters
+ * NOTE: metadata field removed - metadata is now in PollingState.metadata
  */
 export interface EvmPollParams extends BasePollParams {
-  metadata: ChainPollMetadata & {
-    usdcAddress: string
-    recipient: string
-    amountBaseUnits: string
-    fromBlock?: bigint
-    cctpNonce?: number
-    sourceDomain?: number
-    messageTransmitterAddress: string
-    maxBlockRange?: number
-  }
+  // metadata removed - use PollingState.metadata instead
 }
 
 /**
  * Noble-specific polling parameters
+ * NOTE: metadata field removed - metadata is now in PollingState.metadata
  */
 export interface NoblePollParams extends BasePollParams {
-  metadata: ChainPollMetadata & {
-    startHeight: number
-    forwardingAddress?: string
-    expectedAmountUusdc?: string
-    namadaReceiver?: string
-    cctpNonce?: number // For deposit flow
-    packetSequence?: number // For payment flow
-    destinationDomain?: number
-    channelId?: string
-  }
+  // metadata removed - use PollingState.metadata instead
 }
 
 /**
  * Namada-specific polling parameters
+ * NOTE: metadata field removed - metadata is now in PollingState.metadata
  */
 export interface NamadaPollParams extends BasePollParams {
-  metadata: ChainPollMetadata & {
-    startHeight: number
-    packetSequence?: number // For deposit flow
-    forwardingAddress?: string
-    namadaReceiver?: string
-    expectedAmountUusdc?: string
-    denom?: string
-    namadaIbcTxHash?: string // For payment flow
-    namadaBlockHeight?: number // For payment flow
-  }
+  // metadata removed - use PollingState.metadata instead
 }
 
 /**

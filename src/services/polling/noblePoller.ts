@@ -33,6 +33,7 @@ import {
 } from './tendermintRpcClient'
 import { DEPOSIT_STAGES, PAYMENT_STAGES } from '@/shared/flowStages'
 import { logger } from '@/utils/logger'
+import { fetchNobleForwardingAddress } from '@/services/deposit/nobleForwardingService'
 
 
 /**
@@ -81,18 +82,32 @@ async function pollForDepositWithNonce(
 
   try {
     // Step 1: Search for CCTP mint event by nonce using tx_search
+    // If cctpBlockHeight is already in metadata (from previous run), we can skip the search
+    // but we still need cctpTx for logging/verification
+    const existingCctpBlockHeight = params.metadata.cctpBlockHeight as number | undefined
+    
     const query = `circle.cctp.v1.MessageReceived.nonce='\\"${params.metadata.cctpNonce}\\"'`
     logger.debug('[NoblePoller] Searching for CCTP mint event', {
       flowId: params.flowId,
       query,
       cctpNonce: params.metadata.cctpNonce,
+      existingCctpBlockHeight,
+      skipSearch: existingCctpBlockHeight !== undefined,
     })
 
     const txSearchDeadline = Date.now() + txSearchTimeoutMs
     let cctpTx: TendermintTx | null = null
-    let cctpBlockHeight: number | null = null
+    let cctpBlockHeight: number | null = existingCctpBlockHeight || null
 
-    while (Date.now() < txSearchDeadline) {
+    // If we already have cctpBlockHeight from metadata, skip the search loop
+    if (existingCctpBlockHeight) {
+      logger.info('[NoblePoller] Using existing cctpBlockHeight from metadata, skipping tx_search', {
+        flowId: params.flowId,
+        cctpBlockHeight: existingCctpBlockHeight,
+      })
+    } else {
+      // Search for CCTP mint event
+      while (Date.now() < txSearchDeadline) {
       if (isAborted(abortSignal)) {
         cleanup()
         return createErrorResult('polling_error', 'Polling aborted')
@@ -222,14 +237,25 @@ async function pollForDepositWithNonce(
           return createErrorResult('polling_error', 'Polling aborted')
         }
       }
-    }
+      } // Close while loop
+    } // Close else block
 
-    if (!cctpTx || !cctpBlockHeight) {
+    // If we skipped search but have blockHeight from metadata, we still need to verify
+    // For now, if we have blockHeight, we'll proceed (the block_results query will verify)
+    if (!cctpBlockHeight) {
       cleanup()
       return createErrorResult(
         'polling_timeout',
         `CCTP mint event not found for nonce ${params.metadata.cctpNonce} within ${txSearchTimeoutMs}ms`,
       )
+    }
+    
+    // If we have blockHeight but no tx (from metadata), log a warning but continue
+    if (!cctpTx && existingCctpBlockHeight) {
+      logger.info('[NoblePoller] Using cctpBlockHeight from metadata without tx verification', {
+        flowId: params.flowId,
+        cctpBlockHeight: existingCctpBlockHeight,
+      })
     }
 
     // Step 2: Trigger Noble forwarding registration (stub - returns failed for now)
@@ -239,33 +265,99 @@ async function pollForDepositWithNonce(
     })
 
     // Import registration service
-    const { registerNobleForwarding } = await import('./nobleForwardingRegistration')
+    const { executeRegistrationJob } = await import('./nobleForwardingRegistration')
     
     // Get transaction ID from flowId (flowId should be the txId)
     const txId = params.flowId
     
-    // Call registration (stub - will return failed for now)
-    const registrationResult = await registerNobleForwarding({
-      txId,
-      forwardingAddress: params.metadata.forwardingAddress || '',
-      recipientAddress: params.metadata.namadaReceiver || '',
-    })
-
-    // Update forwarding registration stage based on result
-    if (registrationResult.success) {
-      // Find and update the forwarding registration stage
+    // Get forwarding address - fetch on-demand if missing
+    let forwardingAddress = params.metadata.forwardingAddress as string | undefined
+    const recipientAddress = params.metadata.namadaReceiver as string | undefined
+    
+    if (!forwardingAddress && recipientAddress) {
+      logger.info('[NoblePoller] Forwarding address missing from metadata, fetching on-demand', {
+        flowId: params.flowId,
+        recipientAddress: recipientAddress.slice(0, 16) + '...',
+      })
+      try {
+        forwardingAddress = await fetchNobleForwardingAddress(recipientAddress)
+        logger.info('[NoblePoller] Successfully fetched forwarding address on-demand', {
+          flowId: params.flowId,
+          forwardingAddress: forwardingAddress.slice(0, 16) + '...',
+        })
+      } catch (error) {
+        logger.error('[NoblePoller] Failed to fetch forwarding address on-demand', {
+          flowId: params.flowId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        // Continue without forwarding address - registration will fail gracefully later
+      }
+    }
+    
+    if (!forwardingAddress) {
+      logger.error('[NoblePoller] Cannot proceed with registration - forwarding address unavailable', {
+        flowId: params.flowId,
+        hasForwardingAddressInMetadata: !!params.metadata.forwardingAddress,
+        hasRecipientAddress: !!recipientAddress,
+      })
+      
+      // Update forwarding registration stage with error
       const regStageIndex = stages.findIndex(
         (s) => s.stage === DEPOSIT_STAGES.NOBLE_FORWARDING_REGISTRATION,
       )
       if (regStageIndex >= 0) {
         stages[regStageIndex] = {
           stage: DEPOSIT_STAGES.NOBLE_FORWARDING_REGISTRATION,
-          status: 'confirmed',
+          status: 'pending',
           source: 'poller',
-          txHash: registrationResult.txHash,
-          occurredAt: new Date().toISOString(),
+          occurredAt: stages[regStageIndex]?.occurredAt || new Date().toISOString(),
+          message: 'Forwarding address unavailable - cannot register',
         }
       }
+      
+      cleanup()
+      return createErrorResult(
+        'user_action_required',
+        'Forwarding address unavailable - cannot proceed with registration',
+      )
+    }
+    
+    // Execute registration job
+    const registrationResult = await executeRegistrationJob({
+      txId,
+      forwardingAddress,
+      recipientAddress: recipientAddress || '',
+      channelId: params.metadata.channelId as string | undefined,
+      fallback: params.metadata.fallback as string | undefined,
+      abortSignal: params.abortSignal,
+    })
+
+    // Update forwarding registration stage based on result
+    const regStageIndex = stages.findIndex(
+      (s) => s.stage === DEPOSIT_STAGES.NOBLE_FORWARDING_REGISTRATION,
+    )
+
+    // Track whether registration happened during flow (needed for packet extraction fallback)
+    const registrationHappenedDuringFlow = registrationResult.success && !registrationResult.alreadyRegistered
+    
+    if (registrationResult.success) {
+      // Registration succeeded (either already registered or newly registered)
+      if (regStageIndex >= 0) {
+        stages[regStageIndex] = {
+          stage: DEPOSIT_STAGES.NOBLE_FORWARDING_REGISTRATION,
+          status: 'confirmed',
+          source: 'poller',
+          txHash: registrationResult.registrationTx.txHash,
+          occurredAt: stages[regStageIndex]?.occurredAt || new Date().toISOString(), // Preserve original timestamp
+        }
+      }
+      
+      logger.info('[NoblePoller] Noble forwarding registration completed', {
+        flowId: params.flowId,
+        alreadyRegistered: registrationResult.alreadyRegistered,
+        registrationHappenedDuringFlow,
+        txHash: registrationResult.registrationTx.txHash,
+      })
     } else {
       // Registration requires user action - update stage to indicate user action needed
       const regStageIndex = stages.findIndex(
@@ -276,8 +368,13 @@ async function pollForDepositWithNonce(
           stage: DEPOSIT_STAGES.NOBLE_FORWARDING_REGISTRATION,
           status: 'pending', // Keep as pending to indicate action needed
           source: 'poller',
-          occurredAt: new Date().toISOString(),
-          message: registrationResult.error || 'Forwarding registration requires user action',
+          occurredAt: stages[regStageIndex]?.occurredAt || new Date().toISOString(), // Preserve original timestamp
+          message: registrationResult.metadata.errorMessage || 'Forwarding registration requires user action',
+          metadata: {
+            error: registrationResult.metadata.errorMessage,
+            balanceCheck: registrationResult.balanceCheck,
+            registrationTx: registrationResult.registrationTx,
+          },
         }
       }
 
@@ -340,13 +437,18 @@ async function pollForDepositWithNonce(
     }
 
     // Step 3: Get block_results at the found height and extract IBC packet sequence
-    logger.debug('[NoblePoller] Fetching block_results to find IBC send_packet event', {
+    // CRITICAL: Use cctpBlockHeight from metadata if available (for retry scenarios)
+    const blockHeightForPacketExtraction = (params.metadata.cctpBlockHeight as number) || cctpBlockHeight
+    
+    logger.info('[NoblePoller] Fetching block_results to find IBC send_packet event', {
       flowId: params.flowId,
-      blockHeight: cctpBlockHeight,
+      cctpBlockHeightFromSearch: cctpBlockHeight,
+      cctpBlockHeightFromMetadata: params.metadata.cctpBlockHeight,
+      blockHeightForPacketExtraction,
     })
 
     const blockResults = await retryWithBackoff(
-      () => rpcClient.getBlockResults(cctpBlockHeight!, abortSignal),
+      () => rpcClient.getBlockResults(blockHeightForPacketExtraction!, abortSignal),
       3,
       500,
       5000,
@@ -354,15 +456,28 @@ async function pollForDepositWithNonce(
     )
 
     if (!blockResults) {
+      logger.error('[NoblePoller] Block results not found for packet extraction', {
+        flowId: params.flowId,
+        blockHeight: blockHeightForPacketExtraction,
+        cctpBlockHeightFromSearch: cctpBlockHeight,
+        cctpBlockHeightFromMetadata: params.metadata.cctpBlockHeight,
+      })
       cleanup()
       return createErrorResult(
         'polling_error',
-        `Block results not found for height ${cctpBlockHeight}`,
+        `Block results not found for height ${blockHeightForPacketExtraction}`,
       )
     }
 
     // Extract packet sequence from send_packet events (even if packet_data doesn't match exactly)
     const finalizeEvents = blockResults.finalize_block_events || []
+    logger.debug('[NoblePoller] Block results retrieved for packet extraction', {
+      flowId: params.flowId,
+      blockHeight: blockHeightForPacketExtraction,
+      finalizeEventsCount: finalizeEvents.length,
+      eventTypes: finalizeEvents.map((e) => e.type),
+    })
+    
     let packetSequence: number | undefined
     let forwardFound = false
 
@@ -442,6 +557,13 @@ async function pollForDepositWithNonce(
     // If no exact match found, try to extract packet sequence from any send_packet event
     // (This might happen if packet_data format differs slightly)
     if (!packetSequence) {
+      logger.debug('[NoblePoller] No exact packet_data match found, trying fallback extraction', {
+        flowId: params.flowId,
+        blockHeight: blockHeightForPacketExtraction,
+        finalizeEventsCount: finalizeEvents.length,
+        sendPacketEventsCount: finalizeEvents.filter((e) => e.type === 'send_packet').length,
+      })
+      
       for (const event of finalizeEvents) {
         if (event.type === 'send_packet') {
           const attrs = indexAttributes(event.attributes || [])
@@ -451,11 +573,242 @@ async function pollForDepositWithNonce(
             packetSequence = Number.parseInt(packetSequenceAttr, 10)
             logger.info('[NoblePoller] Extracted packet_sequence from send_packet event (fallback)', {
               flowId: params.flowId,
-              blockHeight: cctpBlockHeight,
+              blockHeight: blockHeightForPacketExtraction,
               packetSequence,
               packetData: packetDataAttr || 'not available',
             })
             break
+          }
+        }
+      }
+      
+      if (!packetSequence) {
+        logger.warn('[NoblePoller] Failed to extract packet_sequence from any send_packet event in CCTP block', {
+          flowId: params.flowId,
+          blockHeight: blockHeightForPacketExtraction,
+          finalizeEventsCount: finalizeEvents.length,
+          sendPacketEventsCount: finalizeEvents.filter((e) => e.type === 'send_packet').length,
+          eventTypes: finalizeEvents.map((e) => e.type),
+        })
+        
+        // FALLBACK: When packet not found in CCTP block, try searching the registration block
+        // The IBC packet might be in the AccountRegistered event block instead
+        // Always try this fallback regardless of registration status for robustness
+        if (recipientAddress) {
+          logger.info('[NoblePoller] Packet not found in CCTP block - searching AccountRegistered event block (fallback)', {
+            flowId: params.flowId,
+            recipientAddress: recipientAddress.slice(0, 16) + '...',
+            registrationHappenedDuringFlow,
+            note: 'IBC packet may be in registration block instead of CCTP block',
+          })
+          
+          try {
+            // Search for AccountRegistered event using tx_search with polling
+            // Format: noble.forwarding.v1.AccountRegistered.recipient='\"<recipient>\"'
+            // CRITICAL: Polling indexing may lag, so we need to poll until found or timeout
+            const accountRegisteredQuery = `noble.forwarding.v1.AccountRegistered.recipient='\\"${recipientAddress}\\"'`
+            const accountRegisteredSearchTimeoutMs = 2 * 60 * 1000 // 2 minutes for tx_search
+            const accountRegisteredSearchIntervalMs = 3000 // 3 seconds
+            const accountRegisteredSearchDeadline = Date.now() + accountRegisteredSearchTimeoutMs
+            
+            logger.info('[NoblePoller] Polling for AccountRegistered event (transaction indexing may lag)', {
+              flowId: params.flowId,
+              query: accountRegisteredQuery,
+              recipientAddress: recipientAddress.slice(0, 16) + '...',
+              timeoutMs: accountRegisteredSearchTimeoutMs,
+              intervalMs: accountRegisteredSearchIntervalMs,
+            })
+            
+            let regTx: TendermintTx | null = null
+            let registrationBlockHeight: number | null = null
+            
+            // Poll until found or timeout
+            while (Date.now() < accountRegisteredSearchDeadline) {
+              if (isAborted(abortSignal)) {
+                logger.info('[NoblePoller] Abort signal detected while polling for AccountRegistered event', {
+                  flowId: params.flowId,
+                })
+                break
+              }
+              
+              try {
+                const registrationTxs = await retryWithBackoff(
+                  () => rpcClient.searchTransactions(accountRegisteredQuery, 1, 1, abortSignal),
+                  3,
+                  500,
+                  5000,
+                  abortSignal,
+                )
+                
+                if (registrationTxs.length > 0) {
+                  regTx = registrationTxs[0]
+                  registrationBlockHeight = Number.parseInt(regTx.height, 10)
+                  
+                  logger.info('[NoblePoller] AccountRegistered event found - querying block_results for packet extraction', {
+                    flowId: params.flowId,
+                    registrationBlockHeight,
+                    txHash: regTx.hash,
+                    recipientAddress: recipientAddress.slice(0, 16) + '...',
+                    attempts: Math.floor((Date.now() - (accountRegisteredSearchDeadline - accountRegisteredSearchTimeoutMs)) / accountRegisteredSearchIntervalMs) + 1,
+                  })
+                  break
+                } else {
+                  logger.debug('[NoblePoller] AccountRegistered event not yet indexed, will retry', {
+                    flowId: params.flowId,
+                    recipientAddress: recipientAddress.slice(0, 16) + '...',
+                    timeRemaining: accountRegisteredSearchDeadline - Date.now(),
+                  })
+                }
+              } catch (error) {
+                // Check abort signal first
+                if (isAborted(abortSignal)) {
+                  logger.info('[NoblePoller] Abort signal detected in AccountRegistered search catch block', {
+                    flowId: params.flowId,
+                  })
+                  break
+                }
+                
+                logger.warn('[NoblePoller] AccountRegistered tx_search request failed, will retry', {
+                  flowId: params.flowId,
+                  error: error instanceof Error ? error.message : String(error),
+                  query: accountRegisteredQuery,
+                })
+              }
+              
+              // Check abort signal before sleeping
+              if (isAborted(abortSignal)) {
+                break
+              }
+              
+              // Sleep before next attempt
+              try {
+                await sleep(accountRegisteredSearchIntervalMs, abortSignal)
+              } catch (sleepError) {
+                if (sleepError instanceof Error && sleepError.message === 'Polling cancelled') {
+                  break
+                }
+              }
+            }
+            
+            if (!regTx || !registrationBlockHeight) {
+              logger.warn('[NoblePoller] AccountRegistered event not found within timeout', {
+                flowId: params.flowId,
+                recipientAddress: recipientAddress.slice(0, 16) + '...',
+                timeoutMs: accountRegisteredSearchTimeoutMs,
+                note: 'Transaction may not be indexed yet, or registration may have failed',
+              })
+              // Continue without registration block - packet extraction will fail gracefully
+            } else {
+              
+              // Query block_results for registration block
+              const registrationBlockResults = await retryWithBackoff(
+                () => rpcClient.getBlockResults(registrationBlockHeight!, abortSignal),
+                3,
+                500,
+                5000,
+                abortSignal,
+              )
+              
+              if (registrationBlockResults) {
+                const registrationFinalizeEvents = registrationBlockResults.finalize_block_events || []
+                logger.debug('[NoblePoller] Block results retrieved for registration block', {
+                  flowId: params.flowId,
+                  blockHeight: registrationBlockHeight,
+                  finalizeEventsCount: registrationFinalizeEvents.length,
+                  eventTypes: registrationFinalizeEvents.map((e) => e.type),
+                })
+                
+                // Try to find matching packet_data first
+                if (
+                  params.metadata.expectedAmountUusdc &&
+                  params.metadata.namadaReceiver &&
+                  params.metadata.forwardingAddress
+                ) {
+                  const amountValue = params.metadata.expectedAmountUusdc.replace('uusdc', '')
+                  const expectedPacketData = JSON.stringify({
+                    amount: amountValue,
+                    denom: 'uusdc',
+                    receiver: params.metadata.namadaReceiver,
+                    sender: params.metadata.forwardingAddress,
+                  })
+                  
+                  for (const event of registrationFinalizeEvents) {
+                    if (event.type === 'send_packet') {
+                      const attrs = indexAttributes(event.attributes || [])
+                      const packetDataAttr = attrs['packet_data']
+                      const packetSequenceAttr = attrs['packet_sequence']
+                      
+                      if (packetDataAttr === expectedPacketData && packetSequenceAttr) {
+                        packetSequence = Number.parseInt(packetSequenceAttr, 10)
+                        forwardFound = true
+                        logger.info('[NoblePoller] IBC send_packet event found with matching packet_data in registration block', {
+                          flowId: params.flowId,
+                          blockHeight: registrationBlockHeight,
+                          packetSequence,
+                          packetData: expectedPacketData,
+                        })
+                        
+                        stages.push({
+                          stage: DEPOSIT_STAGES.NOBLE_IBC_FORWARDED,
+                          status: 'confirmed',
+                          source: 'poller',
+                          occurredAt: new Date().toISOString(),
+                        })
+                        break
+                      }
+                    }
+                  }
+                }
+                
+                // Fallback: extract packet sequence from any send_packet event
+                if (!packetSequence) {
+                  for (const event of registrationFinalizeEvents) {
+                    if (event.type === 'send_packet') {
+                      const attrs = indexAttributes(event.attributes || [])
+                      const packetSequenceAttr = attrs['packet_sequence']
+                      const packetDataAttr = attrs['packet_data']
+                      if (packetSequenceAttr) {
+                        packetSequence = Number.parseInt(packetSequenceAttr, 10)
+                        logger.info('[NoblePoller] Extracted packet_sequence from send_packet event in registration block (fallback)', {
+                          flowId: params.flowId,
+                          blockHeight: registrationBlockHeight,
+                          packetSequence,
+                          packetData: packetDataAttr || 'not available',
+                        })
+                        break
+                      }
+                    }
+                  }
+                }
+                
+                if (packetSequence) {
+                  logger.info('[NoblePoller] Successfully extracted packet_sequence from registration block', {
+                    flowId: params.flowId,
+                    registrationBlockHeight,
+                    packetSequence,
+                    cctpBlockHeight,
+                  })
+                } else {
+                  logger.warn('[NoblePoller] Failed to extract packet_sequence from registration block', {
+                    flowId: params.flowId,
+                    registrationBlockHeight,
+                    finalizeEventsCount: registrationFinalizeEvents.length,
+                    sendPacketEventsCount: registrationFinalizeEvents.filter((e) => e.type === 'send_packet').length,
+                  })
+                }
+              } else {
+                logger.warn('[NoblePoller] Block results not found for registration block', {
+                  flowId: params.flowId,
+                  registrationBlockHeight,
+                })
+              }
+            }
+          } catch (error) {
+            logger.warn('[NoblePoller] Failed to search for AccountRegistered event or extract packet from registration block', {
+              flowId: params.flowId,
+              error: error instanceof Error ? error.message : String(error),
+              recipientAddress: recipientAddress.slice(0, 16) + '...',
+            })
           }
         }
       }

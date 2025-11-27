@@ -5,7 +5,7 @@
  * Provides utilities for finding latest completed stages and managing resume checkpoints.
  */
 
-import type { PollingState, ChainStatus, ChainKey } from './types'
+import type { PollingState, ChainStatus, ChainKey, ChainPollMetadata } from './types'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import type { ChainStage } from '@/types/flow'
 import { transactionStorageService } from '@/services/tx/transactionStorageService'
@@ -31,7 +31,45 @@ export function updatePollingState(
       return
     }
 
-    const currentState = tx.pollingState
+    // CRITICAL: Read current state directly from transaction to avoid circular dependency
+    // Then check if migration is needed (metadata missing but exists in chainParams)
+    let currentState = tx.pollingState
+    
+    // If metadata is missing, check if it needs migration from chainParams
+    if (currentState && !currentState.metadata) {
+      const initialChain = tx.direction === 'deposit' ? 'evm' : 'namada'
+      const initialChainMetadata = (currentState.chainParams as any)?.[initialChain]?.metadata
+      
+      if (initialChainMetadata && Object.keys(initialChainMetadata).length > 0) {
+        // Metadata exists in old structure - migrate it
+        const allMetadata: ChainPollMetadata = { ...initialChainMetadata }
+        
+        // Merge metadata from other chains
+        for (const chainKey in currentState.chainParams) {
+          const chain = chainKey as ChainKey
+          const chainParams = (currentState.chainParams as any)[chain]
+          if (chainParams?.metadata && chain !== initialChain) {
+            Object.assign(allMetadata, chainParams.metadata)
+          }
+        }
+        
+        // Add metadata to currentState (don't save yet - will be saved below)
+        currentState = {
+          ...currentState,
+          metadata: allMetadata,
+        }
+      }
+    }
+    
+    // CRITICAL: Preserve metadata BEFORE spreading updates
+    // This ensures metadata is never lost when updating other fields
+    const preservedMetadata = updates.metadata !== undefined
+      ? {
+          ...(currentState?.metadata || {}),
+          ...updates.metadata,
+        }
+      : currentState?.metadata
+    
     const updatedState: PollingState = {
       ...currentState,
       ...updates,
@@ -43,10 +81,45 @@ export function updatePollingState(
         ...currentState?.chainStatus,
         ...updates.chainStatus,
       },
-      chainParams: {
-        ...currentState?.chainParams,
-        ...updates.chainParams,
-      },
+      // CRITICAL: Explicitly set metadata to ensure it's preserved
+      // This overrides any metadata: undefined that might be in updates
+      metadata: preservedMetadata,
+      // Merge chainParams (for poller config only - no metadata field)
+      // If updates.chainParams is provided, merge it with current chainParams
+      // If updates.chainParams is undefined, preserve current chainParams
+      chainParams: updates.chainParams !== undefined
+        ? (() => {
+            // Start with all current chainParams to preserve chains not being updated
+            const merged: typeof currentState.chainParams = {
+              ...(currentState?.chainParams || {}),
+            }
+            
+            // CRITICAL: If updates.chainParams is empty object {}, don't overwrite existing chainParams
+            // This prevents accidental clearing of chainParams when empty object is passed
+            const updateKeys = Object.keys(updates.chainParams)
+            if (updateKeys.length === 0 && Object.keys(merged).length > 0) {
+              // Empty update but we have existing chainParams - preserve them
+              return merged
+            }
+            
+            // Process each chain in updates.chainParams and merge (no metadata field)
+            for (const chainKey in updates.chainParams) {
+              const chain = chainKey as keyof typeof updates.chainParams
+              const currentChainParams = currentState?.chainParams?.[chain]
+              const updatedChainParams = updates.chainParams[chain]
+              
+              if (updatedChainParams) {
+                // Merge chainParams (no metadata field - metadata is in pollingState.metadata)
+                merged[chain] = {
+                  ...currentChainParams,
+                  ...updatedChainParams,
+                } as any
+              }
+            }
+            
+            return merged
+          })()
+        : (currentState?.chainParams || {}),
     }
 
     transactionStorageService.updateTransaction(txId, {
@@ -237,7 +310,65 @@ export function determineNextStage(
  */
 export function getPollingState(txId: string): PollingState | undefined {
   const tx = transactionStorageService.getTransaction(txId)
-  return tx?.pollingState
+  if (!tx?.pollingState) {
+    return undefined
+  }
+  
+  const state = tx.pollingState
+  
+  // Migration: If metadata exists in chainParams but not in pollingState.metadata, migrate it
+  if (!state.metadata) {
+    const initialChain = tx.direction === 'deposit' ? 'evm' : 'namada'
+    const initialChainMetadata = (state.chainParams as any)?.[initialChain]?.metadata
+    
+    if (initialChainMetadata && Object.keys(initialChainMetadata).length > 0) {
+      logger.info('[PollingStateManager] Migrating metadata from chainParams to pollingState.metadata', {
+        txId,
+        initialChain,
+        metadataKeys: Object.keys(initialChainMetadata),
+      })
+      
+      // Collect metadata from all chains (initial chain has initial metadata, others have result metadata)
+      const allMetadata: ChainPollMetadata = { ...initialChainMetadata }
+      
+      // Merge metadata from other chains (for result metadata like cctpNonce, packetSequence)
+      for (const chainKey in state.chainParams) {
+        const chain = chainKey as ChainKey
+        const chainParams = (state.chainParams as any)[chain]
+        if (chainParams?.metadata && chain !== initialChain) {
+          Object.assign(allMetadata, chainParams.metadata)
+        }
+      }
+      
+      // Update state with migrated metadata
+      const migratedState: PollingState = {
+        ...state,
+        metadata: allMetadata,
+      }
+      
+      // Remove metadata from chainParams (clean up old structure)
+      const cleanedChainParams: typeof state.chainParams = {}
+      for (const chainKey in state.chainParams) {
+        const chain = chainKey as ChainKey
+        const chainParams = (state.chainParams as any)[chain]
+        if (chainParams) {
+          const { metadata, ...rest } = chainParams
+          cleanedChainParams[chain] = rest as any
+        }
+      }
+      
+      migratedState.chainParams = cleanedChainParams
+      
+      // Save migrated state
+      transactionStorageService.updateTransaction(txId, {
+        pollingState: migratedState,
+      })
+      
+      return migratedState
+    }
+  }
+  
+  return state
 }
 
 /**
@@ -257,15 +388,9 @@ export function initializePollingState(
     chainStatus: {},
     flowType,
     chainParams: {},
+    metadata: initialMetadata ? (initialMetadata as ChainPollMetadata) : undefined,
     startedAt: Date.now(),
     lastUpdatedAt: Date.now(),
-    ...(initialMetadata && {
-      chainParams: {
-        [flowType === 'deposit' ? 'evm' : 'namada']: {
-          metadata: initialMetadata,
-        } as any,
-      },
-    }),
   }
 
   updatePollingState(txId, initialState)

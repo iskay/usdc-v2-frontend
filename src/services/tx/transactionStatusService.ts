@@ -53,8 +53,10 @@ export function getEffectiveStatus(tx: StoredTransaction): StoredTransaction['st
       return 'error' // Transaction actually failed
     } else if (flowStatus === 'polling_error' || flowStatus === 'polling_timeout') {
       return 'undetermined' // Couldn't verify status - tx may have succeeded
-    } else if (flowStatus === 'user_action_required' || flowStatus === 'cancelled') {
-      // Still in progress, waiting for user action or can be resumed
+    } else if (flowStatus === 'user_action_required') {
+      return 'user_action_required' // User action required to continue
+    } else if (flowStatus === 'cancelled') {
+      // Cancelled - can be resumed, still in progress
       return 'broadcasted'
     }
     // flowStatus === 'pending' - fall through to check top-level status
@@ -93,6 +95,7 @@ export function isInProgress(tx: StoredTransaction): boolean {
   const isInProgressStatus =
     effectiveStatus === 'submitting' ||
     effectiveStatus === 'broadcasted' ||
+    effectiveStatus === 'user_action_required' ||
     effectiveStatus === 'building' ||
     effectiveStatus === 'signing' ||
     effectiveStatus === 'connecting-wallet'
@@ -165,6 +168,7 @@ export function getStatusLabel(tx: StoredTransaction): string {
     signing: 'Signing Transaction',
     submitting: 'Submitting',
     broadcasted: 'Broadcasted',
+    user_action_required: 'User Action Required',
   }
 
   return statusLabels[effectiveStatus] || 'In Progress'
@@ -304,8 +308,8 @@ export function getStageTimings(
 
   // Convert to StageTiming format
   for (const stage of allStages) {
-    if (stage.occurredAt) {
-      const occurredAt = new Date(stage.occurredAt).getTime()
+      if (stage.occurredAt) {
+        const occurredAt = new Date(stage.occurredAt).getTime()
       
       // Extract chain from metadata or determine from stage
       let chain: 'evm' | 'noble' | 'namada' = 'evm'
@@ -321,11 +325,11 @@ export function getStageTimings(
               chain = c
               break
             }
-          }
-        }
+      }
+    }
         // Fallback: Try to determine chain from stage name or flowStatusSnapshot
         if (chain === 'evm' && tx.flowStatusSnapshot) {
-          const chainOrder = getChainOrder(flowType)
+    const chainOrder = getChainOrder(flowType)
           for (const c of chainOrder) {
             if (tx.flowStatusSnapshot?.chainProgress[c]?.stages?.some((s) => s.stage === stage.stage)) {
               chain = c
@@ -335,12 +339,12 @@ export function getStageTimings(
         }
       }
 
-      timings.push({
-        stage: stage.stage,
-        chain,
-        status: stage.status || 'pending',
-        occurredAt,
-      })
+            timings.push({
+              stage: stage.stage,
+              chain,
+              status: stage.status || 'pending',
+              occurredAt,
+            })
     }
   }
 

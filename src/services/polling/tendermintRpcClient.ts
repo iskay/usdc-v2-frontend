@@ -44,6 +44,17 @@ export interface TendermintBlockResults {
 }
 
 /**
+ * Tendermint broadcast transaction response
+ */
+export interface TendermintBroadcastTxResponse {
+  code?: number
+  data?: string
+  log?: string
+  codespace?: string
+  hash: string
+}
+
+/**
  * Tendermint RPC Client interface
  */
 export interface TendermintRpcClient {
@@ -77,6 +88,19 @@ export interface TendermintRpcClient {
    * @returns Latest block height
    */
   getLatestBlockHeight(): Promise<number>
+
+  /**
+   * Broadcast a transaction synchronously
+   * Returns with CheckTx response, does not wait for commit
+   * 
+   * @param txBytes - Base64-encoded transaction bytes
+   * @param abortSignal - Optional abort signal
+   * @returns Broadcast response with hash and CheckTx result
+   */
+  broadcastTxSync(
+    txBytes: string,
+    abortSignal?: AbortSignal,
+  ): Promise<TendermintBroadcastTxResponse>
 }
 
 /**
@@ -105,6 +129,16 @@ export function createTendermintRpcClient(rpcUrl: string): TendermintRpcClient {
     if (abortSignal?.aborted) {
       throw new Error('Polling cancelled')
     }
+
+    // Log the payload for debugging (but truncate large values like tx bytes)
+    const logParams = { ...params }
+    if (logParams.tx && typeof logParams.tx === 'string') {
+      logParams.tx = (logParams.tx as string).substring(0, 20) + '...' + ` (${(logParams.tx as string).length} chars)`
+    }
+    logger.debug('[TendermintRpcClient] JSON-RPC call', {
+      method,
+      params: logParams,
+    })
 
     let response: Response
     try {
@@ -305,6 +339,48 @@ export function createTendermintRpcClient(rpcUrl: string): TendermintRpcClient {
       } catch (error) {
         logger.warn('[TendermintRpcClient] getLatestBlockHeight failed', {
           error: error instanceof Error ? error.message : String(error),
+        })
+        throw error
+      }
+    },
+
+    async broadcastTxSync(
+      txBytes: string,
+      abortSignal?: AbortSignal,
+    ): Promise<TendermintBroadcastTxResponse> {
+      try {
+        // Use JSON-RPC format via POST (same as other RPC calls)
+        // The transaction bytes are base64-encoded and passed in params.tx
+        // Note: This may trigger CORS preflight, but RPC endpoints typically have better CORS support than LCD
+        // The params object gets serialized as JSON: {"tx": "base64string"}
+        logger.debug('[TendermintRpcClient] broadcast_tx_sync request', {
+          txBytesLength: txBytes.length,
+          txBytesPrefix: txBytes.substring(0, 20) + '...',
+        })
+        
+        const result = await retryWithBackoff(
+          () => callRpc<TendermintBroadcastTxResponse>(
+            'broadcast_tx_sync',
+            { tx: txBytes },
+            abortSignal,
+          ),
+          3,
+          500,
+          5000,
+          abortSignal,
+        )
+        
+        logger.debug('[TendermintRpcClient] broadcast_tx_sync result', {
+          hash: result.hash,
+          code: result.code,
+          log: result.log,
+        })
+        
+        return result
+      } catch (error) {
+        logger.error('[TendermintRpcClient] broadcast_tx_sync failed', {
+          error: error instanceof Error ? error.message : String(error),
+          txBytesLength: txBytes.length,
         })
         throw error
       }

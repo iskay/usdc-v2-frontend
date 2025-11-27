@@ -93,6 +93,9 @@ export const TransactionCard = memo(function TransactionCard({
   } else if (isError(transaction)) {
     statusIcon = <XCircle className="h-4 w-4" />
     statusColor = 'text-red-600'
+  } else if (effectiveStatus === 'user_action_required') {
+    statusIcon = <AlertCircle className="h-4 w-4" />
+    statusColor = 'text-orange-600'
   } else if (effectiveStatus === 'undetermined' || transaction.isFrontendOnly) {
     statusIcon = <AlertCircle className="h-4 w-4" />
     statusColor = 'text-yellow-600'

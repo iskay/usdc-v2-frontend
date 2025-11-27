@@ -10,6 +10,7 @@ export type TxStage =
   | 'finalized'
   | 'error'
   | 'undetermined' // Status when polling times out without resolution - distinct from 'error'
+  | 'user_action_required' // Status when user action is required to continue (e.g., Noble forwarding registration)
 
 export interface TrackedTransaction {
   id: string
