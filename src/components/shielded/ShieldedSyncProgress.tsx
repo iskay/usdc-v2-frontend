@@ -7,7 +7,7 @@ import { CheckCircle2, XCircle, Loader2, Shield } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export function ShieldedSyncProgress() {
-  const { state, startSync, stopSync, isReady } = useShieldedSync()
+  const { state, startSync, isReady } = useShieldedSync()
   const [progress] = useAtom(shieldedProgressAtom)
 
   const status = state.status ?? 'idle'
@@ -125,11 +125,7 @@ export function ShieldedSyncProgress() {
 
         {/* Action buttons */}
         <div className="flex items-center gap-2">
-          {status === 'syncing' || status === 'initializing' || status === 'loading-params' || status === 'finalizing' ? (
-            <Button variant="ghost" className="h-8 px-3 text-xs" onClick={stopSync} disabled={!state.isSyncing}>
-              Stop
-            </Button>
-          ) : status === 'error' ? (
+          {status === 'error' ? (
             <Button variant="primary" className="h-8 px-3 text-xs" onClick={startSync} disabled={!isReady}>
               Retry
             </Button>
