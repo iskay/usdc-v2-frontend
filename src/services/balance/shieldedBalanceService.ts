@@ -12,7 +12,7 @@ import {
   type ShieldedSyncListeners,
 } from '@/services/shielded/shieldedService'
 import { getFormattedShieldedUSDCBalance } from '@/services/shielded/shieldedBalanceHelpers'
-import { fetchNamadaAccounts } from '@/services/wallet/namadaKeychain'
+import { fetchNamadaAccounts, type NamadaKeychainAccount } from '@/services/wallet/namadaKeychain'
 import { resolveViewingKeyForSync } from '@/services/shielded/maspHelpers'
 import { NAMADA_CHAIN_ID } from '@/config/constants'
 import type { ShieldedSyncResult, ShieldedSyncProgress } from '@/types/shielded'
@@ -243,12 +243,18 @@ async function calculateShieldedBalanceStub(): Promise<{ usdcShielded: string }>
     let accountWithVk = accounts.find((a) => a?.address === walletState.namada.account)
     
     // If the parent account doesn't have a viewing key, find its child shielded account
-    if (accountWithVk && !accountWithVk.viewingKey && accountWithVk.id) {
+    // Note: id and parentId exist at runtime but aren't in the type definition
+    const accountWithId = accountWithVk as NamadaKeychainAccount & { id?: string }
+    if (accountWithVk && !accountWithVk.viewingKey && accountWithId.id) {
       const shieldedChild = accounts.find(
-        (a) =>
-          (a as any)?.parentId === accountWithVk.id &&
-          typeof a?.viewingKey === 'string' &&
-          a.viewingKey.length > 0,
+        (a) => {
+          const childWithParentId = a as NamadaKeychainAccount & { parentId?: string }
+          return (
+            childWithParentId?.parentId === accountWithId.id &&
+            typeof a?.viewingKey === 'string' &&
+            a.viewingKey.length > 0
+          )
+        },
       )
       if (shieldedChild) {
         accountWithVk = shieldedChild

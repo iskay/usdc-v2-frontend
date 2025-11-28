@@ -176,12 +176,18 @@ export async function resolveViewingKeyForSync(
     account = accounts.find((a) => a?.address === walletState.namada.account)
     
     // If the parent account doesn't have a viewing key, find its child shielded account
-    if (account && !account.viewingKey && account.id) {
+    // Note: id and parentId exist at runtime but aren't in the type definition
+    const accountWithId = account as NamadaKeychainAccount & { id?: string }
+    if (account && !account.viewingKey && accountWithId.id) {
       const shieldedChild = accounts.find(
-        (a) =>
-          (a as any)?.parentId === account.id &&
-          typeof a?.viewingKey === 'string' &&
-          a.viewingKey.length > 0,
+        (a) => {
+          const childWithParentId = a as NamadaKeychainAccount & { parentId?: string }
+          return (
+            childWithParentId?.parentId === accountWithId.id &&
+            typeof a?.viewingKey === 'string' &&
+            a.viewingKey.length > 0
+          )
+        },
       )
       if (shieldedChild) {
         account = shieldedChild
