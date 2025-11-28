@@ -2,6 +2,10 @@ import type { EvmChainsFile } from '@/config/chains'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 import { startBalancePolling } from '@/services/balance/balanceService'
 import { initializeNamadaSdk } from '@/services/namada/namadaSdkService'
+import {
+  attemptMetaMaskReconnection,
+  attemptNamadaReconnection,
+} from '@/services/wallet/walletService'
 
 export interface BootstrapResult {
   chains: EvmChainsFile
@@ -23,8 +27,12 @@ export async function initializeApplication(): Promise<BootstrapResult> {
   // Start periodic balance refresh loop
   startBalancePolling({ intervalMs: 10_000, runImmediate: true })
 
-  // TODO: Restore persisted wallet + settings state before reconnect attempts.
-  // TODO: Attempt MetaMask reconnection, prefetch balances, etc.
+  // Attempt to reconnect to wallets if already connected (non-interactive)
+  // These run in parallel and silently fail - they won't block app initialization
+  await Promise.allSettled([
+    attemptMetaMaskReconnection(),
+    attemptNamadaReconnection(),
+  ])
 
   return { chains }
 }

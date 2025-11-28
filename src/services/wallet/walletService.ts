@@ -5,10 +5,14 @@ import {
   fetchDefaultNamadaAccount,
   fetchNamadaAccounts,
   isNamadaAvailable,
+  checkNamadaConnection,
   type NamadaKeychainAccount,
 } from '@/services/wallet/namadaKeychain'
 import { emitWalletEvent } from '@/services/wallet/walletEvents'
 import { NAMADA_CHAIN_ID } from '@/config/constants'
+import { jotaiStore } from '@/store/jotaiStore'
+import { walletAtom, walletErrorAtom } from '@/atoms/walletAtom'
+import { requestBalanceRefresh } from '@/services/balance/balanceService'
 
 interface EthereumProvider {
   isMetaMask?: boolean
@@ -118,12 +122,132 @@ export async function disconnectMetaMask(): Promise<void> {
 }
 
 export async function disconnectNamada(): Promise<void> {
+  // Only emit disconnected event if disconnect actually succeeds
+  // If user disapproves, the extension will reject the promise
+  await disconnectNamadaExtension(NAMADA_CHAIN_ID)
   emitWalletEvent('namada:disconnected', undefined)
-  await disconnectNamadaExtension(NAMADA_CHAIN_ID).catch(() => undefined)
 }
 
 export async function disconnectWallets(): Promise<void> {
   await Promise.all([disconnectMetaMask(), disconnectNamada()])
+}
+
+/**
+ * Attempts to silently reconnect to MetaMask if already connected.
+ * Uses eth_accounts (non-interactive) to check for existing connections.
+ * Directly updates wallet atom and emits events to sync state without prompting the user.
+ */
+export async function attemptMetaMaskReconnection(): Promise<void> {
+  const provider = resolveEthereumProvider()
+  if (!provider) {
+    return // MetaMask not available, silently skip
+  }
+
+  try {
+    // Register event bridge first so we can listen to future changes
+    registerEthereumEventBridge(provider)
+
+    // Use eth_accounts (non-interactive) to check for existing connections
+    const accounts = (await provider.request({ method: 'eth_accounts' })) as string[] | undefined
+
+    if (!accounts || accounts.length === 0) {
+      return // No existing connection, silently skip
+    }
+
+    // Get current chain info
+    const chainIdHex = (await provider.request({ method: 'eth_chainId' })) as string
+    const chainId = parseChainId(chainIdHex)
+
+    // Directly update wallet atom (works even if React components haven't mounted yet)
+    jotaiStore.set(walletAtom, (state) => ({
+      ...state,
+      metaMask: {
+        ...state.metaMask,
+        isConnecting: false,
+        isConnected: true,
+        account: accounts[0],
+        chainId,
+        chainHex: chainIdHex,
+      },
+      lastUpdated: Date.now(),
+    }))
+    jotaiStore.set(walletErrorAtom, undefined)
+
+    // Also emit events for any listeners that are already registered
+    emitWalletEvent('evm:accountsChanged', { accounts })
+    emitWalletEvent('evm:chainChanged', { chainIdHex })
+
+    console.info('[WalletService] MetaMask reconnected on startup', {
+      account: accounts[0],
+      chainId,
+    })
+  } catch (error) {
+    // Silently fail - don't block app initialization
+    console.warn('[WalletService] Failed to reconnect MetaMask on startup', error)
+  }
+}
+
+/**
+ * Attempts to silently reconnect to Namada extension if already connected.
+ * Uses isConnected() to check connection status without prompting.
+ * Directly updates wallet atom and emits events to sync state if connected.
+ */
+export async function attemptNamadaReconnection(): Promise<void> {
+  try {
+    const available = await isNamadaAvailable()
+    if (!available) {
+      return // Namada not available, silently skip
+    }
+
+    // Check if already connected (non-interactive check)
+    const connected = await checkNamadaConnection(NAMADA_CHAIN_ID)
+    if (!connected) {
+      return // Not connected, silently skip
+    }
+
+    // Fetch account info
+    const accountInfo = await resolveNamadaAccount()
+    if (!accountInfo) {
+      return // No account info available
+    }
+
+    // Directly update wallet atom (works even if React components haven't mounted yet)
+    jotaiStore.set(walletAtom, (state) => ({
+      ...state,
+      namada: {
+        ...state.namada,
+        isConnecting: false,
+        isConnected: true,
+        account: accountInfo.transparentAddress,
+        shieldedAccount: accountInfo.shieldedAddress,
+        alias: accountInfo.accountAlias,
+        viewingKey: accountInfo.viewingKey,
+      },
+      lastUpdated: Date.now(),
+    }))
+    jotaiStore.set(walletErrorAtom, undefined)
+
+    // Also emit events for any listeners that are already registered
+    emitWalletEvent('namada:accountsChanged', {
+      transparentAddress: accountInfo.transparentAddress,
+      shieldedAddress: accountInfo.shieldedAddress,
+      accountAlias: accountInfo.accountAlias,
+      viewingKey: accountInfo.viewingKey,
+    })
+
+    // Trigger immediate balance refresh when transparent address becomes available
+    // This matches the behavior of manual connection via button click
+    if (accountInfo.transparentAddress) {
+      void requestBalanceRefresh({ trigger: 'manual' })
+    }
+
+    console.info('[WalletService] Namada reconnected on startup', {
+      account: accountInfo.transparentAddress,
+    })
+  } catch (error) {
+    // Silently fail - don't block app initialization
+    console.warn('[WalletService] Failed to reconnect Namada on startup', error)
+  }
 }
 
 async function ensureChain(provider: EthereumProvider, desiredChainIdHex?: string): Promise<{ chainId: number | undefined; chainIdHex: string }>

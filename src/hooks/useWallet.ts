@@ -10,6 +10,8 @@ import {
   isMetaMaskAvailable,
   isNamadaAvailable as checkNamadaAvailability,
 } from '@/services/wallet/walletService'
+import { checkNamadaConnection } from '@/services/wallet/namadaKeychain'
+import { NAMADA_CHAIN_ID } from '@/config/constants'
 import { onWalletEvent, offWalletEvent } from '@/services/wallet/walletEvents'
 import { useToast } from '@/hooks/useToast'
 import { requestBalanceRefresh } from '@/services/balance/balanceService'
@@ -324,7 +326,7 @@ export function useWallet() {
     }))
     try {
       await disconnectNamadaService()
-    } finally {
+      // Disconnect succeeded - user approved
       setWalletState((state) => ({
         ...state,
         namada: {
@@ -338,8 +340,35 @@ export function useWallet() {
         lastUpdated: Date.now(),
       }))
       setWalletError(undefined)
+    } catch (error) {
+      // Disconnect failed - user likely disapproved
+      // Verify actual connection status to sync state
+      const isStillConnected = await checkNamadaConnection(NAMADA_CHAIN_ID)
+      
+      setWalletState((state) => ({
+        ...state,
+        namada: {
+          ...state.namada,
+          isConnecting: false,
+          // Keep connection state as-is if user disapproved
+          isConnected: isStillConnected,
+        },
+        lastUpdated: Date.now(),
+      }))
+      
+      if (isStillConnected) {
+        // User disapproved - still connected
+        notify({
+          title: 'Disconnect Cancelled',
+          description: 'Namada Keychain connection remains active',
+          level: 'info',
+        })
+      } else {
+        // Connection was lost for some other reason
+        setWalletError(undefined)
+      }
     }
-  }, [setWalletError, setWalletState])
+  }, [setWalletError, setWalletState, notify])
 
   const disconnect = useCallback(async () => {
     setWalletState((state) => ({

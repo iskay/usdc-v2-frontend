@@ -55,12 +55,12 @@ export async function connectNamadaExtension(chainId: string = 'namada'): Promis
 
 export async function disconnectNamadaExtension(chainId: string = 'namada'): Promise<void> {
   const namada = await resolveNamada()
-  if (!namada) return
-  try {
-    await namada.disconnect(chainId)
-  } catch {
-    // Ignore disconnect errors; extension may not support explicit disconnect.
+  if (!namada) {
+    throw new Error('Namada Keychain is not available')
   }
+  // Let errors propagate so we can detect user disapproval
+  // The extension rejects the promise if user clicks "Reject" in the approval popup
+  await namada.disconnect(chainId)
 }
 
 export async function fetchNamadaAccounts(): Promise<readonly NamadaKeychainAccount[]> {
@@ -80,6 +80,17 @@ export async function fetchDefaultNamadaAccount(): Promise<NamadaKeychainAccount
     return (await namada.defaultAccount()) ?? undefined
   } catch {
     return undefined
+  }
+}
+
+export async function checkNamadaConnection(chainId: string = 'namada'): Promise<boolean> {
+  const namada = await resolveNamada()
+  if (!namada) return false
+  try {
+    const connected = await namada.isConnected(chainId)
+    return Boolean(connected)
+  } catch {
+    return false
   }
 }
 
