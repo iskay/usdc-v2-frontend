@@ -6,7 +6,7 @@
  */
 
 import { memo } from 'react'
-import { CheckCircle2, XCircle, Clock, AlertCircle, Ban } from 'lucide-react'
+import { CheckCircle2, XCircle, Clock, Ban } from 'lucide-react'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import type { ChainKey } from '@/shared/flowStages'
 import { getChainOrder } from '@/shared/flowStages'

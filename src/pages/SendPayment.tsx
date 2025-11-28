@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { DollarSign, Loader2, Shield, ArrowRight, AlertCircle } from 'lucide-react'
+import { Loader2, Shield, ArrowRight, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { BackToHome } from '@/components/common/BackToHome'
 import { RequireNamadaConnection } from '@/components/wallet/RequireNamadaConnection'

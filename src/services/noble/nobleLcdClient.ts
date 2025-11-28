@@ -9,7 +9,7 @@
 
 import { logger } from '@/utils/logger'
 import { env } from '@/config/env'
-import { retryWithBackoff, isTransientError } from '@/services/polling/basePoller'
+import { retryWithBackoff } from '@/services/polling/basePoller'
 import { createTendermintRpcClient, getTendermintRpcUrl } from '@/services/polling/tendermintRpcClient'
 
 /**

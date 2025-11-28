@@ -26,7 +26,6 @@ import {
 import {
   createTendermintRpcClient,
   getTendermintRpcUrl,
-  type TendermintBlockResults,
 } from './tendermintRpcClient'
 import { DEPOSIT_STAGES, PAYMENT_STAGES } from '@/shared/flowStages'
 import { logger } from '@/utils/logger'
@@ -43,12 +42,12 @@ function sleep(ms: number): Promise<void> {
  * Requires packetSequence from Noble polling result.
  */
 async function pollForDeposit(
-  params: NamadaPollParams,
+  params: ChainPollParams,
   rpcClient: ReturnType<typeof createTendermintRpcClient>,
 ): Promise<ChainPollResult> {
   const timeoutMs = params.timeoutMs ?? 30 * 60 * 1000
   const intervalMs = params.intervalMs ?? 5000
-  const blockRequestDelayMs = params.blockRequestDelayMs ?? 100
+  const blockRequestDelayMs = (params as NamadaPollParams).blockRequestDelayMs ?? 100
   const { controller, cleanup, wasTimeout } = createPollTimeout(
     timeoutMs,
     params.flowId,
@@ -283,21 +282,40 @@ async function pollForDeposit(
  * Poll for payment flow: send_packet by inner-tx-hash at specific block height
  */
 async function pollForPaymentIbcSend(
-  params: NamadaPollParams,
+  params: ChainPollParams,
   rpcClient: ReturnType<typeof createTendermintRpcClient>,
 ): Promise<ChainPollResult> {
-  const { namadaBlockHeight, namadaIbcTxHash } = params.metadata
+  const namadaBlockHeightRaw = params.metadata.namadaBlockHeight
+  const namadaIbcTxHash = params.metadata.namadaIbcTxHash as string | undefined
 
   // Early validation: ensure required prerequisites are present
   // Don't fall through to deposit flow if missing
-  if (namadaBlockHeight === undefined || namadaBlockHeight === null) {
+  if (namadaBlockHeightRaw === undefined || namadaBlockHeightRaw === null) {
     logger.error('[NamadaPoller] namadaBlockHeight is required for payment flow', {
       flowId: params.flowId,
-      namadaBlockHeight,
+      namadaBlockHeight: namadaBlockHeightRaw,
     })
     return createErrorResult(
       'polling_error',
       'namadaBlockHeight is required for payment flow. The block height where the payment transaction was submitted must be provided.',
+    )
+  }
+
+  // Convert to number if it's a string
+  const namadaBlockHeight = typeof namadaBlockHeightRaw === 'number' 
+    ? namadaBlockHeightRaw 
+    : typeof namadaBlockHeightRaw === 'string' 
+      ? Number.parseInt(namadaBlockHeightRaw, 10)
+      : undefined
+
+  if (namadaBlockHeight === undefined || isNaN(namadaBlockHeight)) {
+    logger.error('[NamadaPoller] Invalid namadaBlockHeight for payment flow', {
+      flowId: params.flowId,
+      namadaBlockHeightRaw,
+    })
+    return createErrorResult(
+      'polling_error',
+      'Invalid namadaBlockHeight for payment flow. The block height must be a valid number.',
     )
   }
 
@@ -473,11 +491,8 @@ export class NamadaPoller implements ChainPoller {
    * @returns Polling result with success status, metadata, and stages
    */
   async poll(params: ChainPollParams): Promise<ChainPollResult> {
-    // Validate Namada-specific params
-    const namadaParams = params as NamadaPollParams
-
     // Get Tendermint RPC client for Namada
-    const chainKey = namadaParams.metadata.chainKey || 'namada-testnet'
+    const chainKey = params.metadata.chainKey || 'namada-testnet'
     let rpcUrl: string
     try {
       rpcUrl = await getTendermintRpcUrl(chainKey)
@@ -496,10 +511,10 @@ export class NamadaPoller implements ChainPoller {
 
     // Determine flow type: Priority 1 - explicit flowType from metadata
     // Priority 2 - metadata-based detection (for backward compatibility)
-    const flowType = namadaParams.metadata.flowType as 'deposit' | 'payment' | undefined
+    const flowType = params.metadata.flowType as 'deposit' | 'payment' | undefined
     const hasPaymentMetadata =
-      namadaParams.metadata.namadaBlockHeight !== undefined &&
-      Boolean(namadaParams.metadata.namadaIbcTxHash)
+      params.metadata.namadaBlockHeight !== undefined &&
+      Boolean(params.metadata.namadaIbcTxHash)
     
     const isPaymentFlow = flowType === 'payment' || 
       (flowType !== 'deposit' && hasPaymentMetadata)
@@ -508,18 +523,18 @@ export class NamadaPoller implements ChainPoller {
       logger.info('[NamadaPoller] Using payment flow (IBC send lookup)', {
         flowId: params.flowId,
         flowType: flowType || 'detected from metadata',
-        blockHeight: namadaParams.metadata.namadaBlockHeight,
-        txHash: namadaParams.metadata.namadaIbcTxHash,
+        blockHeight: params.metadata.namadaBlockHeight,
+        txHash: params.metadata.namadaIbcTxHash,
       })
-      return pollForPaymentIbcSend(namadaParams, rpcClient)
+      return pollForPaymentIbcSend(params, rpcClient)
     } else {
       logger.info('[NamadaPoller] Using deposit flow (write_acknowledgement polling)', {
         flowId: params.flowId,
         flowType: flowType || 'detected from metadata',
-        startHeight: namadaParams.metadata.startHeight,
-        packetSequence: namadaParams.metadata.packetSequence,
+        startHeight: params.metadata.startHeight,
+        packetSequence: params.metadata.packetSequence,
       })
-      return pollForDeposit(namadaParams, rpcClient)
+      return pollForDeposit(params, rpcClient)
     }
   }
 }

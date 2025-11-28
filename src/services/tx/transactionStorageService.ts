@@ -16,6 +16,7 @@ import type { FlowStatus, ChainStage } from '@/types/flow'
 import type { DepositTransactionDetails } from '@/services/deposit/depositService'
 import type { PaymentTransactionDetails } from '@/services/payment/paymentService'
 import type { PollingState } from '@/services/polling/types'
+import type { DepositTxData } from './txBuilder'
 import { saveItem, loadItem, deleteItem } from '@/services/storage/localStore'
 import { logger } from '@/utils/logger'
 
@@ -68,6 +69,8 @@ export interface StoredTransaction extends TrackedTransaction {
   flowStatusSnapshot?: FlowStatus
   /** Deposit-specific metadata */
   depositDetails?: DepositTransactionDetails
+  /** Deposit transaction data (includes forwarding address, contract addresses, etc.) */
+  depositData?: DepositTxData
   /** Payment-specific metadata */
   paymentDetails?: PaymentTransactionDetails
   /** Flag for frontend-only mode (transactions not submitted to backend) */

@@ -129,11 +129,11 @@ export function buildRegistrationTransaction(
     const signerInfo = SignerInfo.fromPartial({
       publicKey: pkAny,
       modeInfo,
-      sequence: Long.UZERO,
+      sequence: BigInt(Long.UZERO.toString()),
     })
 
     const fee = Fee.fromPartial({
-      gasLimit: Long.fromNumber(params.gasLimit),
+      gasLimit: BigInt(params.gasLimit),
       amount: [{ denom: 'uusdc', amount: params.feeAmount }],
     })
 

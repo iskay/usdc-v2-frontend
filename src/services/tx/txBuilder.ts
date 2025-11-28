@@ -24,6 +24,10 @@ export interface DepositTxData {
   nobleForwardingAddress: string
   forwardingAddressBytes32: string
   destinationDomain: number
+  /** Optional: USDC contract address (can be loaded from chain config if missing) */
+  usdcAddress?: string
+  /** Optional: Message Transmitter contract address (can be loaded from chain config if missing) */
+  messageTransmitterAddress?: string
 }
 
 /**

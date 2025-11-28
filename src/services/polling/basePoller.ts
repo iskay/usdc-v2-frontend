@@ -8,7 +8,7 @@
  * - Abort signal checking
  */
 
-import type { BasePollParams, ChainPollResult } from './types'
+import type { ChainPollResult } from './types'
 import { logger } from '@/utils/logger'
 
 /**
@@ -421,7 +421,7 @@ export async function retryWithBackoff<T>(
 export function createPollTimeout(
   timeoutMs: number,
   flowId: string,
-  abortSignal?: AbortSignal,
+  _abortSignal?: AbortSignal,
 ): { controller: AbortController; cleanup: () => void; wasTimeout: () => boolean } {
   const controller = new AbortController()
   let timeoutOccurred = false
@@ -464,7 +464,7 @@ export function isAborted(abortSignal?: AbortSignal): boolean {
  * @returns ChainPollResult with error
  */
 export function createErrorResult(
-  type: 'tx_error' | 'polling_error' | 'polling_timeout',
+  type: 'tx_error' | 'polling_error' | 'polling_timeout' | 'user_action_required',
   message: string,
   error?: unknown,
   context?: Record<string, unknown>,

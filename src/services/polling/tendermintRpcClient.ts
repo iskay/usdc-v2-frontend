@@ -78,16 +78,18 @@ export interface TendermintRpcClient {
    * Get block results for a specific height
    * 
    * @param height - Block height
+   * @param abortSignal - Optional abort signal
    * @returns Block results or null if not found
    */
-  getBlockResults(height: number): Promise<TendermintBlockResults | null>
+  getBlockResults(height: number, abortSignal?: AbortSignal): Promise<TendermintBlockResults | null>
 
   /**
    * Get latest block height
    * 
+   * @param abortSignal - Optional abort signal
    * @returns Latest block height
    */
-  getLatestBlockHeight(): Promise<number>
+  getLatestBlockHeight(abortSignal?: AbortSignal): Promise<number>
 
   /**
    * Broadcast a transaction synchronously

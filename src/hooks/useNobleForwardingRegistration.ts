@@ -56,7 +56,7 @@ export function useNobleForwardingRegistration(
 
     // Get forwarding address from transaction metadata
     const forwardingAddress =
-      transaction.depositDetails?.nobleForwardingAddress ||
+      transaction.depositData?.nobleForwardingAddress ||
       transaction.pollingState.metadata?.forwardingAddress
 
     if (!forwardingAddress) {
@@ -118,12 +118,13 @@ export function useNobleForwardingRegistration(
     try {
       // Get required parameters from transaction
       const forwardingAddress =
-        transaction.depositDetails?.nobleForwardingAddress ||
-        transaction.pollingState.chainParams.noble?.metadata?.forwardingAddress
+        transaction.depositData?.nobleForwardingAddress ||
+        transaction.pollingState.metadata?.forwardingAddress
 
       const recipientAddress =
         transaction.depositDetails?.destinationAddress ||
-        transaction.pollingState.chainParams.noble?.metadata?.recipient
+        transaction.pollingState.metadata?.namadaReceiver ||
+        transaction.pollingState.metadata?.recipient
 
       if (!forwardingAddress || !recipientAddress) {
         throw new Error('Missing required parameters for registration')
@@ -133,8 +134,8 @@ export function useNobleForwardingRegistration(
         txId: transaction.id,
         forwardingAddress,
         recipientAddress,
-        channelId: transaction.pollingState.chainParams.noble?.metadata?.channelId as string | undefined,
-        fallback: transaction.pollingState.chainParams.noble?.metadata?.fallback as string | undefined,
+        channelId: transaction.pollingState.chainStatus.noble?.metadata?.channelId as string | undefined,
+        fallback: transaction.pollingState.metadata?.fallback as string | undefined,
       }
 
       const result = await executeRegistrationJob(params)

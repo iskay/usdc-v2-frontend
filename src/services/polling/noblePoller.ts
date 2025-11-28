@@ -13,7 +13,6 @@ import type {
   ChainPoller,
   ChainPollParams,
   ChainPollResult,
-  NoblePollParams,
 } from './types'
 import type { ChainStage } from '@/types/flow'
 import {
@@ -29,7 +28,6 @@ import {
   createTendermintRpcClient,
   getTendermintRpcUrl,
   type TendermintTx,
-  type TendermintBlockResults,
 } from './tendermintRpcClient'
 import { DEPOSIT_STAGES, PAYMENT_STAGES } from '@/shared/flowStages'
 import { logger } from '@/utils/logger'
@@ -40,7 +38,7 @@ import { fetchNobleForwardingAddress } from '@/services/deposit/nobleForwardingS
  * Poll for deposit flow: CCTP mint by nonce, then IBC forward
  */
 async function pollForDepositWithNonce(
-  params: NoblePollParams,
+  params: ChainPollParams,
   rpcClient: ReturnType<typeof createTendermintRpcClient>,
 ): Promise<ChainPollResult> {
   // Log received metadata to diagnose missing fields
@@ -58,7 +56,7 @@ async function pollForDepositWithNonce(
   const timeoutMs = params.timeoutMs ?? 30 * 60 * 1000
   const txSearchTimeoutMs = 2 * 60 * 1000 // 2 minutes for tx_search
   const txSearchIntervalMs = 3000 // 3 seconds
-  const { controller, cleanup, wasTimeout } = createPollTimeout(
+  const { controller, cleanup } = createPollTimeout(
     timeoutMs,
     params.flowId,
     params.abortSignal,
@@ -430,7 +428,7 @@ async function pollForDepositWithNonce(
         height: cctpBlockHeight,
         error: {
           type: 'user_action_required',
-          message: `Noble forwarding registration requires user action: ${registrationResult.error || 'Unknown error'}`,
+          message: `Noble forwarding registration requires user action: ${registrationResult.metadata.errorMessage || 'Unknown error'}`,
           occurredAt: Date.now(),
         },
       }
@@ -876,13 +874,13 @@ async function pollForDepositWithNonce(
  * Poll for payment flow: IBC acknowledgement by packet sequence, then CCTP burn
  */
 async function pollForPaymentWithPacketSequence(
-  params: NoblePollParams,
+  params: ChainPollParams,
   rpcClient: ReturnType<typeof createTendermintRpcClient>,
 ): Promise<ChainPollResult> {
   const timeoutMs = params.timeoutMs ?? 30 * 60 * 1000
   const txSearchTimeoutMs = 2 * 60 * 1000 // 2 minutes for tx_search
   const txSearchIntervalMs = 3000 // 3 seconds
-  const { controller, cleanup, wasTimeout } = createPollTimeout(
+  const { controller, cleanup } = createPollTimeout(
     timeoutMs,
     params.flowId,
     params.abortSignal,
@@ -1163,11 +1161,8 @@ export class NoblePoller implements ChainPoller {
    * @returns Polling result with success status, metadata, and stages
    */
   async poll(params: ChainPollParams): Promise<ChainPollResult> {
-    // Validate Noble-specific params
-    const nobleParams = params as NoblePollParams
-
     // Get Tendermint RPC client for Noble
-    const chainKey = nobleParams.metadata.chainKey || 'noble-testnet'
+    const chainKey = params.metadata.chainKey || 'noble-testnet'
     let rpcUrl: string
     try {
       rpcUrl = await getTendermintRpcUrl(chainKey)
@@ -1187,21 +1182,21 @@ export class NoblePoller implements ChainPoller {
     // Determine flow type based on available metadata
     // Deposit flow: has cctpNonce
     // Payment flow: has packetSequence
-    const isDepositFlow = Boolean(nobleParams.metadata.cctpNonce)
-    const isPaymentFlow = Boolean(nobleParams.metadata.packetSequence)
+    const isDepositFlow = Boolean(params.metadata.cctpNonce)
+    const isPaymentFlow = Boolean(params.metadata.packetSequence)
 
     if (isDepositFlow) {
       logger.info('[NoblePoller] Using deposit flow (nonce-based)', {
         flowId: params.flowId,
-        cctpNonce: nobleParams.metadata.cctpNonce,
+        cctpNonce: params.metadata.cctpNonce,
       })
-      return pollForDepositWithNonce(nobleParams, rpcClient)
+      return pollForDepositWithNonce(params, rpcClient)
     } else if (isPaymentFlow) {
       logger.info('[NoblePoller] Using payment flow (packet sequence-based)', {
         flowId: params.flowId,
-        packetSequence: nobleParams.metadata.packetSequence,
+        packetSequence: params.metadata.packetSequence,
       })
-      return pollForPaymentWithPacketSequence(nobleParams, rpcClient)
+      return pollForPaymentWithPacketSequence(params, rpcClient)
     } else {
       return createErrorResult(
         'polling_error',

@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link } from 'react-router-dom'
 import { AlertBox } from '@/components/common/AlertBox'
 import { Button } from '@/components/common/Button'
 import { BackToHome } from '@/components/common/BackToHome'

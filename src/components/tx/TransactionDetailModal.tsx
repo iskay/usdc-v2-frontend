@@ -365,6 +365,135 @@ export function TransactionDetailModal({
     return `${hash.slice(0, 8)}...${hash.slice(-6)}`
   }
 
+  // Reusable InfoRow component for address/tx display
+  function InfoRow({
+    label,
+    value,
+    explorerUrl,
+    onCopy,
+  }: {
+    label: string
+    value: string
+    explorerUrl?: string
+    onCopy: () => void
+  }) {
+    return (
+      <div className="col-span-2">
+        <dt className="text-muted-foreground">{label}</dt>
+        <dd className="mt-1">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-sm">{value}</span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={onCopy}
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                aria-label={`Copy ${label}`}
+                title={`Copy ${label}`}
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </button>
+              {explorerUrl && (
+                <a
+                  href={explorerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  aria-label={`Open ${label} in explorer`}
+                  title={`Open ${label} in explorer`}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </div>
+          </div>
+        </dd>
+      </div>
+    )
+  }
+
+  // Noble Forwarding Registration Status component
+  function NobleForwardingRegistrationStatus({
+    reg,
+    forwardingAddress,
+    recipientAddress,
+    channelId,
+    fallback,
+    txId,
+  }: {
+    reg: any
+    forwardingAddress?: string
+    recipientAddress?: string
+    channelId?: string
+    fallback?: string
+    txId: string
+  }) {
+    let statusMessage
+    if (reg.alreadyRegistered) {
+      statusMessage = (
+        <p className="mt-1 text-xs text-green-600">
+          Already registered
+        </p>
+      )
+    } else if (reg.registrationTx?.txHash) {
+      statusMessage = (
+        <p className="mt-1 text-xs text-green-600">
+          Registered: {reg.registrationTx.txHash.slice(0, 16)}...
+        </p>
+      )
+    } else if (reg.balanceCheck?.performed && !reg.balanceCheck.sufficient) {
+      statusMessage = (
+        <p className="mt-1 text-xs text-orange-600">
+          Insufficient balance: {reg.balanceCheck.balanceUusdc || '0'} uusdc &lt; {reg.balanceCheck.minRequiredUusdc || '0'} uusdc required
+        </p>
+      )
+    } else if (reg.errorMessage) {
+      statusMessage = (
+        <p className="mt-1 text-xs text-red-600">
+          Error: {reg.errorMessage}
+        </p>
+      )
+    } else {
+      statusMessage = (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Registration pending
+        </p>
+      )
+    }
+
+    const showButton = forwardingAddress && recipientAddress && !reg.registrationTx?.txHash && !reg.alreadyRegistered
+
+    return (
+      <div className="rounded-md border border-border bg-muted/50 p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h4 className="text-sm font-semibold">Noble Forwarding Registration</h4>
+            {statusMessage}
+          </div>
+          {showButton && (
+            <RegisterNobleForwardingButton
+              txId={txId}
+              forwardingAddress={forwardingAddress!}
+              recipientAddress={recipientAddress!}
+              channelId={channelId}
+              fallback={fallback}
+              size="sm"
+              variant="outline"
+            />
+          )}
+        </div>
+        
+        {/* Balance Check Details */}
+        {reg.balanceCheck?.performed && (
+          <div className="mt-2 pt-2 border-t border-border text-xs text-muted-foreground">
+            <p>Balance: {reg.balanceCheck.balanceUusdc || '0'} uusdc</p>
+            <p>Required: {reg.balanceCheck.minRequiredUusdc || '0'} uusdc</p>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
@@ -419,178 +548,66 @@ export function TransactionDetailModal({
                 <dt className="text-muted-foreground">Route</dt>
                 <dd className="mt-1 font-medium">{route}</dd>
               </div>
-              {senderAddress && (() => {
-                const explorerUrl = buildExplorerUrl(
-                  senderAddress,
-                  'address',
-                  transaction.direction === 'deposit' ? 'evm' : 'namada',
-                  transaction.direction === 'deposit' 
-                    ? getEvmChainKey(transaction.depositDetails?.chainName, transaction.chain)
-                    : undefined
-                )
-                return (
-                  <div className="col-span-2">
-                    <dt className="text-muted-foreground">Sender Address</dt>
-                    <dd className="mt-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm">{formatAddress(senderAddress)}</span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => copyToClipboard(senderAddress, 'Sender Address')}
-                            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                            aria-label="Copy Sender Address"
-                            title="Copy Sender Address"
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </button>
-                          {explorerUrl && (
-                            <a
-                              href={explorerUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                              aria-label="Open Sender Address in explorer"
-                              title="Open Sender Address in explorer"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    </dd>
-                  </div>
-                )
-              })()}
-              {receiverAddress && (() => {
-                const explorerUrl = buildExplorerUrl(
-                  receiverAddress,
-                  'address',
-                  transaction.direction === 'deposit' ? 'namada' : 'evm',
-                  transaction.direction === 'send'
-                    ? getEvmChainKey(transaction.paymentDetails?.chainName, transaction.chain)
-                    : undefined
-                )
-                return (
-                  <div className="col-span-2">
-                    <dt className="text-muted-foreground">Receiver Address</dt>
-                    <dd className="mt-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm">{formatAddress(receiverAddress)}</span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => copyToClipboard(receiverAddress, 'Receiver Address')}
-                            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                            aria-label="Copy Receiver Address"
-                            title="Copy Receiver Address"
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </button>
-                          {explorerUrl && (
-                            <a
-                              href={explorerUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                              aria-label="Open Receiver Address in explorer"
-                              title="Open Receiver Address in explorer"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    </dd>
-                  </div>
-                )
-              })()}
-              {sendTxHash && (() => {
-                const explorerUrl = buildExplorerUrl(
-                  sendTxHash,
-                  'tx',
-                  transaction.direction === 'deposit' ? 'evm' : 'namada',
-                  transaction.direction === 'deposit'
-                    ? getEvmChainKey(transaction.depositDetails?.chainName, transaction.chain)
-                    : undefined
-                )
-                return (
-                  <div className="col-span-2">
-                    <dt className="text-muted-foreground">Send Tx</dt>
-                    <dd className="mt-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm">{formatHash(sendTxHash)}</span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => copyToClipboard(sendTxHash, 'Send Tx')}
-                            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                            aria-label="Copy Send Tx"
-                            title="Copy Send Tx"
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </button>
-                          {explorerUrl && (
-                            <a
-                              href={explorerUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                              aria-label="Open Send Tx in explorer"
-                              title="Open Send Tx in explorer"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    </dd>
-                  </div>
-                )
-              })()}
-              {receiveTxHash && (() => {
-                const explorerUrl = buildExplorerUrl(
-                  receiveTxHash,
-                  'tx',
-                  transaction.direction === 'deposit' ? 'namada' : 'evm',
-                  transaction.direction === 'send'
-                    ? getEvmChainKey(transaction.paymentDetails?.chainName, transaction.chain)
-                    : undefined
-                )
-                return (
-                  <div className="col-span-2">
-                    <dt className="text-muted-foreground">Receive Tx</dt>
-                    <dd className="mt-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm">{formatHash(receiveTxHash)}</span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => copyToClipboard(receiveTxHash, 'Receive Tx')}
-                            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                            aria-label="Copy Receive Tx"
-                            title="Copy Receive Tx"
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </button>
-                          {explorerUrl && (
-                            <a
-                              href={explorerUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                              aria-label="Open Receive Tx in explorer"
-                              title="Open Receive Tx in explorer"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    </dd>
-                  </div>
-                )
-              })()}
+              {senderAddress && (
+                <InfoRow
+                  label="Sender Address"
+                  value={formatAddress(senderAddress)}
+                  explorerUrl={buildExplorerUrl(
+                    senderAddress,
+                    'address',
+                    transaction.direction === 'deposit' ? 'evm' : 'namada',
+                    transaction.direction === 'deposit'
+                      ? getEvmChainKey(transaction.depositDetails?.chainName, transaction.chain)
+                      : undefined
+                  )}
+                  onCopy={() => copyToClipboard(senderAddress, 'Sender Address')}
+                />
+              )}
+              {receiverAddress && (
+                <InfoRow
+                  label="Receiver Address"
+                  value={formatAddress(receiverAddress)}
+                  explorerUrl={buildExplorerUrl(
+                    receiverAddress,
+                    'address',
+                    transaction.direction === 'deposit' ? 'namada' : 'evm',
+                    transaction.direction === 'send'
+                      ? getEvmChainKey(transaction.paymentDetails?.chainName, transaction.chain)
+                      : undefined
+                  )}
+                  onCopy={() => copyToClipboard(receiverAddress, 'Receiver Address')}
+                />
+              )}
+              {sendTxHash && (
+                <InfoRow
+                  label="Send Tx"
+                  value={formatHash(sendTxHash)}
+                  explorerUrl={buildExplorerUrl(
+                    sendTxHash,
+                    'tx',
+                    transaction.direction === 'deposit' ? 'evm' : 'namada',
+                    transaction.direction === 'deposit'
+                      ? getEvmChainKey(transaction.depositDetails?.chainName, transaction.chain)
+                      : undefined
+                  )}
+                  onCopy={() => copyToClipboard(sendTxHash, 'Send Tx')}
+                />
+              )}
+              {receiveTxHash && (
+                <InfoRow
+                  label="Receive Tx"
+                  value={formatHash(receiveTxHash)}
+                  explorerUrl={buildExplorerUrl(
+                    receiveTxHash,
+                    'tx',
+                    transaction.direction === 'deposit' ? 'namada' : 'evm',
+                    transaction.direction === 'send'
+                      ? getEvmChainKey(transaction.paymentDetails?.chainName, transaction.chain)
+                      : undefined
+                  )}
+                  onCopy={() => copyToClipboard(receiveTxHash, 'Receive Tx')}
+                />
+              )}
               {transaction.flowId && !transaction.isFrontendOnly && (
                 <div className="col-span-2">
                   <dt className="text-muted-foreground">Flow ID</dt>
@@ -641,7 +658,7 @@ export function TransactionDetailModal({
           )}
 
           {/* Chain Status Timeline (for frontend polling) */}
-          {transaction.pollingState && (
+          {transaction.pollingState ? (
             <div className="space-y-4">
               <ChainStatusTimeline transaction={transaction} />
               
@@ -653,92 +670,18 @@ export function TransactionDetailModal({
               </div>
 
               {/* Noble Forwarding Registration Status */}
-              {transaction.pollingState.chainStatus.noble?.metadata?.nobleForwardingRegistration && (
-                <div className="rounded-md border border-border bg-muted/50 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-semibold">Noble Forwarding Registration</h4>
-                      {(() => {
-                        const reg = transaction.pollingState!.chainStatus.noble!.metadata!.nobleForwardingRegistration as any
-                        if (reg.alreadyRegistered) {
-                          return (
-                            <p className="mt-1 text-xs text-green-600">
-                              Already registered
-                            </p>
-                          )
-                        }
-                        if (reg.registrationTx?.txHash) {
-                          return (
-                            <p className="mt-1 text-xs text-green-600">
-                              Registered: {reg.registrationTx.txHash.slice(0, 16)}...
-                            </p>
-                          )
-                        }
-                        if (reg.balanceCheck?.performed && !reg.balanceCheck.sufficient) {
-                          return (
-                            <p className="mt-1 text-xs text-orange-600">
-                              Insufficient balance: {reg.balanceCheck.balanceUusdc || '0'} uusdc &lt; {reg.balanceCheck.minRequiredUusdc || '0'} uusdc required
-                            </p>
-                          )
-                        }
-                        if (reg.errorMessage) {
-                          return (
-                            <p className="mt-1 text-xs text-red-600">
-                              Error: {reg.errorMessage}
-                            </p>
-                          )
-                        }
-                        return (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Registration pending
-                          </p>
-                        )
-                      })()}
-                    </div>
-                    {(() => {
-                      const reg = transaction.pollingState!.chainStatus.noble!.metadata!.nobleForwardingRegistration as any
-                      const forwardingAddress = transaction.pollingState!.metadata?.forwardingAddress as string | undefined
-                      const recipientAddress = transaction.depositDetails?.destinationAddress || transaction.pollingState!.metadata?.namadaReceiver as string | undefined
-                      
-                      if (!forwardingAddress || !recipientAddress) {
-                        return null
-                      }
-                      
-                      // Show button if registration failed or hasn't been attempted
-                      if (!reg.registrationTx?.txHash && !reg.alreadyRegistered) {
-                        return (
-                          <RegisterNobleForwardingButton
-                            txId={transaction.id}
-                            forwardingAddress={forwardingAddress}
-                            recipientAddress={recipientAddress}
-                            channelId={transaction.pollingState!.chainStatus.noble?.metadata?.channelId as string | undefined}
-                            fallback={transaction.pollingState!.chainStatus.noble?.metadata?.fallback as string | undefined}
-                            size="sm"
-                            variant="outline"
-                          />
-                        )
-                      }
-                      return null
-                    })()}
-                  </div>
-                  
-                  {/* Balance Check Details */}
-                  {(() => {
-                    const reg = transaction.pollingState!.chainStatus.noble!.metadata!.nobleForwardingRegistration as any
-                    if (reg.balanceCheck?.performed) {
-                      return (
-                        <div className="mt-2 pt-2 border-t border-border text-xs text-muted-foreground">
-                          <p>Balance: {reg.balanceCheck.balanceUusdc || '0'} uusdc</p>
-                          <p>Required: {reg.balanceCheck.minRequiredUusdc || '0'} uusdc</p>
-                        </div>
-                      )
-                    }
-                    return null
-                  })()}
-                </div>
-              )}
+              {transaction.pollingState.chainStatus.noble?.metadata?.nobleForwardingRegistration ? (
+                <NobleForwardingRegistrationStatus
+                  reg={transaction.pollingState.chainStatus.noble.metadata.nobleForwardingRegistration as any}
+                  forwardingAddress={transaction.pollingState.metadata?.forwardingAddress as string | undefined}
+                  recipientAddress={transaction.depositDetails?.destinationAddress || transaction.pollingState.metadata?.namadaReceiver as string | undefined}
+                  channelId={transaction.pollingState.chainStatus.noble?.metadata?.channelId as string | undefined}
+                  fallback={transaction.pollingState.chainStatus.noble?.metadata?.fallback as string | undefined}
+                  txId={transaction.id}
+                />
+              ) : null}
             </div>
-          )}
+          ) : null}
 
           {/* Stage Timeline */}
           {stageTimings.length > 0 && (

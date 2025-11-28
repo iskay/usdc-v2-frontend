@@ -259,12 +259,6 @@ export function canCancelPolling(tx: StoredTransaction): boolean {
   // Can cancel only if polling is actively running (pending)
   // Don't show cancel button for errored/timeout states (use retry instead)
   if (status === 'pending') {
-    return true
-  }
-
-  // Fallback: Check individual chain statuses if flowStatus is still pending
-  // but don't show cancel if any chain has errored (use retry/resume instead)
-  if (status === 'pending') {
     // Only show cancel if no chains have errored yet (still actively polling)
     const chainStatuses = tx.pollingState?.chainStatus
     if (chainStatuses) {

@@ -211,6 +211,10 @@ export interface ChainPollResult {
     type: 'tx_error' | 'polling_error' | 'polling_timeout' | 'user_action_required'
     message: string
     occurredAt: number
+    code?: string | number
+    category?: 'network' | 'rpc' | 'unknown'
+    isRecoverable?: boolean
+    recoveryAction?: 'retry' | 'check_connection' | 'check_rpc_status' | 'contact_support' | 'none'
   }
   /** Stages emitted during polling */
   stages: ChainStage[]
@@ -244,6 +248,8 @@ export interface NoblePollParams extends BasePollParams {
  */
 export interface NamadaPollParams extends BasePollParams {
   // metadata removed - use PollingState.metadata instead
+  /** Delay between block requests in milliseconds (for rate limiting) */
+  blockRequestDelayMs?: number
 }
 
 /**

@@ -10,7 +10,6 @@ import type {
   ChainPoller,
   ChainPollParams,
   ChainPollResult,
-  EvmPollParams,
 } from './types'
 import type { ChainStage } from '@/types/flow'
 import {
@@ -263,7 +262,7 @@ async function queryMessageReceivedByNonce(
  * Finds MessageReceived event filtered by CCTP nonce
  */
 async function pollUsdcMintByNonce(
-  params: EvmPollParams,
+  params: ChainPollParams,
   provider: ethers.JsonRpcProvider,
 ): Promise<ChainPollResult> {
   const timeoutMs = params.timeoutMs ?? 30 * 60 * 1000
@@ -292,7 +291,7 @@ async function pollUsdcMintByNonce(
 
   try {
     const maxBlockRange =
-      params.metadata.maxBlockRange && params.metadata.maxBlockRange > 0
+      params.metadata.maxBlockRange && typeof params.metadata.maxBlockRange === 'number' && params.metadata.maxBlockRange > 0
         ? BigInt(params.metadata.maxBlockRange)
         : DEFAULT_EVM_MAX_BLOCK_RANGE
 
@@ -481,7 +480,7 @@ async function pollUsdcMintByNonce(
  * Used when CCTP nonce is not available (backward compatibility)
  */
 async function pollUsdcMintByTransfer(
-  params: EvmPollParams,
+  params: ChainPollParams,
   provider: ethers.JsonRpcProvider,
 ): Promise<ChainPollResult> {
   const timeoutMs = params.timeoutMs ?? 30 * 60 * 1000
@@ -511,7 +510,7 @@ async function pollUsdcMintByTransfer(
   try {
     const zeroAddress = '0x0000000000000000000000000000000000000000'
     const maxBlockRange =
-      params.metadata.maxBlockRange && params.metadata.maxBlockRange > 0
+      params.metadata.maxBlockRange && typeof params.metadata.maxBlockRange === 'number' && params.metadata.maxBlockRange > 0
         ? BigInt(params.metadata.maxBlockRange)
         : DEFAULT_EVM_MAX_BLOCK_RANGE
 
@@ -662,7 +661,7 @@ async function pollUsdcMintByTransfer(
  * Extracts MessageSent event and polls Iris API for attestation
  */
 async function pollDepositWithIris(
-  params: EvmPollParams,
+  params: ChainPollParams,
   provider: ethers.JsonRpcProvider,
 ): Promise<ChainPollResult> {
   const timeoutMs = params.timeoutMs ?? 30 * 60 * 1000
@@ -889,38 +888,36 @@ export class EvmPoller implements ChainPoller {
    * @returns Polling result with success status, metadata, and stages
    */
   async poll(params: ChainPollParams): Promise<ChainPollResult> {
-    const evmParams = params as EvmPollParams
-
     // Log initialization with all parameters
     logger.info('[EvmPoller] Starting EVM polling', {
       flowId: params.flowId,
       chain: params.chain,
-      chainKey: evmParams.metadata.chainKey,
-      flowType: evmParams.metadata.flowType,
-      txHash: evmParams.metadata.txHash,
+      chainKey: params.metadata.chainKey,
+      flowType: params.metadata.flowType,
+      txHash: params.metadata.txHash,
       timeoutMs: params.timeoutMs,
       intervalMs: params.intervalMs,
       metadata: {
-        ...evmParams.metadata,
+        ...params.metadata,
         // Don't log sensitive data, but log structure
-        amountBaseUnits: evmParams.metadata.amountBaseUnits ? 'present' : 'missing',
-        recipient: evmParams.metadata.recipient ? 'present' : 'missing',
-        usdcAddress: evmParams.metadata.usdcAddress ? 'present' : 'missing',
-        cctpNonce: evmParams.metadata.cctpNonce,
-        messageTransmitterAddress: evmParams.metadata.messageTransmitterAddress ? 'present' : 'missing',
-        startBlock: evmParams.metadata.startBlock,
+        amountBaseUnits: params.metadata.amountBaseUnits ? 'present' : 'missing',
+        recipient: params.metadata.recipient ? 'present' : 'missing',
+        usdcAddress: params.metadata.usdcAddress ? 'present' : 'missing',
+        cctpNonce: params.metadata.cctpNonce,
+        messageTransmitterAddress: params.metadata.messageTransmitterAddress ? 'present' : 'missing',
+        startBlock: params.metadata.startBlock,
       },
     })
 
     // Get EVM provider for the chain
     // Use chainKey from metadata (actual chain key like 'sepolia'), fallback to chain param
-    const chainKey = evmParams.metadata.chainKey || params.chain
+    const chainKey = params.metadata.chainKey || params.chain
     if (!chainKey) {
       logger.error('[EvmPoller] Missing chain key', {
         flowId: params.flowId,
         chain: params.chain,
-        chainKey: evmParams.metadata.chainKey,
-        metadataKeys: Object.keys(evmParams.metadata),
+        chainKey: params.metadata.chainKey,
+        metadataKeys: Object.keys(params.metadata),
       })
       return createErrorResult(
         'polling_error',
@@ -931,7 +928,7 @@ export class EvmPoller implements ChainPoller {
     logger.debug('[EvmPoller] Resolved chain key', {
       flowId: params.flowId,
       chainKey,
-      source: evmParams.metadata.chainKey ? 'metadata' : 'chain param',
+      source: params.metadata.chainKey ? 'metadata' : 'chain param',
     })
 
     let provider: ethers.JsonRpcProvider
@@ -944,10 +941,6 @@ export class EvmPoller implements ChainPoller {
       logger.debug('[EvmPoller] EVM provider obtained successfully', {
         flowId: params.flowId,
         chainKey,
-        network: provider.network ? {
-          chainId: provider.network.chainId,
-          name: provider.network.name,
-        } : 'unknown',
       })
     } catch (error) {
       logger.error('[EvmPoller] Failed to get EVM provider', {
@@ -963,12 +956,12 @@ export class EvmPoller implements ChainPoller {
     }
 
     // Determine flow type from metadata
-    const flowType = evmParams.metadata.flowType as 'deposit' | 'payment' | undefined
+    const flowType = params.metadata.flowType as 'deposit' | 'payment' | undefined
 
     logger.debug('[EvmPoller] Determining flow type', {
       flowId: params.flowId,
       flowType,
-      hasTxHash: Boolean(evmParams.metadata.txHash),
+      hasTxHash: Boolean(params.metadata.txHash),
     })
 
     // Deposit flow: Use Iris API
@@ -976,15 +969,15 @@ export class EvmPoller implements ChainPoller {
       logger.info('[EvmPoller] Using deposit flow (Iris API)', {
         flowId: params.flowId,
         chainKey,
-        txHash: evmParams.metadata.txHash,
+        txHash: params.metadata.txHash,
       })
 
       // Validate deposit-specific prerequisites
-      if (!evmParams.metadata.txHash) {
+      if (!params.metadata.txHash) {
         logger.error('[EvmPoller] Missing txHash for deposit flow', {
           flowId: params.flowId,
           chainKey,
-          metadataKeys: Object.keys(evmParams.metadata),
+          metadataKeys: Object.keys(params.metadata),
         })
         return createErrorResult(
           'polling_error',
@@ -992,7 +985,7 @@ export class EvmPoller implements ChainPoller {
         )
       }
 
-      return pollDepositWithIris(evmParams, provider)
+      return pollDepositWithIris(params, provider)
     }
 
     // Payment flow: Poll for mint events
@@ -1003,10 +996,10 @@ export class EvmPoller implements ChainPoller {
 
     // Validate payment-specific params
     const missingParams: string[] = []
-    if (!evmParams.metadata.usdcAddress) {
+    if (!params.metadata.usdcAddress) {
       missingParams.push('usdcAddress')
     }
-    if (!evmParams.metadata.recipient) {
+    if (!params.metadata.recipient) {
       missingParams.push('recipient')
     }
 
@@ -1015,7 +1008,7 @@ export class EvmPoller implements ChainPoller {
         flowId: params.flowId,
         chainKey,
         missingParams,
-        metadataKeys: Object.keys(evmParams.metadata),
+        metadataKeys: Object.keys(params.metadata),
       })
       return createErrorResult(
         'polling_error',
@@ -1024,8 +1017,8 @@ export class EvmPoller implements ChainPoller {
     }
 
     // Check if nonce-based polling is available
-    const hasNonce = evmParams.metadata.cctpNonce !== undefined
-    const hasMessageTransmitter = Boolean(evmParams.metadata.messageTransmitterAddress)
+    const hasNonce = params.metadata.cctpNonce !== undefined
+    const hasMessageTransmitter = Boolean(params.metadata.messageTransmitterAddress)
     const useNonceBased = hasNonce && hasMessageTransmitter
 
     logger.debug('[EvmPoller] Determining polling method', {
@@ -1038,16 +1031,16 @@ export class EvmPoller implements ChainPoller {
     if (useNonceBased) {
       logger.info('[EvmPoller] Using nonce-based EVM mint polling', {
         flowId: params.flowId,
-        cctpNonce: evmParams.metadata.cctpNonce,
-        messageTransmitterAddress: evmParams.metadata.messageTransmitterAddress,
+        cctpNonce: params.metadata.cctpNonce,
+        messageTransmitterAddress: params.metadata.messageTransmitterAddress,
       })
-      return pollUsdcMintByNonce(evmParams, provider)
+      return pollUsdcMintByNonce(params, provider)
     } else {
       logger.info('[EvmPoller] Using transfer-based EVM mint polling (fallback)', {
         flowId: params.flowId,
         reason: !hasNonce ? 'no nonce' : 'no message transmitter',
       })
-      return pollUsdcMintByTransfer(evmParams, provider)
+      return pollUsdcMintByTransfer(params, provider)
     }
   }
 }

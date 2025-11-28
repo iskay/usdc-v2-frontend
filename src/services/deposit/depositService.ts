@@ -181,9 +181,12 @@ export async function saveDepositTransaction(
 
   // Create StoredTransaction with deposit details
   // Preserve clientStages from existing transaction (added during submission)
+  // Preserve depositData if it exists on the transaction (from buildDepositTx)
+  const txWithDepositData = tx as TrackedTransaction & { depositData?: import('@/services/tx/txBuilder').DepositTxData }
   const storedTx: StoredTransaction = {
     ...tx,
     depositDetails: details,
+    depositData: txWithDepositData.depositData,
     flowId: flowId || tx.flowId,
     flowMetadata,
     clientStages: existingTx?.clientStages, // Preserve client stages added during submission

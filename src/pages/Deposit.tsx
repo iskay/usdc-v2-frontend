@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSetAtom } from 'jotai'
-import { DollarSign, Loader2, Wallet, ArrowRight, AlertCircle, CheckCircle2, Info, Copy } from 'lucide-react'
+import { Loader2, Wallet, ArrowRight, AlertCircle, CheckCircle2, Info, Copy } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { BackToHome } from '@/components/common/BackToHome'
 import { ChainSelect } from '@/components/common/ChainSelect'

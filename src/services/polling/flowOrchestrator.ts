@@ -12,17 +12,12 @@ import type {
   ChainPollParams,
   ChainPollResult,
   ChainPollMetadata,
-  FlowPollingStatus,
   ChainStatus,
   ChainStatusValue,
-  EvmPollParams,
-  NoblePollParams,
-  NamadaPollParams,
 } from './types'
 import type { ChainKey, FlowType } from '@/shared/flowStages'
 import {
   getChainOrder,
-  getExpectedStages,
   getChainForStage,
   type FlowStage,
   DEPOSIT_STAGES,
@@ -30,8 +25,6 @@ import {
 import {
   updatePollingState,
   updateChainStatus,
-  findLatestCompletedStage,
-  determineNextStage,
   getPollingState,
 } from './pollingStateManager'
 import { getChainTimeout, calculateGlobalTimeout } from './timeoutConfig'
@@ -73,7 +66,6 @@ export class FlowOrchestrator {
   private readonly pollers: Map<ChainKey, ChainPoller>
   private isRunning: boolean = false
   private isPaused: boolean = false
-  private currentChainJob: Promise<void> | null = null
   private globalTimeoutTimer: NodeJS.Timeout | null = null
 
   constructor(options: FlowOrchestratorOptions) {
@@ -415,7 +407,6 @@ export class FlowOrchestrator {
       if (latestChain) {
         const latestIndex = chainOrder.indexOf(latestChain)
         // Start from next chain if current chain is complete
-        const expectedStages = getExpectedStages(this.flowType, latestChain)
         const isChainComplete = state.chainStatus[latestChain]?.status === 'success'
 
         if (isChainComplete && latestIndex < chainOrder.length - 1) {
@@ -554,7 +545,7 @@ export class FlowOrchestrator {
             // Stop flow execution - user must take action before proceeding
             break
           }
-        } else {
+        } else if (chainStatus.status === 'user_action_required') {
           // Other user_action_required cases or non-Noble chains - stop flow
           logger.info('[FlowOrchestrator] Chain requires user action - stopping flow', {
             txId: this.txId,
@@ -564,8 +555,8 @@ export class FlowOrchestrator {
           })
           // Stop flow execution - user must take action before proceeding
           break
-        }
-
+        } else {
+          // polling_timeout or polling_error - check if next chain requires prerequisites
         // Check if next chain requires prerequisites from this chain
         const nextChainIndex = i + 1
         if (nextChainIndex < chainOrder.length) {
@@ -600,6 +591,7 @@ export class FlowOrchestrator {
             failedChain: chain,
             chainStatus: chainStatus.status,
           })
+          }
         }
       }
     }
@@ -970,7 +962,7 @@ export class FlowOrchestrator {
   private async buildPollParams(
     chain: ChainKey,
     timeoutMs: number,
-    resume: boolean,
+    _resume: boolean,
   ): Promise<ChainPollParams> {
     // CRITICAL: Read fresh state to ensure we have the latest metadata
     // getPollingState handles migration automatically
@@ -1105,7 +1097,7 @@ export class FlowOrchestrator {
 
     // Fallback: For Namada payment flows, get namadaBlockHeight and namadaIbcTxHash from transaction if missing
     if (chain === 'namada' && this.flowType === 'payment') {
-      const namadaParams = metadata as NamadaPollParams['metadata']
+      const namadaParams = metadata as ChainPollMetadata
       const tx = transactionStorageService.getTransaction(this.txId)
       
       if (!namadaParams.namadaIbcTxHash && tx?.hash) {
@@ -1132,7 +1124,7 @@ export class FlowOrchestrator {
 
     // For Namada deposit flows, ensure startHeight is calculated if missing
     if (chain === 'namada' && this.flowType === 'deposit') {
-      const namadaParams = metadata as NamadaPollParams['metadata']
+      const namadaParams = metadata as ChainPollMetadata
       if (!namadaParams.startHeight || namadaParams.startHeight === 0) {
         // Fetch start height from transaction creation timestamp
         const tx = transactionStorageService.getTransaction(this.txId)
@@ -1154,7 +1146,7 @@ export class FlowOrchestrator {
             metadata = {
               ...metadata,
               startHeight,
-            } as NamadaPollParams['metadata']
+            } as ChainPollMetadata
 
             // Store startHeight in metadata for future use
             updatePollingState(this.txId, {
@@ -1210,7 +1202,7 @@ export class FlowOrchestrator {
 
     // For EVM payment flows, ensure required metadata is present
     if (chain === 'evm' && this.flowType === 'payment') {
-      const evmParams = metadata as EvmPollParams['metadata']
+      const evmParams = metadata as ChainPollMetadata
       const tx = transactionStorageService.getTransaction(this.txId)
       const chainKey = evmParams.chainKey as string | undefined
       
@@ -1476,11 +1468,6 @@ export class FlowOrchestrator {
       }
     }
     
-    // Fallback: For Tendermint chains, try config again (shouldn't reach here if above worked)
-    if (chain === 'noble' || chain === 'namada') {
-      throw new Error(`Failed to determine chain key for ${chain} chain`)
-    }
-    
     // Hardcoded fallback for Tendermint chains if config loading fails
     if (chain === 'noble') {
       logger.debug('[FlowOrchestrator] Using hardcoded Noble chain key fallback', {
@@ -1737,7 +1724,7 @@ export class FlowOrchestrator {
    * Set up global timeout for entire flow
    */
   private async setupGlobalTimeout(chainOrder: readonly ChainKey[]): Promise<void> {
-    const globalTimeout = await calculateGlobalTimeout(chainOrder, this.flowType)
+    const globalTimeout = await calculateGlobalTimeout([...chainOrder], this.flowType)
     const timeoutAt = Date.now() + globalTimeout
 
     updatePollingState(this.txId, {
@@ -1855,13 +1842,12 @@ export class FlowOrchestrator {
           overallErrorMessage = chainStatus.errorMessage || 'User action required on all chains'
           overallErrorOccurredAt = chainStatus.errorOccurredAt || Date.now()
           break // Highest priority, stop checking
-        } else if (chainStatus?.status === 'tx_error' && overallErrorType !== 'user_action_required') {
+        } else if (chainStatus?.status === 'tx_error') {
           overallErrorType = 'tx_error'
           overallErrorMessage = chainStatus.errorMessage || 'Transaction error on all chains'
           overallErrorOccurredAt = chainStatus.errorOccurredAt || Date.now()
         } else if (
           chainStatus?.status === 'polling_error' &&
-          overallErrorType !== 'user_action_required' &&
           overallErrorType !== 'tx_error'
         ) {
           overallErrorType = 'polling_error'
@@ -1869,8 +1855,10 @@ export class FlowOrchestrator {
           overallErrorOccurredAt = chainStatus.errorOccurredAt || Date.now()
         } else if (
           chainStatus?.status === 'polling_timeout' &&
-          overallErrorType === 'polling_timeout'
+          overallErrorType !== 'tx_error' &&
+          overallErrorType !== 'polling_error'
         ) {
+          overallErrorType = 'polling_timeout'
           overallErrorMessage = chainStatus.errorMessage || 'Polling timeout on all chains'
           overallErrorOccurredAt = chainStatus.timeoutOccurredAt || Date.now()
         }

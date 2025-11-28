@@ -388,7 +388,7 @@ async function submitShieldingTx(
 async function submitPaymentTx(
   tx: TrackedTransaction,
   paymentData: PaymentTransactionData,
-): Promise<string> {
+): Promise<{ hash: string; wrapperHash: string; blockHeight?: string }> {
   logger.info('[TxSubmitter] 💸 Submitting payment transaction (IBC transfer)', {
     txId: tx.id,
     destinationAddress: paymentData.destinationAddress.slice(0, 10) + '...',

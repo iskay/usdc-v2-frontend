@@ -5,9 +5,9 @@
  * Integrates with transaction lifecycle to start polling after broadcast.
  */
 
-import { createFlowOrchestrator, type FlowOrchestratorOptions } from './flowOrchestrator'
+import { createFlowOrchestrator } from './flowOrchestrator'
 import { registerOrchestrator, unregisterOrchestrator, getOrchestrator } from './orchestratorRegistry'
-import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
+import { transactionStorageService } from '@/services/tx/transactionStorageService'
 import { updatePollingState } from './pollingStateManager'
 import { logger } from '@/utils/logger'
 import type { FlowType } from '@/shared/flowStages'
@@ -444,56 +444,17 @@ export async function retryPolling(txId: string): Promise<void> {
       clearedChainStatuses: Object.keys(txForReset.pollingState?.chainStatus || {}).length,
     })
 
-    // Rebuild initial metadata from transaction
-    let initialMetadata: Record<string, unknown>
-
     if (flowType === 'deposit') {
       if (!tx.depositDetails) {
         throw new Error('Deposit details not found in transaction')
       }
 
       const details = tx.depositDetails
-      const amountInBaseUnits = Math.round(parseFloat(details.amount) * 1_000_000).toString()
-      const expectedAmountUusdc = `${amountInBaseUnits}uusdc`
 
       // Get chain key from transaction
       const chainKey = tx.chain || tx.depositDetails.chainName.toLowerCase().replace(/\s+/g, '-')
       if (!chainKey || chainKey === 'evm') {
         throw new Error('Cannot determine chain key for deposit transaction')
-      }
-
-      // Get forwarding address - fetch on-demand if missing from depositData
-      let forwardingAddress = tx.depositData?.nobleForwardingAddress
-      if (!forwardingAddress && details.destinationAddress) {
-        logger.info('[ChainPollingService] Forwarding address missing from depositData in retry, fetching on-demand', {
-          txId,
-          destinationAddress: details.destinationAddress.slice(0, 16) + '...',
-        })
-        try {
-          forwardingAddress = await fetchNobleForwardingAddress(details.destinationAddress)
-          logger.info('[ChainPollingService] Successfully fetched forwarding address on-demand in retry', {
-            txId,
-            forwardingAddress: forwardingAddress.slice(0, 16) + '...',
-          })
-        } catch (error) {
-          logger.error('[ChainPollingService] Failed to fetch forwarding address on-demand in retry', {
-            txId,
-            error: error instanceof Error ? error.message : String(error),
-          })
-          // Continue without forwarding address - registration will fail gracefully later
-        }
-      }
-
-      initialMetadata = {
-        chainKey,
-        txHash: tx.hash,
-        recipient: forwardingAddress || details.destinationAddress,
-        amountBaseUnits: amountInBaseUnits,
-        usdcAddress: tx.depositData?.usdcAddress,
-        messageTransmitterAddress: tx.depositData?.messageTransmitterAddress,
-        namadaReceiver: details.destinationAddress,
-        expectedAmountUusdc,
-        forwardingAddress: forwardingAddress || undefined, // Only include if we have it
       }
 
       // Start deposit polling

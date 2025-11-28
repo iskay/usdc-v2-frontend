@@ -4,7 +4,7 @@
  * Loads and calculates polling timeouts from chain configuration files.
  */
 
-import type { ChainKey, FlowType } from '@/shared/flowStages'
+import type { FlowType } from '@/shared/flowStages'
 import type { ChainTimeoutConfig, GlobalTimeoutConfig } from './types'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
@@ -135,9 +135,11 @@ async function loadChainTimeoutConfigs(): Promise<Map<string, ChainTimeoutConfig
     const evmConfig = await fetchEvmChainsConfig()
     for (const chain of evmConfig.chains) {
       if (chain.pollingTimeout) {
+        const depositTimeoutMs = chain.pollingTimeout.depositTimeoutMs ?? DEFAULT_TIMEOUT_MS
+        const paymentTimeoutMs = chain.pollingTimeout.paymentTimeoutMs ?? DEFAULT_TIMEOUT_MS
         configs.set(chain.key, {
-          depositTimeoutMs: chain.pollingTimeout.depositTimeoutMs,
-          paymentTimeoutMs: chain.pollingTimeout.paymentTimeoutMs,
+          depositTimeoutMs,
+          paymentTimeoutMs,
         })
       }
     }
@@ -146,9 +148,11 @@ async function loadChainTimeoutConfigs(): Promise<Map<string, ChainTimeoutConfig
     const tendermintConfig = await fetchTendermintChainsConfig()
     for (const chain of tendermintConfig.chains) {
       if (chain.pollingTimeout) {
+        const depositTimeoutMs = chain.pollingTimeout.depositTimeoutMs ?? DEFAULT_TIMEOUT_MS
+        const paymentTimeoutMs = chain.pollingTimeout.paymentTimeoutMs ?? DEFAULT_TIMEOUT_MS
         configs.set(chain.key, {
-          depositTimeoutMs: chain.pollingTimeout.depositTimeoutMs,
-          paymentTimeoutMs: chain.pollingTimeout.paymentTimeoutMs,
+          depositTimeoutMs,
+          paymentTimeoutMs,
         })
       }
     }

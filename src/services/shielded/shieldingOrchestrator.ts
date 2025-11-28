@@ -73,7 +73,9 @@ export async function executeShielding(
     onPhase?.('submitting')
     onProgress?.({ phase: 'submitting', message: 'Submitting transaction...' })
 
-    const txHash = await submitNamadaTx(transaction)
+    const txHashResult = await submitNamadaTx(transaction)
+    // Extract hash string from result (can be string or object with hash property)
+    const txHash = typeof txHashResult === 'string' ? txHashResult : txHashResult.hash
 
     // Phase 4: Submitted
     logger.info('[ShieldingOrchestrator] ✅ Phase: Transaction submitted', {

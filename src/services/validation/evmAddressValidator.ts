@@ -45,18 +45,21 @@ export function validateEvmAddress(
   }
 
   // Trim whitespace
-  let trimmedAddress = address.trim()
+  const trimmedAddress: string = address.trim()
 
   // Validate using ethers.js isAddress()
   // This checks:
   // - Format: 0x prefix + 40 hex characters
   // - Checksum: EIP-55 checksum validation
-  if (!isAddress(trimmedAddress)) {
+  const isValidAddress = isAddress(trimmedAddress)
+  if (!isValidAddress) {
     // Check if it's a format issue or checksum issue
-    const withoutPrefix = trimmedAddress.replace(/^0x/i, '')
+    // Type assertion needed because isAddress type guard can cause incorrect narrowing
+    const addressStr: string = trimmedAddress
+    const withoutPrefix = addressStr.replace(/^0x/i, '')
     const isHex = /^[0-9a-fA-F]+$/.test(withoutPrefix)
 
-    if (!trimmedAddress.startsWith('0x')) {
+    if (!addressStr.startsWith('0x')) {
       return {
         isValid: false,
         error: getErrorMessage(

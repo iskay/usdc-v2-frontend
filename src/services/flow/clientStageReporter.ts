@@ -71,21 +71,34 @@ class ClientStageReporter {
           addChainStage(tx.id, chain as ChainKey, clientStage)
         } else {
           // Append to clientStages array (legacy path)
-      const existingStages = tx.clientStages || []
-      const updatedStages = [...existingStages, clientStage]
+          const existingStages = tx.clientStages || []
+          const updatedStages = [...existingStages, clientStage]
 
-      // Update transaction with new stage
-      transactionStorageService.updateTransaction(tx.id, {
-        clientStages: updatedStages,
-      })
+          // Update transaction with new stage
+          transactionStorageService.updateTransaction(tx.id, {
+            clientStages: updatedStages,
+          })
         }
+      }
+
+      // Calculate total stages for logging
+      let totalStages = 0
+      if (isFrontendPollingEnabled() && tx.pollingState) {
+        // Count stages from unified structure
+        totalStages = Object.values(tx.pollingState.chainStatus)
+          .flatMap((cs) => cs?.stages || [])
+          .filter((s) => s.source === 'client').length
+      } else {
+        // Count stages from clientStages
+        const currentTx = transactionStorageService.getTransaction(tx.id)
+        totalStages = currentTx?.clientStages?.length || 0
       }
 
       logger.debug('[ClientStageReporter] Stored client stage locally', {
         txId: tx.id,
         chain,
         stage,
-        totalStages: updatedStages.length,
+        totalStages,
       })
     } catch (error) {
       // Don't throw - client stage reporting is non-blocking

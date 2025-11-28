@@ -6,10 +6,8 @@
  */
 
 import { logger } from '@/utils/logger'
-import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import { transactionStorageService } from '@/services/tx/transactionStorageService'
-import { updatePollingState, updateChainStatus } from './pollingStateManager'
-import { DEPOSIT_STAGES } from '@/shared/flowStages'
+import { updateChainStatus } from './pollingStateManager'
 import { env } from '@/config/env'
 import { createNobleLcdClient, getNobleUusdcBalance } from '@/services/noble/nobleLcdClient'
 import { buildRegistrationTransaction } from '@/services/noble/nobleRegistrationTxBuilder'

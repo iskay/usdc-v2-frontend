@@ -5,9 +5,10 @@
  * Provides utilities for finding latest completed stages and managing resume checkpoints.
  */
 
-import type { PollingState, ChainStatus, ChainKey, ChainPollMetadata } from './types'
+import type { PollingState, ChainStatus, ChainPollMetadata } from './types'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import type { ChainStage } from '@/types/flow'
+import type { ChainKey, FlowStage } from '@/shared/flowStages'
 import { transactionStorageService } from '@/services/tx/transactionStorageService'
 import { getChainOrder, getExpectedStages, getNextStage } from '@/shared/flowStages'
 import { logger } from '@/utils/logger'
@@ -75,6 +76,7 @@ export function updatePollingState(
       ...updates,
       lastUpdatedAt: Date.now(),
       // Preserve required fields if creating new state
+      flowStatus: updates.flowStatus ?? currentState?.flowStatus ?? 'pending',
       flowType: updates.flowType ?? currentState?.flowType ?? (tx.direction === 'deposit' ? 'deposit' : 'payment'),
       startedAt: updates.startedAt ?? currentState?.startedAt ?? Date.now(),
       chainStatus: {
@@ -90,7 +92,7 @@ export function updatePollingState(
       chainParams: updates.chainParams !== undefined
         ? (() => {
             // Start with all current chainParams to preserve chains not being updated
-            const merged: typeof currentState.chainParams = {
+            const merged: PollingState['chainParams'] = {
               ...(currentState?.chainParams || {}),
             }
             
@@ -240,7 +242,7 @@ export function determineNextStage(
     return undefined
   }
 
-  const { flowType, chainStatus } = tx.pollingState
+  const { flowType } = tx.pollingState
   const chainOrder = getChainOrder(flowType)
 
   // Find latest completed stage
@@ -262,7 +264,7 @@ export function determineNextStage(
   let latestChain: ChainKey | undefined
   for (const chain of chainOrder) {
     const expectedStages = getExpectedStages(flowType, chain)
-    if (expectedStages.includes(latestStage)) {
+    if (expectedStages.includes(latestStage as FlowStage)) {
       latestChain = chain
       break
     }
@@ -277,7 +279,7 @@ export function determineNextStage(
   }
 
   // Check if there's a next stage in the same chain
-  const nextStage = getNextStage(latestStage, flowType, latestChain)
+  const nextStage = getNextStage(latestStage as FlowStage, flowType, latestChain)
   if (nextStage) {
     return {
       stage: nextStage,
