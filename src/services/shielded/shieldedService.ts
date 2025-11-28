@@ -238,7 +238,7 @@ class ShieldedSyncController {
         const syncPromise = new Promise<void>((resolve, reject) => {
           const timeout = setTimeout(() => {
             reject(new Error('Shielded sync timeout'))
-          }, 300000) // 5 minute timeout
+          }, 1500000) // 25 minute timeout
 
           const handler = (event: MessageEvent<ShieldedWorkerMessage>) => {
             if (event.data.type === 'complete') {
