@@ -57,6 +57,7 @@ export function Dashboard() {
   // Get balances from the balance state
   const shieldedBalance = balanceState.namada.usdcShielded
   const transparentBalance = balanceState.namada.usdcTransparent
+  const hasTransparentBalance = parseFloat(transparentBalance || '0') > 0
 
   // Check if shielded balance is loading (sync or calculation in progress)
   const isShieldedBalanceLoading = shieldedState.isSyncing || balanceSyncState.shieldedStatus === 'calculating'
@@ -92,10 +93,17 @@ export function Dashboard() {
           <div className="flex items-center justify-center md:flex-col">
             <Button
               variant="ghost"
-              className="gap-2 hover:bg-muted/50 rounded-full p-3 h-auto"
+              className={cn(
+                "gap-2 rounded-full p-4 h-auto font-bold text-base",
+                "bg-yellow-500 hover:bg-yellow-600 text-yellow-950",
+                "border-2 border-yellow-600 shadow-lg",
+                "transition-all duration-200",
+                hasTransparentBalance && !isShieldedBalanceLoading && "animate-shield-blink",
+                (isShieldedBalanceLoading || !hasTransparentBalance) && "opacity-50 cursor-not-allowed"
+              )}
               onClick={() => setIsShieldingModalOpen(true)}
-              disabled={isShieldedBalanceLoading || parseFloat(transparentBalance || '0') <= 0}
-              title={parseFloat(transparentBalance || '0') <= 0 ? 'No transparent balance to shield' : 'Shield USDC'}
+              disabled={isShieldedBalanceLoading || !hasTransparentBalance}
+              title={!hasTransparentBalance ? 'No transparent balance to shield' : 'Shield USDC'}
             >
               <ArrowRight className="h-5 w-5 md:rotate-0 rotate-90" />Shield
             </Button>
