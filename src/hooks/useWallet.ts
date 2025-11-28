@@ -138,11 +138,24 @@ export function useWallet() {
       accountAlias?: string
       viewingKey?: string
     }) {
+      console.info('[useWallet] handleNamadaAccountsChanged called', {
+        account: payload.transparentAddress,
+        alias: payload.accountAlias,
+      })
+      
       let wasConnected = false
+      let previousAccount: string | undefined
       const account = payload.transparentAddress
 
       setWalletState((state) => {
         wasConnected = state.namada.isConnected
+        previousAccount = state.namada.account
+        console.info('[useWallet] Reading state in setWalletState callback', {
+          wasConnected,
+          previousAccount,
+          newAccount: payload.transparentAddress,
+          accountsMatch: previousAccount === payload.transparentAddress,
+        })
         return {
           ...state,
           namada: {
@@ -159,14 +172,35 @@ export function useWallet() {
       })
       setWalletError(undefined)
 
-      if (account && !wasConnected) {
-        notify({
-          title: 'Namada Keychain Connected',
-          description: `Account: ${formatAddress(account, 8, 6)}`,
-          level: 'success',
-        })
-        // Trigger immediate balance refresh when transparent address becomes available
-        void requestBalanceRefresh({ trigger: 'manual' })
+      if (account) {
+        if (!wasConnected) {
+          // Initial connection
+          console.info('[useWallet] Namada Keychain connected', {
+            account: formatAddress(account, 8, 6),
+            alias: payload.accountAlias,
+          })
+          notify({
+            title: 'Namada Keychain Connected',
+            description: `Account: ${formatAddress(account, 8, 6)}`,
+            level: 'success',
+          })
+          // Trigger immediate balance refresh when transparent address becomes available
+          void requestBalanceRefresh({ trigger: 'manual' })
+        } else if (previousAccount && account !== previousAccount) {
+          // Account switched
+          console.info('[useWallet] Namada account switched', {
+            from: formatAddress(previousAccount, 8, 6),
+            to: formatAddress(account, 8, 6),
+            alias: payload.accountAlias,
+          })
+          notify({
+            title: 'Account Switched',
+            description: `Switched to: ${formatAddress(account, 8, 6)}`,
+            level: 'info',
+          })
+          // Trigger balance refresh for new account
+          void requestBalanceRefresh({ trigger: 'manual' })
+        }
       }
     }
 

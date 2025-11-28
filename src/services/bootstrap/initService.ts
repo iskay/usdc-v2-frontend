@@ -5,6 +5,7 @@ import { initializeNamadaSdk } from '@/services/namada/namadaSdkService'
 import {
   attemptMetaMaskReconnection,
   attemptNamadaReconnection,
+  registerNamadaAccountChangeListener,
 } from '@/services/wallet/walletService'
 
 export interface BootstrapResult {
@@ -26,6 +27,9 @@ export async function initializeApplication(): Promise<BootstrapResult> {
 
   // Start periodic balance refresh loop
   startBalancePolling({ intervalMs: 10_000, runImmediate: true })
+
+  // Register Namada account change listener (stays active for app lifetime)
+  registerNamadaAccountChangeListener()
 
   // Attempt to reconnect to wallets if already connected (non-interactive)
   // These run in parallel and silently fail - they won't block app initialization

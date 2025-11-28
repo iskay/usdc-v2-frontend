@@ -12,6 +12,7 @@ import { emitWalletEvent } from '@/services/wallet/walletEvents'
 import { NAMADA_CHAIN_ID } from '@/config/constants'
 import { jotaiStore } from '@/store/jotaiStore'
 import { walletAtom, walletErrorAtom } from '@/atoms/walletAtom'
+import { balanceAtom } from '@/atoms/balanceAtom'
 import { requestBalanceRefresh } from '@/services/balance/balanceService'
 
 interface EthereumProvider {
@@ -30,6 +31,7 @@ interface NamadaConnectOptions {
 }
 
 let ethereumListenersRegistered = false
+let namadaAccountChangeListenerRegistered = false
 
 function resolveEthereumProvider(): EthereumProvider | undefined {
   if (typeof window === 'undefined') return undefined
@@ -303,6 +305,106 @@ function registerEthereumEventBridge(provider: EthereumProvider): void {
   })
 
   ethereumListenersRegistered = true
+}
+
+/**
+ * Registers a window event listener for Namada account changes.
+ * This listener stays active for the lifetime of the app and automatically
+ * updates wallet state when the user switches accounts in the extension.
+ * 
+ * The listener:
+ * - Checks connection status before processing (safe even when disconnected)
+ * - Updates wallet atom directly
+ * - Emits namada:accountsChanged event (triggers existing handlers)
+ * - Triggers balance refresh
+ * - Includes debug logging
+ * 
+ * Note: The extension only dispatches events to approved origins, so we
+ * won't receive events when disconnected. The listener check is an extra safety guard.
+ */
+export function registerNamadaAccountChangeListener(): void {
+  if (namadaAccountChangeListenerRegistered) return
+  if (typeof window === 'undefined') return
+
+  window.addEventListener('namada-account-changed', async () => {
+    console.info('[WalletService] Namada account changed event received')
+    
+    try {
+      // Check if still connected (safety guard - extension won't send events when disconnected anyway)
+      const connected = await checkNamadaConnection(NAMADA_CHAIN_ID)
+      if (!connected) {
+        console.debug('[WalletService] Account changed event received but extension not connected, ignoring')
+        return
+      }
+
+      // Fetch new account info
+      const accountInfo = await resolveNamadaAccount()
+      if (!accountInfo) {
+        console.warn('[WalletService] Account changed but could not fetch account info')
+        return
+      }
+
+      const currentState = jotaiStore.get(walletAtom)
+      const previousAccount = currentState.namada.account
+      const isAccountChange = previousAccount && previousAccount !== accountInfo.transparentAddress
+
+      console.info('[WalletService] Namada account changed', {
+        previous: previousAccount,
+        new: accountInfo.transparentAddress,
+        isAccountChange,
+        alias: accountInfo.accountAlias,
+      })
+
+      // Clear Namada balances if account changed (will show '--' while fetching new balances)
+      if (isAccountChange) {
+        console.info('[WalletService] Clearing Namada balances for account switch')
+        jotaiStore.set(balanceAtom, (state) => ({
+          ...state,
+          namada: {
+            usdcShielded: '--',
+            usdcTransparent: '--',
+            shieldedLastUpdated: undefined,
+            transparentLastUpdated: undefined,
+          },
+        }))
+      }
+
+      // Emit event (handler will update wallet atom - this ensures handler can read previous account from state)
+      emitWalletEvent('namada:accountsChanged', {
+        transparentAddress: accountInfo.transparentAddress,
+        shieldedAddress: accountInfo.shieldedAddress,
+        accountAlias: accountInfo.accountAlias,
+        viewingKey: accountInfo.viewingKey,
+      })
+      
+      // Also update wallet atom directly for consistency (in case handler hasn't registered yet)
+      // This is safe because the handler reads previousAccount before updating
+      jotaiStore.set(walletAtom, (state) => ({
+        ...state,
+        namada: {
+          ...state.namada,
+          isConnecting: false,
+          isConnected: true,
+          account: accountInfo.transparentAddress,
+          shieldedAccount: accountInfo.shieldedAddress,
+          alias: accountInfo.accountAlias,
+          viewingKey: accountInfo.viewingKey,
+        },
+        lastUpdated: Date.now(),
+      }))
+      jotaiStore.set(walletErrorAtom, undefined)
+
+      // Trigger balance refresh
+      if (accountInfo.transparentAddress) {
+        void requestBalanceRefresh({ trigger: 'manual' })
+      }
+    } catch (error) {
+      console.error('[WalletService] Failed to handle Namada account change', error)
+    }
+  })
+
+  namadaAccountChangeListenerRegistered = true
+  console.debug('[WalletService] Namada account change listener registered')
 }
 
 interface NamadaResolvedAccount {
