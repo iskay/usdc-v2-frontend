@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useSetAtom } from 'jotai'
+import { useSetAtom, useAtomValue } from 'jotai'
 import { Loader2, Wallet, ArrowRight, AlertCircle, CheckCircle2, Info, Copy } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { BackToHome } from '@/components/common/BackToHome'
@@ -25,6 +25,7 @@ import { useTxTracker } from '@/hooks/useTxTracker'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 import { preferredChainKeyAtom, depositRecipientAddressAtom } from '@/atoms/appAtom'
+import { findChainByChainId, getDefaultChainKey } from '@/config/chains'
 
 export function Deposit() {
   const navigate = useNavigate()
@@ -32,6 +33,7 @@ export function Deposit() {
   const { notify } = useToast()
   const { state: walletState } = useWallet()
   const { state: balanceState, refresh, sync: balanceSync } = useBalance()
+  const preferredChainKey = useAtomValue(preferredChainKeyAtom)
   const setPreferredChainKey = useSetAtom(preferredChainKeyAtom)
   const setDepositRecipientAddress = useSetAtom(depositRecipientAddressAtom)
 
@@ -204,7 +206,8 @@ export function Deposit() {
         chainId: currentChainId,
       }
       // Balance service will determine chain key from chainId automatically
-      void refreshRef.current()
+      // Only fetch EVM balance (not Namada balances)
+      void refreshRef.current({ balanceTypes: ['evm'] })
     }
   }, [
     walletState.metaMask.isConnected,
@@ -212,27 +215,53 @@ export function Deposit() {
     walletState.metaMask.chainId,
   ])
 
-  // Load default chain from config
+  // Load chain: prefer preferredChainKeyAtom, then MetaMask chainId, then default from config
   useEffect(() => {
     let mounted = true
 
-    async function loadDefaultChain() {
+    async function loadChain() {
       try {
+        // Precedence order: atom -> metamask value -> default
+        let chainKey: string | undefined
+
+        // 1. First check if preferredChainKeyAtom has a value
+        if (preferredChainKey) {
+          chainKey = preferredChainKey
+        } else {
+          // 2. Try to derive from MetaMask chainId
         const config = await fetchEvmChainsConfig()
-        if (mounted && config.defaults?.selectedChainKey) {
-          setSelectedChain(config.defaults.selectedChainKey)
+          if (walletState.metaMask.isConnected && walletState.metaMask.chainId && config) {
+            const chain = findChainByChainId(config, walletState.metaMask.chainId)
+            if (chain) {
+              chainKey = chain.key
+              // Set preferredChainKeyAtom when deriving from MetaMask
+              if (mounted) {
+                setPreferredChainKey(chainKey)
+              }
+            }
+          }
+
+          // 3. Fall back to default chain from config
+          if (!chainKey && config) {
+            chainKey = getDefaultChainKey(config)
+          }
+        }
+
+        // Set selectedChain if we have a chainKey
+        if (mounted && chainKey) {
+          setSelectedChain(chainKey)
         }
       } catch (error) {
-        console.error('[Deposit] Failed to load default chain:', error)
+        console.error('[Deposit] Failed to load chain:', error)
       }
     }
 
-    void loadDefaultChain()
+    void loadChain()
 
     return () => {
       mounted = false
     }
-  }, [])
+  }, [preferredChainKey, walletState.metaMask.isConnected, walletState.metaMask.chainId, setPreferredChainKey])
 
 
   // Get chain name for display
@@ -273,7 +302,8 @@ export function Deposit() {
   useEffect(() => {
     if (walletState.metaMask.isConnected && walletState.metaMask.account && selectedChain) {
       // Refresh balance with the selected chain key
-      void refreshRef.current({ chainKey: selectedChain })
+      // Only fetch EVM balance (not Namada balances)
+      void refreshRef.current({ chainKey: selectedChain, balanceTypes: ['evm'] })
     }
   }, [selectedChain, walletState.metaMask.isConnected, walletState.metaMask.account])
 

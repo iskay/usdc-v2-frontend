@@ -14,10 +14,17 @@ const DEFAULT_POLL_INTERVAL_MS = 10_000
 
 type BalanceRefreshTrigger = 'init' | 'manual' | 'poll'
 
+export type BalanceType = 'evm' | 'namadaTransparent' | 'namadaShielded'
+
 export interface BalanceRefreshOptions {
   trigger?: BalanceRefreshTrigger
   chainKey?: string
   shielded?: ShieldedBalanceOptions
+  /**
+   * Optional array of balance types to fetch. If not provided, all balance types will be fetched.
+   * This allows selective refresh of specific balance types for better performance.
+   */
+  balanceTypes?: BalanceType[]
 }
 
 let pollingHandle: ReturnType<typeof setInterval> | undefined
@@ -40,6 +47,12 @@ export async function refreshBalances(options: BalanceRefreshOptions = {}): Prom
 
   inflightRefresh = (async () => {
     try {
+      // Default to all balance types if not specified (backward compatible)
+      const balanceTypes = options.balanceTypes ?? ['evm', 'namadaTransparent', 'namadaShielded']
+      const shouldFetchEvm = balanceTypes.includes('evm')
+      const shouldFetchNamadaTransparent = balanceTypes.includes('namadaTransparent')
+      const shouldFetchNamadaShielded = balanceTypes.includes('namadaShielded')
+
       // Get wallet state
       const walletState = store.get(walletAtom)
       const transparentAddress = walletState.namada?.account
@@ -65,42 +78,54 @@ export async function refreshBalances(options: BalanceRefreshOptions = {}): Prom
       // Validate chain key exists in config before fetching balance
       const chainExists = chainKey && chainConfig ? findChainByKey(chainConfig, chainKey) !== undefined : false
 
-      // Only fetch EVM balance if MetaMask is connected and we have an address and valid chain key
-      let evmBalance: { usdc: string; chainKey?: string } = { usdc: '--', chainKey }
-      if (walletState.metaMask.isConnected && metaMaskAddress && chainKey && chainExists) {
-        try {
-          const balance = await fetchEvmUsdcBalance(chainKey, metaMaskAddress)
-          evmBalance = { usdc: balance, chainKey }
-        } catch (error) {
-          console.error('[BalanceService] Failed to fetch EVM balance', {
+      // Fetch EVM balance if requested
+      let evmBalance: { usdc: string; chainKey?: string } | undefined
+      if (shouldFetchEvm) {
+        evmBalance = { usdc: '--', chainKey }
+        if (walletState.metaMask.isConnected && metaMaskAddress && chainKey && chainExists) {
+          try {
+            const balance = await fetchEvmUsdcBalance(chainKey, metaMaskAddress)
+            evmBalance = { usdc: balance, chainKey }
+          } catch (error) {
+            console.error('[BalanceService] Failed to fetch EVM balance', {
+              chainKey,
+              error: error instanceof Error ? error.message : String(error),
+            })
+            evmBalance = { usdc: '--', chainKey }
+          }
+        } else {
+          console.debug('[BalanceService] Skipping EVM balance fetch', {
+            isConnected: walletState.metaMask.isConnected,
+            hasAddress: !!metaMaskAddress,
             chainKey,
-            error: error instanceof Error ? error.message : String(error),
+            chainExists,
           })
-          evmBalance = { usdc: '--', chainKey }
         }
-      } else {
-        console.debug('[BalanceService] Skipping EVM balance fetch', {
-          isConnected: walletState.metaMask.isConnected,
-          hasAddress: !!metaMaskAddress,
-          chainKey,
-          chainExists,
-        })
       }
 
-      const transparentBalance = await fetchNamadaTransparentBalance(transparentAddress)
+      // Fetch Namada transparent balance if requested
+      let transparentBalance: { usdcTransparent: string } | undefined
+      if (shouldFetchNamadaTransparent) {
+        transparentBalance = await fetchNamadaTransparentBalance(transparentAddress)
+      }
 
       const completedAt = Date.now()
 
+      // Update balance atom with fetched values (preserve existing values for types not fetched)
       store.set(balanceAtom, (state) => ({
-        evm: {
-          usdc: evmBalance.usdc ?? state.evm.usdc,
-          chainKey: evmBalance.chainKey ?? state.evm.chainKey,
-          lastUpdated: completedAt,
-        },
+        evm: evmBalance
+          ? {
+              usdc: evmBalance.usdc ?? state.evm.usdc,
+              chainKey: evmBalance.chainKey ?? state.evm.chainKey,
+              lastUpdated: completedAt,
+            }
+          : state.evm,
         namada: {
           ...state.namada,
-          usdcTransparent: transparentBalance.usdcTransparent ?? state.namada.usdcTransparent,
-          transparentLastUpdated: completedAt,
+          usdcTransparent: transparentBalance
+            ? transparentBalance.usdcTransparent ?? state.namada.usdcTransparent
+            : state.namada.usdcTransparent,
+          transparentLastUpdated: transparentBalance ? completedAt : state.namada.transparentLastUpdated,
         },
       }))
       store.set(balanceErrorAtom, undefined)
@@ -110,20 +135,23 @@ export async function refreshBalances(options: BalanceRefreshOptions = {}): Prom
         lastSuccessAt: completedAt,
       }))
 
-      // Only trigger shielded balance refresh if Namada wallet is connected
-      // Skip shielded sync during polling if auto-sync is disabled (manual sync button still works)
-      const isPolling = options.trigger === 'poll'
-      const autoSyncEnabled = store.get(autoShieldedSyncEnabledAtom)
-      const shouldSkipShieldedSync = isPolling && !autoSyncEnabled
+      // Fetch Namada shielded balance if requested
+      if (shouldFetchNamadaShielded) {
+        // Only trigger shielded balance refresh if Namada wallet is connected
+        // Skip shielded sync during polling if auto-sync is disabled (manual sync button still works)
+        const isPolling = options.trigger === 'poll'
+        const autoSyncEnabled = store.get(autoShieldedSyncEnabledAtom)
+        const shouldSkipShieldedSync = isPolling && !autoSyncEnabled
 
-      if (walletState.namada.isConnected) {
-        if (shouldSkipShieldedSync) {
-          console.debug('[BalanceService] Skipping shielded balance refresh - auto-sync disabled during polling')
+        if (walletState.namada.isConnected) {
+          if (shouldSkipShieldedSync) {
+            console.debug('[BalanceService] Skipping shielded balance refresh - auto-sync disabled during polling')
+          } else {
+            void triggerShieldedBalanceRefresh(options.shielded)
+          }
         } else {
-        void triggerShieldedBalanceRefresh(options.shielded)
+          console.debug('[BalanceService] Skipping shielded balance refresh - Namada wallet not connected')
         }
-      } else {
-        console.debug('[BalanceService] Skipping shielded balance refresh - Namada wallet not connected')
       }
     } catch (error) {
       console.error('Balance refresh failed', error)
