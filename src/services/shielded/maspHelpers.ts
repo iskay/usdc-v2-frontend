@@ -149,32 +149,55 @@ export async function clearShieldedContext(sdk: Sdk, chainId: string): Promise<v
 /**
  * Resolve viewing key from wallet state and accounts.
  * This is a shared helper used by both useShieldedSync and triggerShieldedBalanceRefresh.
+ * Uses the currently selected account (from walletState.namada.account) to find the matching viewing key.
  * @param walletState - The wallet state from walletAtom
  * @returns Normalized viewing key or null if not found
  */
 export async function resolveViewingKeyForSync(
-  walletState: { namada: { isConnected: boolean; viewingKey?: string } },
+  walletState: { namada: { isConnected: boolean; account?: string; viewingKey?: string } },
 ): Promise<ShieldedViewingKey | null> {
   if (!walletState.namada.isConnected) {
     return null
   }
 
-  const { fetchDefaultNamadaAccount, fetchNamadaAccounts } = await import('@/services/wallet/namadaKeychain')
+  const { fetchNamadaAccounts } = await import('@/services/wallet/namadaKeychain')
 
-  // Try to get viewing key from wallet state first
-  let account: Awaited<ReturnType<typeof fetchDefaultNamadaAccount>> | undefined
+  // Get all accounts from extension
+  const accounts = await fetchNamadaAccounts()
+  if (!Array.isArray(accounts) || accounts.length === 0) {
+    return null
+  }
 
-  if (walletState.namada.viewingKey) {
-    // If viewing key is in wallet state, try to get the default account
-    account = await fetchDefaultNamadaAccount()
-    if (!account || !account.viewingKey) {
-      // Fallback: search all accounts for one with viewing key
-      const accounts = await fetchNamadaAccounts()
-      account = accounts.find((a) => typeof a?.viewingKey === 'string' && a.viewingKey.length > 0)
+  let account: Awaited<ReturnType<typeof fetchNamadaAccounts>>[number] | undefined
+
+  // Priority 1: Use the currently selected account (transparent address from wallet state)
+  if (walletState.namada.account) {
+    // Find the account matching the currently selected transparent address
+    account = accounts.find((a) => a?.address === walletState.namada.account)
+    
+    // If the parent account doesn't have a viewing key, find its child shielded account
+    if (account && !account.viewingKey && account.id) {
+      const shieldedChild = accounts.find(
+        (a) =>
+          (a as any)?.parentId === account.id &&
+          typeof a?.viewingKey === 'string' &&
+          a.viewingKey.length > 0,
+      )
+      if (shieldedChild) {
+        account = shieldedChild
+      }
     }
-  } else {
-    // Search all accounts for one with viewing key
-    const accounts = await fetchNamadaAccounts()
+  }
+
+  // Priority 2: If wallet state has a viewing key, try to match it to an account
+  if (!account?.viewingKey && walletState.namada.viewingKey) {
+    account = accounts.find(
+      (a) => a?.viewingKey === walletState.namada.viewingKey,
+    )
+  }
+
+  // Priority 3: Fallback to first account with viewing key (for backwards compatibility)
+  if (!account?.viewingKey) {
     account = accounts.find((a) => typeof a?.viewingKey === 'string' && a.viewingKey.length > 0)
   }
 

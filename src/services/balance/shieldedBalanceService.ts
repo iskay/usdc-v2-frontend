@@ -224,16 +224,55 @@ export async function computeShieldedBalancesAfterSync(_chainId: string = NAMADA
 
 async function calculateShieldedBalanceStub(): Promise<{ usdcShielded: string }> {
   try {
-    // Find account with viewing key
-    const accounts = await fetchNamadaAccounts()
-    const accountWithVk = accounts.find((a) => typeof a?.viewingKey === 'string' && a.viewingKey.length > 0)
-
-    if (!accountWithVk?.viewingKey) {
-      console.warn('[ShieldedBalance] No account with viewing key found')
+    // Get the currently selected account from wallet state
+    const store = jotaiStore
+    const walletState = store.get(walletAtom)
+    
+    if (!walletState.namada.isConnected || !walletState.namada.account) {
+      console.warn('[ShieldedBalance] Namada not connected or no account selected')
       return { usdcShielded: '--' }
     }
 
-    // Query shielded USDC balance using SDK
+    // Find the account matching the currently selected transparent address
+    const accounts = await fetchNamadaAccounts()
+    if (!Array.isArray(accounts) || accounts.length === 0) {
+      console.warn('[ShieldedBalance] No accounts found')
+      return { usdcShielded: '--' }
+    }
+
+    let accountWithVk = accounts.find((a) => a?.address === walletState.namada.account)
+    
+    // If the parent account doesn't have a viewing key, find its child shielded account
+    if (accountWithVk && !accountWithVk.viewingKey && accountWithVk.id) {
+      const shieldedChild = accounts.find(
+        (a) =>
+          (a as any)?.parentId === accountWithVk.id &&
+          typeof a?.viewingKey === 'string' &&
+          a.viewingKey.length > 0,
+      )
+      if (shieldedChild) {
+        accountWithVk = shieldedChild
+      }
+    }
+
+    // Fallback: if we can't find the account by address, use the viewing key from wallet state
+    if (!accountWithVk?.viewingKey && walletState.namada.viewingKey) {
+      accountWithVk = accounts.find(
+        (a) => a?.viewingKey === walletState.namada.viewingKey,
+      )
+    }
+
+    // Last resort: find first account with viewing key (for backwards compatibility)
+    if (!accountWithVk?.viewingKey) {
+      accountWithVk = accounts.find((a) => typeof a?.viewingKey === 'string' && a.viewingKey.length > 0)
+    }
+
+    if (!accountWithVk?.viewingKey) {
+      console.warn('[ShieldedBalance] No account with viewing key found for selected account')
+      return { usdcShielded: '--' }
+    }
+
+    // Query shielded USDC balance using SDK with the viewing key from the selected account
     const formattedBalance = await getFormattedShieldedUSDCBalance(
       accountWithVk.viewingKey,
       NAMADA_CHAIN_ID,
