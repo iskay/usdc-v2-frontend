@@ -1806,7 +1806,6 @@ export class FlowOrchestrator {
       })
       
       // Update top-level transaction status to reflect successful completion
-      // This ensures UI displays the correct status even when flowStatusSnapshot is not available
       transactionStorageService.updateTransaction(this.txId, {
         status: 'finalized',
       })
@@ -1893,13 +1892,9 @@ export class FlowOrchestrator {
       }
       
       // Update top-level transaction status to reflect polling state
-      // Only update if flowStatusSnapshot is not available (frontend-only polling)
-      const tx = transactionStorageService.getTransaction(this.txId)
-      if (tx && !tx.flowStatusSnapshot) {
-        transactionStorageService.updateTransaction(this.txId, {
-          status: topLevelStatus,
-        })
-      }
+      transactionStorageService.updateTransaction(this.txId, {
+        status: topLevelStatus,
+      })
       
       return
     }
@@ -1980,12 +1975,9 @@ export class FlowOrchestrator {
           }
           
           // Update top-level transaction status to reflect polling state
-          const tx = transactionStorageService.getTransaction(this.txId)
-          if (tx && !tx.flowStatusSnapshot) {
-            transactionStorageService.updateTransaction(this.txId, {
-              status: topLevelStatus,
-            })
-          }
+          transactionStorageService.updateTransaction(this.txId, {
+            status: topLevelStatus,
+          })
           
           return
         }
@@ -2041,16 +2033,10 @@ export class FlowOrchestrator {
       }
       
       // Update top-level transaction status to reflect polling state
-      // Only update if flowStatusSnapshot is not available (frontend-only polling)
       if (topLevelStatus) {
-        const tx = transactionStorageService.getTransaction(this.txId)
-        // Only update top-level status if backend status is not available
-        // (backend status takes priority per getEffectiveStatus logic)
-        if (tx && !tx.flowStatusSnapshot) {
-          transactionStorageService.updateTransaction(this.txId, {
-            status: topLevelStatus,
-          })
-        }
+        transactionStorageService.updateTransaction(this.txId, {
+          status: topLevelStatus,
+        })
       }
     }
   }

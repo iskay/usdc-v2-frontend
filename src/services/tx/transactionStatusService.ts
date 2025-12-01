@@ -6,45 +6,20 @@
  */
 
 import type { StoredTransaction } from './transactionStorageService'
-// import type { FlowStatus, ChainStage } from '@/types/flow'
-// import { logger } from '@/utils/logger'
 import { getChainOrder, getExpectedStages } from '@/shared/flowStages'
 import { getAllStagesFromTransaction } from '@/services/polling/stageUtils'
 
 /**
  * Get the effective status of a transaction.
  * 
- * This function treats `flowStatusSnapshot.status` as the authoritative source when available,
- * since it comes from the backend API. The top-level `status` field is used as a fallback
- * for cases where backend status isn't available (pre-backend registration, frontend-only transactions).
+ * This function uses `pollingState.flowStatus` as the primary source when available,
+ * since it comes from frontend polling. The top-level `status` field is used as a fallback.
  * 
  * @param tx - Transaction to get effective status for
- * @returns Effective transaction status (from flowStatusSnapshot if available, else top-level status)
+ * @returns Effective transaction status (from pollingState if available, else top-level status)
  */
 export function getEffectiveStatus(tx: StoredTransaction): StoredTransaction['status'] {
-  // Priority 1: flowStatusSnapshot (backend API) - most authoritative
-  if (tx.flowStatusSnapshot?.status) {
-    // Map backend flow status to transaction status
-    const flowStatus = tx.flowStatusSnapshot.status
-    if (flowStatus === 'completed') {
-      return 'finalized'
-    } else if (flowStatus === 'failed') {
-      return 'error'
-    } else if (flowStatus === 'undetermined') {
-      return 'undetermined'
-    } else if (flowStatus === 'pending') {
-      // For pending flows, check if we have confirmed stages to determine if it's broadcasted
-      const hasConfirmed =
-        tx.flowStatusSnapshot.chainProgress.evm?.stages?.some((s) => s.status === 'confirmed') ||
-        tx.flowStatusSnapshot.chainProgress.namada?.stages?.some((s) => s.status === 'confirmed')
-      if (hasConfirmed) {
-        return 'broadcasted'
-      }
-      return 'submitting'
-    }
-  }
-  
-  // Priority 2: pollingState.flowStatus (frontend polling) - for frontend-only transactions
+  // Priority 1: pollingState.flowStatus (frontend polling)
   if (tx.pollingState?.flowStatus) {
     const flowStatus = tx.pollingState.flowStatus
     if (flowStatus === 'success') {
@@ -62,7 +37,7 @@ export function getEffectiveStatus(tx: StoredTransaction): StoredTransaction['st
     // flowStatus === 'pending' - fall through to check top-level status
   }
   
-  // Priority 3: Top-level status (fallback)
+  // Priority 2: Top-level status (fallback)
   return tx.status
 }
 
@@ -303,7 +278,7 @@ export function getStageTimings(
 ): StageTiming[] {
   const timings: StageTiming[] = []
 
-  // Use unified stage reading (handles pollingState, clientStages, and flowStatusSnapshot)
+  // Use unified stage reading (handles pollingState and clientStages)
   const allStages = getAllStagesFromTransaction(tx, flowType)
 
   // Convert to StageTiming format
@@ -327,16 +302,6 @@ export function getStageTimings(
             }
       }
     }
-        // Fallback: Try to determine chain from stage name or flowStatusSnapshot
-        if (chain === 'evm' && tx.flowStatusSnapshot) {
-    const chainOrder = getChainOrder(flowType)
-          for (const c of chainOrder) {
-            if (tx.flowStatusSnapshot?.chainProgress[c]?.stages?.some((s) => s.stage === stage.stage)) {
-              chain = c
-              break
-            }
-          }
-        }
       }
 
             timings.push({
@@ -471,7 +436,7 @@ export function getProgressPercentage(
     // Fall through to stage-based calculation below
   }
 
-  if (!tx.flowStatusSnapshot && !tx.pollingState) {
+  if (!tx.pollingState) {
     // Estimate progress based on effective transaction status
     const effectiveStatus = getEffectiveStatus(tx)
     const statusProgress: Record<string, number> = {
@@ -486,7 +451,7 @@ export function getProgressPercentage(
     return statusProgress[effectiveStatus] || 0
   }
 
-  // Get all stage timings (includes client stages, polling stages, and backend stages)
+  // Get all stage timings (includes client stages and polling stages)
   const timings = getStageTimings(tx, flowType)
   
   // Get expected backend stages for the flow from progression model
@@ -528,10 +493,8 @@ export function getProgressPercentage(
   // Cap at 99% until flow is actually completed (to avoid showing 100% prematurely)
   const progress = Math.round((confirmedExpectedStages / totalExpectedStages) * 100)
   
-  // Check if flow is actually completed (from pollingState or flowStatusSnapshot)
-  const isCompleted = 
-    tx.pollingState?.flowStatus === 'success' ||
-    tx.flowStatusSnapshot?.status === 'completed'
+  // Check if flow is actually completed (from pollingState)
+  const isCompleted = tx.pollingState?.flowStatus === 'success'
   
   return isCompleted ? 100 : Math.min(progress, 99)
 }

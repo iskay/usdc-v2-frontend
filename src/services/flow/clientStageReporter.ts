@@ -5,7 +5,6 @@ import {
   migrateClientStagesToUnified,
   updateChainStatus,
 } from '@/services/polling/pollingStateManager'
-import { isFrontendPollingEnabled } from '@/services/polling/chainPollingService'
 import { logger } from '@/utils/logger'
 import type { ChainKey } from '@/shared/flowStages'
 
@@ -58,19 +57,18 @@ class ClientStageReporter {
         },
       }
 
-      // Use unified storage if frontend polling is enabled
-      if (isFrontendPollingEnabled() && tx.pollingState) {
+      // Use unified pollingState structure (always enabled now)
+      if (tx.pollingState) {
         // Add stage to unified pollingState structure
         addChainStage(tx.id, chain as ChainKey, clientStage)
       } else {
-        // Fallback to clientStages for backward compatibility
-        // Also migrate existing clientStages if pollingState exists
-        if (tx.pollingState && tx.clientStages && tx.clientStages.length > 0) {
+        // Migrate existing clientStages if pollingState exists but clientStages also exist
+        if (tx.clientStages && tx.clientStages.length > 0) {
           migrateClientStagesToUnified(tx.id)
           // Re-add the new stage after migration
           addChainStage(tx.id, chain as ChainKey, clientStage)
         } else {
-          // Append to clientStages array (legacy path)
+          // Append to clientStages array (legacy path for transactions without pollingState)
           const existingStages = tx.clientStages || []
           const updatedStages = [...existingStages, clientStage]
 
@@ -83,13 +81,13 @@ class ClientStageReporter {
 
       // Calculate total stages for logging
       let totalStages = 0
-      if (isFrontendPollingEnabled() && tx.pollingState) {
+      if (tx.pollingState) {
         // Count stages from unified structure
         totalStages = Object.values(tx.pollingState.chainStatus)
           .flatMap((cs) => cs?.stages || [])
           .filter((s) => s.source === 'client').length
       } else {
-        // Count stages from clientStages
+        // Count stages from clientStages (legacy)
         const currentTx = transactionStorageService.getTransaction(tx.id)
         totalStages = currentTx?.clientStages?.length || 0
       }
@@ -189,8 +187,8 @@ class ClientStageReporter {
         tx = updatedTx
       }
 
-      // Use unified storage if available
-      if (isFrontendPollingEnabled() && tx.pollingState) {
+      // Use unified pollingState structure (always enabled now)
+      if (tx.pollingState) {
         // Find and update stage in unified structure
         const chainOrder: ChainKey[] = ['evm', 'noble', 'namada']
         for (const chain of chainOrder) {
@@ -293,12 +291,6 @@ class ClientStageReporter {
 
     // Try as localId (look up transaction by flowMetadata.localId)
     tx = transactionStorageService.getTransactionByLocalId(identifier)
-    if (tx) {
-      return tx
-    }
-
-    // Try as flowId (look up transaction by flowId)
-    tx = transactionStorageService.getTransactionByFlowId(identifier)
     if (tx) {
       return tx
     }

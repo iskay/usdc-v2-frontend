@@ -287,21 +287,7 @@ export function TransactionDetailModal({
   let sendTxHash: string | undefined
   let receiveTxHash: string | undefined
 
-  // Priority 1: Check flowStatusSnapshot (backend-managed flows)
-  if (transaction.flowStatusSnapshot) {
-    const { chainProgress } = transaction.flowStatusSnapshot
-    if (transaction.direction === 'deposit') {
-      // Deposits: Send Tx = evm, Receive Tx = namada
-      sendTxHash = chainProgress.evm?.txHash || chainProgress.evm?.stages?.find(s => s.txHash)?.txHash
-      receiveTxHash = chainProgress.namada?.txHash || chainProgress.namada?.stages?.find(s => s.txHash)?.txHash
-    } else {
-      // Payments: Send Tx = namada, Receive Tx = evm
-      sendTxHash = chainProgress.namada?.txHash || chainProgress.namada?.stages?.find(s => s.txHash)?.txHash
-      receiveTxHash = chainProgress.evm?.txHash || chainProgress.evm?.stages?.find(s => s.txHash)?.txHash
-    }
-  }
-
-  // Priority 2: Check pollingState (frontend-managed flows)
+  // Check pollingState for transaction hashes
   if (transaction.pollingState) {
     const { chainStatus } = transaction.pollingState
     if (transaction.direction === 'deposit') {
@@ -347,7 +333,7 @@ export function TransactionDetailModal({
   } else if (effectiveStatus === 'user_action_required') {
     statusIcon = <AlertCircle className="h-5 w-5" />
     statusColor = 'text-orange-600'
-  } else if (effectiveStatus === 'undetermined' || transaction.isFrontendOnly) {
+  } else if (effectiveStatus === 'undetermined') {
     statusIcon = <AlertCircle className="h-5 w-5" />
     statusColor = 'text-yellow-600'
   }
@@ -608,18 +594,6 @@ export function TransactionDetailModal({
                   onCopy={() => copyToClipboard(receiveTxHash, 'Receive Tx')}
                 />
               )}
-              {transaction.flowId && !transaction.isFrontendOnly && (
-                <div className="col-span-2">
-                  <dt className="text-muted-foreground">Flow ID</dt>
-                  <dd className="mt-1 font-mono text-sm">{transaction.flowId}</dd>
-                </div>
-              )}
-              {transaction.isFrontendOnly && (
-                <div className="col-span-2">
-                  <dt className="text-muted-foreground">Mode</dt>
-                  <dd className="mt-1 text-sm font-medium text-yellow-600">Frontend Only</dd>
-                </div>
-              )}
             </div>
           </div>
 
@@ -779,18 +753,16 @@ export function TransactionDetailModal({
           )}
 
           {/* Undetermined Status Notice */}
-          {(transaction.status === 'undetermined' || transaction.isFrontendOnly) && (
+          {transaction.status === 'undetermined' && (
             <div className="rounded-md border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-950">
               <div className="flex items-start gap-2">
                 <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
-                    {transaction.isFrontendOnly ? 'Frontend Only Mode' : 'Status Unknown'}
+                    Status Unknown
                   </p>
                   <p className="mt-1 text-sm text-yellow-800 dark:text-yellow-200">
-                    {transaction.isFrontendOnly
-                      ? 'This transaction was not submitted to the backend for tracking. Status cannot be determined as backend tracking is unavailable. The transaction may have succeeded or failed, but we cannot confirm its final state.'
-                      : 'The transaction status could not be determined within the timeout period. The transaction may have succeeded or failed, but we were unable to confirm its final state.'}
+                    The transaction status could not be determined within the timeout period. The transaction may have succeeded or failed, but we were unable to confirm its final state.
                   </p>
                 </div>
               </div>

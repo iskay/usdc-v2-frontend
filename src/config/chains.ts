@@ -102,6 +102,7 @@ export interface TendermintChainConfig {
   chainName: string // e.g., "namada", "noble"
   chainId?: string // Tendermint chain ID
   rpcUrls: string[]
+  lcdUrl?: string // LCD (REST API) endpoint URL
   explorer?: ExplorerConfig
   pollingTimeout?: PollingTimeoutConfig
   pollingConfig?: PollingConfig

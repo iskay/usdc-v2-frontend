@@ -10,7 +10,7 @@
 import { logger } from '@/utils/logger'
 import { env } from '@/config/env'
 import { retryWithBackoff } from '@/services/polling/basePoller'
-import { createTendermintRpcClient, getTendermintRpcUrl } from '@/services/polling/tendermintRpcClient'
+import { createTendermintRpcClient, getTendermintRpcUrl, getTendermintLcdUrl } from '@/services/polling/tendermintRpcClient'
 
 /**
  * Response from Noble forwarding address check endpoint
@@ -313,14 +313,27 @@ class NobleLcdClient {
 /**
  * Create Noble LCD client instance
  * 
- * @param baseUrl - Optional base URL (defaults to env config)
+ * @param baseUrl - Optional base URL (defaults to config from tendermint-chains.json)
  * @returns Noble LCD client instance
  */
-export function createNobleLcdClient(baseUrl?: string): NobleLcdClient {
-  const url = baseUrl || env.nobleLcdUrl()
+export async function createNobleLcdClient(baseUrl?: string): Promise<NobleLcdClient> {
+  let url = baseUrl
+  
   if (!url) {
-    throw new Error('Noble LCD URL not configured. Please set VITE_NOBLE_LCD_URL environment variable.')
+    try {
+      // Try to get LCD URL from tendermint-chains.json config
+      url = await getTendermintLcdUrl('noble-testnet')
+    } catch (error) {
+      // Fallback to env variable for backward compatibility
+      url = env.nobleLcdUrl()
+      if (!url) {
+        throw new Error(
+          'Noble LCD URL not configured. Please set lcdUrl in tendermint-chains.json or VITE_NOBLE_LCD_URL environment variable.'
+        )
+      }
+    }
   }
+  
   return new NobleLcdClient(url)
 }
 
@@ -335,7 +348,7 @@ export async function getNobleUusdcBalance(
   address: string,
   abortSignal?: AbortSignal,
 ): Promise<bigint> {
-  const client = createNobleLcdClient()
+  const client = await createNobleLcdClient()
   const balanceResponse = await client.getBalance(address, abortSignal)
   
   const uusdcBalance = balanceResponse.balances.find((b) => b.denom === 'uusdc')

@@ -19,7 +19,6 @@ import {
   signPaymentTransaction,
   broadcastPaymentTransaction,
   savePaymentTransaction,
-  postPaymentToBackend,
   type PaymentTransactionDetails,
 } from '@/services/payment/paymentService'
 import { useTxTracker } from '@/hooks/useTxTracker'
@@ -286,11 +285,9 @@ export function SendPayment() {
         status: 'broadcasted' as const,
       }
 
-      // Post to backend (registers flow with backend)
-      const flowId = await postPaymentToBackend(txHash, transactionDetails, txWithHash, blockHeight)
-
-      // Save transaction to unified storage with payment details and flowId
-      const savedTx = await savePaymentTransaction(txWithHash, transactionDetails, flowId)
+      // Save transaction to unified storage with payment details
+      // Frontend polling handles all tracking (no backend registration needed)
+      const savedTx = await savePaymentTransaction(txWithHash, transactionDetails)
 
       // Also update in-memory state for immediate UI updates
       upsertTransaction(savedTx)

@@ -1,6 +1,6 @@
 /**
- * Flow types for transaction status tracking and synchronization with backend.
- * These types match the backend flow model defined in usdc-v2-backend/docs/frontend-sync.md
+ * Flow types for transaction status tracking.
+ * Types for frontend-only transaction flow management.
  */
 
 /**
@@ -20,14 +20,11 @@ export interface ShieldedMetadata {
 
 /**
  * Flow initiation metadata stored locally in the frontend.
- * This is created before the first transaction and updated with flowId after backend registration.
+ * This is created before the first transaction and stored in the transaction's flowMetadata field.
  */
 export interface FlowInitiationMetadata {
-  /** Frontend-generated identifier (used before backend flowId is available) */
+  /** Frontend-generated identifier */
   localId: string;
-
-  /** Backend flowId (set after initial backend call) */
-  flowId?: string;
 
   /** Flow type */
   flowType: 'deposit' | 'payment';
@@ -45,9 +42,6 @@ export interface FlowInitiationMetadata {
 
   /** Timestamp when flow was initiated */
   initiatedAt: number;
-
-  /** UI state */
-  status: 'initiating' | 'tracking' | 'completed' | 'failed';
 }
 
 /**
@@ -71,7 +65,7 @@ export interface ChainStage {
 }
 
 /**
- * Per-chain progress entry from backend
+ * Per-chain progress entry
  */
 export interface ChainProgressEntry {
   /** Chain status */
@@ -87,52 +81,8 @@ export interface ChainProgressEntry {
 }
 
 /**
- * Flow status from backend (source of truth for live transaction status)
- */
-export interface FlowStatus {
-  /** Backend flowId (canonical identifier) */
-  flowId: string;
-
-  /** Overall status */
-  status: 'pending' | 'completed' | 'failed' | 'undetermined';
-
-  /** Per-chain progress (from backend) */
-  chainProgress: {
-    evm?: ChainProgressEntry;
-    noble?: ChainProgressEntry;
-    namada?: ChainProgressEntry;
-  };
-
-  /** Last updated timestamp */
-  lastUpdated: number;
-}
-
-/**
- * Input for starting flow tracking on backend
- */
-export interface StartFlowTrackingInput {
-  flowType: 'deposit' | 'payment';
-  initialChain: string;
-  destinationChain: string;
-  chainType: 'evm' | 'tendermint';
-  txHash: string; // First transaction hash
-  metadata?: Record<string, unknown>;
-}
-
-/**
- * Response from backend when starting flow tracking
- */
-export interface StartFlowTrackingResponse {
-  data: {
-    id: string; // flowId
-    txHash: string;
-    status: string;
-    chainProgress: FlowStatus['chainProgress'];
-  };
-}
-
-/**
- * Input for reporting client-side stage to backend
+ * Input for reporting client-side stages.
+ * Used for stages that occur client-side (gasless swaps, wallet interactions).
  */
 export interface ClientStageInput {
   chain: 'evm' | 'noble' | 'namada';

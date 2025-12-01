@@ -22,8 +22,6 @@ export interface TrackedTransaction {
   status: TxStage
   hash?: string
   errorMessage?: string
-  /** Backend flowId (canonical identifier after flow registration) */
-  flowId?: string
   /** Local flow metadata (for flow-based tracking) */
   flowMetadata?: FlowInitiationMetadata
   /** Block height where the transaction was included (for Namada transactions) */

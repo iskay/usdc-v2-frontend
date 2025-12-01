@@ -53,7 +53,7 @@ export async function submitEvmTx(tx: TrackedTransaction): Promise<string> {
 
   try {
     // Report wallet signing stage
-    const flowId = tx.flowId || tx.flowMetadata?.localId || tx.id
+    const flowId = tx.flowMetadata?.localId || tx.id
     await clientStageReporter.reportWalletStage(flowId, 'wallet_signing', 'evm', undefined, 'pending')
 
     // Ensure we're on the correct network
@@ -334,7 +334,7 @@ async function submitShieldingTx(
 
   try {
     // Report wallet signing stage
-    const flowId = tx.flowId || tx.flowMetadata?.localId || tx.id
+    const flowId = tx.flowMetadata?.localId || tx.id
     await clientStageReporter.reportWalletStage(flowId, 'wallet_signing', 'namada', undefined, 'pending')
 
     // Sign the transaction
@@ -415,7 +415,7 @@ async function submitPaymentTx(
     }
 
     // Report wallet signing stage
-    const flowId = tx.flowId || tx.flowMetadata?.localId || tx.id
+    const flowId = tx.flowMetadata?.localId || tx.id
     await clientStageReporter.reportWalletStage(flowId, 'wallet_signing', 'namada', undefined, 'pending')
 
     // Sign the transaction

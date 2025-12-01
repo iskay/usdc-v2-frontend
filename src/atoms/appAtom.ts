@@ -19,12 +19,6 @@ export const preferredChainKeyAtom = atom<string | undefined>(undefined)
 // Default: false (disabled)
 export const autoShieldedSyncEnabledAtom = atom<boolean>(false)
 
-// Toggle for frontend-only mode
-// When enabled, transactions will not be submitted to backend for tracking
-// Status will be displayed as 'undetermined' since backend tracking is unavailable
-// Default: false (backend tracking enabled)
-export const frontendOnlyModeAtom = atom<boolean>(false)
-
 // Store the current deposit recipient tnam address
 // This allows any part of the app to access the current recipient address
 // Updated by the Deposit component when the user enters/changes the recipient address

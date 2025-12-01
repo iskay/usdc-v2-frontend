@@ -17,14 +17,6 @@ import type { PaymentTransactionDetails } from '@/services/payment/paymentServic
 import { fetchNobleForwardingAddress } from '@/services/deposit/nobleForwardingService'
 
 /**
- * Feature flag: Enable frontend polling
- * Set to true to use frontend-managed polling instead of backend polling
- * 
- * Environment variable: VITE_ENABLE_FRONTEND_POLLING=true
- */
-const ENABLE_FRONTEND_POLLING = import.meta.env.VITE_ENABLE_FRONTEND_POLLING === 'true'
-
-/**
  * Start frontend polling for a deposit transaction
  * 
  * @param txId - Transaction ID
@@ -38,13 +30,6 @@ export async function startDepositPolling(
   details: DepositTransactionDetails,
   chainKey: string,
 ): Promise<void> {
-  if (!ENABLE_FRONTEND_POLLING) {
-    logger.debug('[ChainPollingService] Frontend polling disabled, skipping', {
-      txId,
-    })
-    return
-  }
-
   logger.info('[ChainPollingService] Starting deposit polling', {
     txId,
     txHash,
@@ -159,13 +144,6 @@ export async function startPaymentPolling(
   blockHeight: string | undefined,
   chainKey: string,
 ): Promise<void> {
-  if (!ENABLE_FRONTEND_POLLING) {
-    logger.debug('[ChainPollingService] Frontend polling disabled, skipping', {
-      txId,
-    })
-    return
-  }
-
   logger.info('[ChainPollingService] Starting payment polling', {
     txId,
     txHash,
@@ -261,13 +239,6 @@ export async function startPaymentPolling(
  * @param txId - Transaction ID
  */
 export async function resumePolling(txId: string): Promise<void> {
-  if (!ENABLE_FRONTEND_POLLING) {
-    logger.debug('[ChainPollingService] Frontend polling disabled, skipping resume', {
-      txId,
-    })
-    return
-  }
-
   logger.info('[ChainPollingService] Resuming polling', {
     txId,
   })
@@ -317,13 +288,6 @@ export async function resumePolling(txId: string): Promise<void> {
  * @param txId - Transaction ID
  */
 export function cancelPolling(txId: string): void {
-  if (!ENABLE_FRONTEND_POLLING) {
-    logger.debug('[ChainPollingService] Frontend polling disabled, skipping cancel', {
-      txId,
-    })
-    return
-  }
-
   logger.info('[ChainPollingService] Cancelling polling', {
     txId,
   })
@@ -374,13 +338,6 @@ export function cancelPolling(txId: string): void {
  * @param txId - Transaction ID
  */
 export async function retryPolling(txId: string): Promise<void> {
-  if (!ENABLE_FRONTEND_POLLING) {
-    logger.debug('[ChainPollingService] Frontend polling disabled, skipping retry', {
-      txId,
-    })
-    return
-  }
-
   logger.info('[ChainPollingService] Retrying polling from beginning', {
     txId,
   })
@@ -488,8 +445,9 @@ export async function retryPolling(txId: string): Promise<void> {
 
 /**
  * Check if frontend polling is enabled
+ * Always returns true since backend polling has been removed
  */
 export function isFrontendPollingEnabled(): boolean {
-  return ENABLE_FRONTEND_POLLING
+  return true
 }
 

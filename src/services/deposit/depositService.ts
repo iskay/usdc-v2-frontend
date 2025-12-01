@@ -7,15 +7,9 @@ import { buildDepositTx } from '@/services/tx/txBuilder'
 import { submitEvmTx } from '@/services/tx/txSubmitter'
 import { saveItem, loadItem } from '@/services/storage/localStore'
 import { logger } from '@/utils/logger'
-import { flowInitiationService } from '@/services/flow/flowInitiationService'
 import { getDefaultNamadaChainKey } from '@/config/chains'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
-import { jotaiStore } from '@/store/jotaiStore'
-import { frontendOnlyModeAtom } from '@/atoms/appAtom'
-import { trackNobleForwarding } from '@/services/api/backendClient'
-import { env } from '@/config/env'
-import BigNumber from 'bignumber.js'
 import type { TrackedTransaction } from '@/types/tx'
 
 export interface DepositParams {
@@ -157,25 +151,18 @@ export async function broadcastDepositTransaction(
 export async function saveDepositTransaction(
   tx: TrackedTransaction,
   details: DepositTransactionDetails,
-  flowId?: string,
 ): Promise<StoredTransaction> {
-  // Check if frontend-only mode is enabled
-  const isFrontendOnly = jotaiStore.get(frontendOnlyModeAtom)
-
   logger.info('[DepositService] Saving deposit transaction to unified storage', {
     txId: tx.id,
     txHash: tx.hash,
-    flowId,
-    isFrontendOnly,
   })
 
-  // Flow metadata should already be in transaction (created during postDepositToBackend)
-  // If flowId is provided but flowMetadata is missing, get it from transaction storage
+  // Flow metadata should already be in transaction (created during transaction building)
   let flowMetadata = tx.flowMetadata
   // Get existing transaction from storage to preserve clientStages and other fields
   const existingTx = transactionStorageService.getTransaction(tx.id)
-  if (flowId && !flowMetadata) {
-    // Try to get updated transaction from storage (it should have flowMetadata after backend registration)
+  if (!flowMetadata) {
+    // Try to get updated transaction from storage
     flowMetadata = existingTx?.flowMetadata
   }
 
@@ -187,12 +174,8 @@ export async function saveDepositTransaction(
     ...tx,
     depositDetails: details,
     depositData: txWithDepositData.depositData,
-    flowId: flowId || tx.flowId,
     flowMetadata,
     clientStages: existingTx?.clientStages, // Preserve client stages added during submission
-    isFrontendOnly: isFrontendOnly || tx.status === 'undetermined' ? true : undefined,
-    // Set status to 'undetermined' if frontend-only mode and no flowId
-    status: isFrontendOnly && !flowId ? 'undetermined' : tx.status,
     updatedAt: Date.now(),
   }
 
@@ -201,9 +184,7 @@ export async function saveDepositTransaction(
 
   logger.debug('[DepositService] Deposit transaction saved successfully', {
     txId: storedTx.id,
-    hasFlowId: !!storedTx.flowId,
     hasDepositDetails: !!storedTx.depositDetails,
-    isFrontendOnly: storedTx.isFrontendOnly,
   })
 
   // Start frontend polling if enabled
@@ -248,210 +229,6 @@ export async function saveDepositMetadata(
   console.debug('[DepositService] Saved deposit metadata (legacy)', metadata)
 }
 
-/**
- * Post deposit transaction to backend API for flow tracking.
- * Registers the flow with backend after EVM burn transaction is broadcast.
- * Creates flowMetadata in transaction if it doesn't exist.
- * 
- * @param txHash - The EVM burn transaction hash
- * @param details - Deposit transaction details
- * @param tx - The full transaction object (for additional metadata)
- * @returns Backend flowId if registration successful, undefined if frontend-only mode or registration failed
- */
-/**
- * @deprecated LEGACY_BACKEND_CODE - This function registers deposits with the backend for backend-managed polling.
- * 
- * **Migration Path:**
- * - Frontend polling is now handled by `chainPollingService.startDepositPolling()` after saving the transaction
- * - This function is kept for backward compatibility during migration
- * - Set `VITE_ENABLE_FRONTEND_POLLING=true` to use frontend polling instead
- * 
- * **Removal Plan:**
- * - This function can be removed once all transactions use frontend polling
- * - Check `ENABLE_FRONTEND_POLLING` feature flag before removing
- * - Remove `flowInitiationService.registerWithBackend()` call
- * - Remove `flowId` dependency from transaction storage
- * 
- * @see chainPollingService.startDepositPolling()
- * @see ENABLE_FRONTEND_POLLING feature flag
- */
-export async function postDepositToBackend(
-  txHash: string,
-  details: DepositTransactionDetails,
-  tx?: TrackedTransaction & { depositData?: { nobleForwardingAddress: string; destinationDomain: number; nonce?: string } },
-): Promise<string | undefined> {
-  // Check if frontend polling is enabled (feature flag)
-  const isFrontendPollingEnabled = import.meta.env.VITE_ENABLE_FRONTEND_POLLING === 'true'
-  
-  // Check if frontend-only mode is enabled (legacy atom)
-  const isFrontendOnly = jotaiStore.get(frontendOnlyModeAtom)
-  
-  if (isFrontendPollingEnabled || isFrontendOnly) {
-    logger.info('[DepositService] Frontend polling enabled, skipping backend registration', {
-      txHash: txHash.slice(0, 16) + '...',
-      isFrontendPollingEnabled,
-      isFrontendOnly,
-    })
-    return undefined
-  }
-
-  logger.debug('[DepositService] Posting deposit to backend', {
-    txHash: txHash.slice(0, 16) + '...',
-    chainName: details.chainName,
-  })
-
-  try {
-    // Get transaction ID - if tx is provided, use its ID, otherwise find by hash
-    let txId: string
-    if (tx?.id) {
-      txId = tx.id
-    } else {
-      // Find transaction by hash if tx object not provided
-      const allTxs = transactionStorageService.getAllTransactions()
-      const foundTx = allTxs.find((t) => t.hash === txHash)
-      if (!foundTx) {
-        throw new Error(`Transaction not found for hash: ${txHash.slice(0, 16)}...`)
-      }
-      txId = foundTx.id
-    }
-
-    // Get transaction to check if flowMetadata already exists
-    const storedTx = transactionStorageService.getTransaction(txId)
-    let flowMetadata = storedTx?.flowMetadata
-
-    // If flowMetadata doesn't exist, create it and store in transaction
-    if (!flowMetadata) {
-      const amountInBaseUnits = new BigNumber(details.amount)
-        .multipliedBy(1_000_000) // USDC has 6 decimals
-        .toFixed(0)
-      
-      const chainKey = tx?.chain || details.chainName.toLowerCase().replace(/\s+/g, '-')
-      flowMetadata = flowInitiationService.createFlowMetadata(
-        'deposit',
-        chainKey, // Deposit starts on EVM chain
-        amountInBaseUnits,
-      )
-      
-      // Update transaction with flowMetadata
-      transactionStorageService.updateTransaction(txId, {
-        flowMetadata,
-      })
-    }
-
-    // Get destination chain from tendermint config (deposits always go to Namada)
-    let destinationChainKey: string
-    try {
-      const tendermintConfig = await fetchTendermintChainsConfig()
-      destinationChainKey = getDefaultNamadaChainKey(tendermintConfig) || 'namada-testnet'
-    } catch (error) {
-      logger.warn('[DepositService] Failed to load tendermint chains config, using fallback', {
-        error: error instanceof Error ? error.message : String(error),
-      })
-      destinationChainKey = 'namada-testnet'
-    }
-
-    // Register flow with backend using transaction ID
-    const flowId = await flowInitiationService.registerWithBackend(
-      txId,
-      txHash,
-      {
-        destinationAddress: details.destinationAddress,
-        destinationChain: destinationChainKey, // Use Namada chain key, not source chain
-        fee: details.fee,
-        total: details.total,
-        nobleForwardingAddress: tx?.depositData?.nobleForwardingAddress,
-        destinationDomain: tx?.depositData?.destinationDomain,
-        nonce: tx?.depositData?.nonce,
-      },
-    )
-
-    logger.debug('[DepositService] Deposit flow registered with backend', {
-      txId,
-      localId: flowMetadata.localId,
-      flowId,
-      txHash: txHash.slice(0, 16) + '...',
-    })
-
-    // Register Noble forwarding address for tracking if available
-    if (tx?.depositData?.nobleForwardingAddress && details.destinationAddress) {
-      try {
-        await registerNobleForwardingForTracking(
-          tx.depositData.nobleForwardingAddress,
-          details.destinationAddress,
-        )
-      } catch (error) {
-        // Log but don't fail - Noble forwarding registration tracking is non-blocking
-        logger.warn('[DepositService] Failed to register Noble forwarding address for tracking', {
-          error: error instanceof Error ? error.message : String(error),
-          nobleAddress: tx.depositData.nobleForwardingAddress.slice(0, 16) + '...',
-          recipient: details.destinationAddress.slice(0, 16) + '...',
-        })
-      }
-    }
-
-    return flowId
-  } catch (error) {
-    logger.error('[DepositService] Failed to post deposit to backend', {
-      error: error instanceof Error ? error.message : String(error),
-      txHash: txHash.slice(0, 16) + '...',
-    })
-    // Don't throw - flow registration failure shouldn't block deposit
-    return undefined
-  }
-}
-
-/**
- * Register Noble forwarding address with backend for registration tracking.
- * This allows the backend to monitor the address and automatically register it
- * when sufficient balance is received.
- * 
- * @param nobleAddress - The Noble forwarding address
- * @param recipient - The Namada recipient address
- * @returns Registration tracking result
- */
-export async function registerNobleForwardingForTracking(
-  nobleAddress: string,
-  recipient: string,
-): Promise<void> {
-  // Check if frontend-only mode is enabled
-  const isFrontendOnly = jotaiStore.get(frontendOnlyModeAtom)
-  if (isFrontendOnly) {
-    logger.debug('[DepositService] Frontend-only mode enabled, skipping Noble forwarding registration tracking')
-    return
-  }
-
-  logger.debug('[DepositService] Registering Noble forwarding address for tracking', {
-    nobleAddress: nobleAddress.slice(0, 16) + '...',
-    recipient: recipient.slice(0, 16) + '...',
-  })
-
-  try {
-    const channel = env.nobleToNamadaChannel()
-    const result = await trackNobleForwarding({
-      nobleAddress,
-      recipient,
-      channel,
-    })
-
-    if (result.tracked) {
-      logger.info('[DepositService] Noble forwarding address registered for tracking', {
-        nobleAddress: nobleAddress.slice(0, 16) + '...',
-        registrationId: result.data?.id,
-      })
-    } else {
-      logger.debug('[DepositService] Noble forwarding address not tracked', {
-        nobleAddress: nobleAddress.slice(0, 16) + '...',
-        reason: result.reason,
-      })
-    }
-  } catch (error) {
-    logger.error('[DepositService] Failed to register Noble forwarding address for tracking', {
-      error: error instanceof Error ? error.message : String(error),
-      nobleAddress: nobleAddress.slice(0, 16) + '...',
-    })
-    throw error
-  }
-}
 
 /**
  * Get all saved deposit transactions from local storage.

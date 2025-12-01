@@ -276,7 +276,7 @@ export async function executeRegistrationJob(
     })
 
     try {
-      const lcdClient = createNobleLcdClient()
+      const lcdClient = await createNobleLcdClient()
       const broadcastResult = await lcdClient.broadcastTransaction(txBytes, abortSignal)
       
       result.registrationTx.attempted = true

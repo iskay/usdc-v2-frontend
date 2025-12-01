@@ -24,6 +24,7 @@
       "chainName": "noble",
       "chainId": "grand-1",
       "rpcUrls": ["https://noble-testnet-rpc.polkachu.com"],
+      "lcdUrl": "https://noble-testnet-api.polkachu.com",
       "explorer": {
         "baseUrl": "https://testnet.mintscan.io/noble"
       },

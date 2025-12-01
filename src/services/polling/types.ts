@@ -131,7 +131,11 @@ export interface ChainPoller {
  * Base polling parameters (common to all chains)
  */
 export interface BasePollParams {
-  /** Flow ID (transaction ID) */
+  /** 
+   * Flow ID (transaction ID)
+   * TODO: Consider renaming to `txId` for clarity, as this represents the transaction ID, not a backend flowId.
+   * This would require refactoring all polling implementations.
+   */
   flowId: string
   /** Chain being polled */
   chain: ChainKey

@@ -10,8 +10,7 @@ function readEnvVar(key: EnvKey, required = false): string | undefined {
 }
 
 export const env = {
-  backendUrl: () => readEnvVar('VITE_BACKEND_URL'),
-  nobleRpc: () => readEnvVar('VITE_NOBLE_RPC'),
+  // nobleLcdUrl kept for backward compatibility (fallback when config not available)
   nobleLcdUrl: () => readEnvVar('VITE_NOBLE_LCD_URL'),
   nobleToNamadaChannel: () => readEnvVar('VITE_NOBLE_TO_NAMADA_CHANNEL') || 'channel-136',
   nobleDomainId: () => {

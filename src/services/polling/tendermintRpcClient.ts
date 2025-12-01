@@ -408,3 +408,21 @@ export async function getTendermintRpcUrl(chainKey: string): Promise<string> {
   return chain.rpcUrls[0]
 }
 
+/**
+ * Get Tendermint LCD URL for a chain
+ * 
+ * @param chainKey - Chain key (e.g., 'noble-testnet', 'namada-testnet')
+ * @returns LCD URL
+ */
+export async function getTendermintLcdUrl(chainKey: string): Promise<string> {
+  const { fetchTendermintChainsConfig } = await import('@/services/config/tendermintChainConfigService')
+  const config = await fetchTendermintChainsConfig()
+  const chain = config.chains.find((c) => c.key === chainKey)
+
+  if (!chain || !chain.lcdUrl) {
+    throw new Error(`LCD URL not found for Tendermint chain: ${chainKey}`)
+  }
+
+  return chain.lcdUrl
+}
+

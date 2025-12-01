@@ -12,7 +12,7 @@
  */
 
 import type { TrackedTransaction } from '@/types/tx'
-import type { FlowStatus, ChainStage } from '@/types/flow'
+import type { ChainStage } from '@/types/flow'
 import type { DepositTransactionDetails } from '@/services/deposit/depositService'
 import type { PaymentTransactionDetails } from '@/services/payment/paymentService'
 import type { PollingState } from '@/services/polling/types'
@@ -22,30 +22,25 @@ import { logger } from '@/utils/logger'
 
 /**
  * Get the effective status of a transaction (helper to avoid circular dependency).
- * Treats flowStatusSnapshot.status as authoritative when available.
+ * Uses pollingState.flowStatus when available, otherwise falls back to top-level status.
  */
 function getEffectiveStatusForFilter(tx: StoredTransaction): StoredTransaction['status'] {
-  // If flowStatusSnapshot exists and has a status, use it as authoritative source
-  if (tx.flowStatusSnapshot?.status) {
-    const flowStatus = tx.flowStatusSnapshot.status
-    if (flowStatus === 'completed') {
+  // Use pollingState.flowStatus if available
+  if (tx.pollingState?.flowStatus) {
+    const flowStatus = tx.pollingState.flowStatus
+    if (flowStatus === 'success') {
       return 'finalized'
-    } else if (flowStatus === 'failed') {
+    } else if (flowStatus === 'tx_error') {
       return 'error'
-    } else if (flowStatus === 'undetermined') {
+    } else if (flowStatus === 'polling_error' || flowStatus === 'polling_timeout') {
       return 'undetermined'
-    } else if (flowStatus === 'pending') {
-      // For pending flows, check if we have confirmed stages to determine if it's broadcasted
-      const hasConfirmed =
-        tx.flowStatusSnapshot.chainProgress.evm?.stages?.some((s) => s.status === 'confirmed') ||
-        tx.flowStatusSnapshot.chainProgress.namada?.stages?.some((s) => s.status === 'confirmed')
-      if (hasConfirmed) {
-        return 'broadcasted'
-      }
-      return 'submitting'
+    } else if (flowStatus === 'user_action_required') {
+      return 'user_action_required'
+    } else if (flowStatus === 'cancelled') {
+      return 'broadcasted'
     }
   }
-  // Fallback to top-level status when flowStatusSnapshot is not available
+  // Fallback to top-level status
   return tx.status
 }
 
@@ -54,27 +49,12 @@ function getEffectiveStatusForFilter(tx: StoredTransaction): StoredTransaction['
  * Extends TrackedTransaction with additional metadata for rich display.
  */
 export interface StoredTransaction extends TrackedTransaction {
-  /**
-   * Cached flow status snapshot for display (updated via polling).
-   * 
-   * **Status Priority:**
-   * - When `flowStatusSnapshot.status` is available, it is treated as the authoritative source
-   *   (comes from backend API and is most accurate)
-   * - The top-level `status` field is used as a fallback when `flowStatusSnapshot` is not available
-   *   (e.g., pre-backend registration, frontend-only transactions)
-   * 
-   * Use `getEffectiveStatus()` from `transactionStatusService` to get the correct status,
-   * which automatically handles this priority logic.
-   */
-  flowStatusSnapshot?: FlowStatus
   /** Deposit-specific metadata */
   depositDetails?: DepositTransactionDetails
   /** Deposit transaction data (includes forwarding address, contract addresses, etc.) */
   depositData?: DepositTxData
   /** Payment-specific metadata */
   paymentDetails?: PaymentTransactionDetails
-  /** Flag for frontend-only mode (transactions not submitted to backend) */
-  isFrontendOnly?: boolean
   /**
    * Block height where the transaction was included (for Namada transactions).
    * Extracted from the broadcast response.
@@ -96,7 +76,6 @@ export interface StoredTransaction extends TrackedTransaction {
   /**
    * Frontend polling state for resumable chain polling.
    * Contains per-chain status, errors, timeouts, and polling parameters.
-   * Used for frontend-managed polling (replaces backend flowStatusSnapshot when enabled).
    */
   pollingState?: PollingState
   /** Last update timestamp (for sorting and filtering) */
@@ -135,7 +114,6 @@ class TransactionStorageService {
         txId: tx.id,
         direction: tx.direction,
         status: tx.status,
-        hasFlowId: !!tx.flowId,
       })
     } catch (error) {
       logger.error('[TransactionStorageService] Failed to save transaction', {
@@ -265,11 +243,6 @@ class TransactionStorageService {
       
       if (isFinalStatus) return true
       
-      // Also check flow status if available
-      if (tx.flowStatusSnapshot) {
-        return tx.flowStatusSnapshot.status === 'completed' || tx.flowStatusSnapshot.status === 'failed'
-      }
-      
       return false
     })
     
@@ -298,22 +271,6 @@ class TransactionStorageService {
     return this.getAllTransactions().length
   }
 
-  /**
-   * Get transaction by flowId.
-   * Useful for looking up transactions when only flowId is known.
-   */
-  getTransactionByFlowId(flowId: string): StoredTransaction | null {
-    try {
-      const allTxs = this.getAllTransactions()
-      return allTxs.find((tx) => tx.flowId === flowId) || null
-    } catch (error) {
-      logger.error('[TransactionStorageService] Failed to get transaction by flowId', {
-        flowId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-      return null
-    }
-  }
 
   /**
    * Get transaction by localId (from flowMetadata).

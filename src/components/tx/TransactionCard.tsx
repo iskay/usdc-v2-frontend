@@ -96,7 +96,7 @@ export const TransactionCard = memo(function TransactionCard({
   } else if (effectiveStatus === 'user_action_required') {
     statusIcon = <AlertCircle className="h-4 w-4" />
     statusColor = 'text-orange-600'
-  } else if (effectiveStatus === 'undetermined' || transaction.isFrontendOnly) {
+  } else if (effectiveStatus === 'undetermined') {
     statusIcon = <AlertCircle className="h-4 w-4" />
     statusColor = 'text-yellow-600'
   }
@@ -127,9 +127,6 @@ export const TransactionCard = memo(function TransactionCard({
                 {statusIcon}
                 <span>{statusLabel}</span>
               </div>
-              {transaction.isFrontendOnly && (
-                <span className="text-xs text-yellow-600">(Frontend Only)</span>
-              )}
               {hasClientTimeout(transaction) && (
                 <div className="group relative">
                   <AlertCircle className="h-3.5 w-3.5 text-yellow-600" />

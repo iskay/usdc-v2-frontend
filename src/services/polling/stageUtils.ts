@@ -2,7 +2,7 @@
  * Stage Utilities
  * 
  * Helper functions for reading stages from unified structure (pollingState)
- * and legacy structures (clientStages, flowStatusSnapshot).
+ * and legacy structures (clientStages).
  */
 
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
@@ -70,24 +70,6 @@ export function getAllStagesFromTransaction(
     stages.push(...currentTx.clientStages)
   }
 
-  // Also read from flowStatusSnapshot (backend-managed flows)
-  if (currentTx.flowStatusSnapshot) {
-    const chainOrder = getChainOrder(flowType)
-    for (const chain of chainOrder) {
-      const progress = currentTx.flowStatusSnapshot.chainProgress[chain]
-      if (!progress) continue
-
-      // Add regular stages
-      if (progress.stages && progress.stages.length > 0) {
-        stages.push(...progress.stages)
-      }
-
-      // Add gasless stages
-      if (progress.gaslessStages && progress.gaslessStages.length > 0) {
-        stages.push(...progress.gaslessStages)
-      }
-    }
-  }
 
   // Sort by occurredAt timestamp (chronological order)
   stages.sort((a, b) => {
@@ -127,18 +109,6 @@ export function getStagesForChain(
     stages.push(...chainStages)
   }
 
-  // Also read from flowStatusSnapshot (backend-managed flows)
-  if (tx.flowStatusSnapshot) {
-    const progress = tx.flowStatusSnapshot.chainProgress[chain]
-    if (progress) {
-      if (progress.stages && progress.stages.length > 0) {
-        stages.push(...progress.stages)
-      }
-      if (progress.gaslessStages && progress.gaslessStages.length > 0) {
-        stages.push(...progress.gaslessStages)
-      }
-    }
-  }
 
   // Sort by occurredAt timestamp
   stages.sort((a, b) => {

@@ -18,7 +18,6 @@ import {
   signDepositTransaction,
   broadcastDepositTransaction,
   saveDepositTransaction,
-  postDepositToBackend,
   type DepositTransactionDetails,
 } from '@/services/deposit/depositService'
 import { useTxTracker } from '@/hooks/useTxTracker'
@@ -423,11 +422,9 @@ export function Deposit() {
         status: 'broadcasted' as const,
       }
 
-      // Post to backend (pass transaction for additional metadata)
-      const flowId = await postDepositToBackend(txHash, transactionDetails, txWithHash)
-
-      // Save transaction to unified storage with deposit details and flowId
-      const savedTx = await saveDepositTransaction(txWithHash, transactionDetails, flowId)
+      // Save transaction to unified storage with deposit details
+      // Frontend polling handles all tracking (no backend registration needed)
+      const savedTx = await saveDepositTransaction(txWithHash, transactionDetails)
 
       // Also update in-memory state for immediate UI updates
       upsertTransaction(savedTx)

@@ -1,10 +1,7 @@
-import type { FlowInitiationMetadata, ShieldedMetadata, StartFlowTrackingInput } from '@/types/flow'
-import { startFlowTracking } from '@/services/api/backendClient'
-import { transactionStorageService } from '@/services/tx/transactionStorageService'
+import type { FlowInitiationMetadata, ShieldedMetadata } from '@/types/flow'
 import { jotaiStore } from '@/store/jotaiStore'
 import { chainConfigAtom } from '@/atoms/appAtom'
-import { findChainByKey, getDefaultNamadaChainKey } from '@/config/chains'
-import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
+import { findChainByKey } from '@/config/chains'
 import { logger } from '@/utils/logger'
 
 /**
@@ -30,8 +27,8 @@ function getChainType(chainKey: string): 'evm' | 'tendermint' {
 }
 
 /**
- * Service for initiating flows and registering them with the backend.
- * Flow metadata is now stored directly in transactions instead of separate flows storage.
+ * Service for initiating flows locally.
+ * Flow metadata is stored directly in transactions instead of separate flows storage.
  */
 class FlowInitiationService {
   /**
@@ -62,7 +59,6 @@ class FlowInitiationService {
       token: 'USDC',
       shieldedMetadata,
       initiatedAt: Date.now(),
-      status: 'initiating',
     }
     
     logger.debug('[FlowInitiationService] Created flow metadata', {
@@ -75,200 +71,6 @@ class FlowInitiationService {
     return initiationMetadata
   }
 
-  /**
-   * Initiate a new flow locally.
-   * Creates flow initiation metadata and saves it to transaction storage.
-   * 
-   * @deprecated Use createFlowMetadata() and store in transaction's flowMetadata field instead.
-   * This method is kept for backward compatibility but will be removed.
-   * 
-   * @param flowType - Type of flow ('deposit' or 'payment')
-   * @param initialChain - Chain identifier where flow starts
-   * @param amount - Token amount in base units
-   * @param shieldedMetadata - Optional shielded transaction metadata (client-side only)
-   * @returns Object with localId
-   */
-  async initiateFlow(
-    flowType: 'deposit' | 'payment',
-    initialChain: string,
-    amount: string,
-    shieldedMetadata?: ShieldedMetadata,
-  ): Promise<{ localId: string }> {
-    const metadata = this.createFlowMetadata(flowType, initialChain, amount, shieldedMetadata)
-    return { localId: metadata.localId }
-  }
-
-  /**
-   * @deprecated LEGACY_BACKEND_CODE - This function registers flows with the backend for backend-managed polling.
-   * 
-   * **Migration Path:**
-   * - Frontend polling no longer requires backend registration
-   * - Transactions are tracked directly via `chainPollingService` after saving
-   * - This function is kept for backward compatibility during migration
-   * - Set `VITE_ENABLE_FRONTEND_POLLING=true` to use frontend polling instead
-   * 
-   * **Removal Plan:**
-   * - This function can be removed once all transactions use frontend polling
-   * - Check `ENABLE_FRONTEND_POLLING` feature flag before removing
-   * - Remove `startFlowTracking()` API call
-   * - Remove `flowId` dependency from transaction storage
-   * 
-   * @see chainPollingService.startDepositPolling()
-   * @see chainPollingService.startPaymentPolling()
-   * @see ENABLE_FRONTEND_POLLING feature flag
-   * 
-   * Register flow with backend after first transaction is broadcast.
-   * Updates transaction with backend flowId.
-   * 
-   * @param txId - Transaction ID (to find transaction and update it)
-   * @param firstTxHash - First transaction hash (required by backend)
-   * @param metadata - Optional additional metadata to send to backend
-   * @returns Backend flowId
-   */
-  async registerWithBackend(
-    txId: string,
-    firstTxHash: string,
-    metadata?: Record<string, unknown>,
-  ): Promise<string> {
-    // Get transaction to find flow metadata
-    const tx = transactionStorageService.getTransaction(txId)
-    if (!tx) {
-      throw new Error(`Transaction not found for txId: ${txId}`)
-    }
-
-    const initiation = tx.flowMetadata
-    if (!initiation) {
-      throw new Error(`Flow metadata not found in transaction: ${txId}`)
-    }
-    
-    // Determine destinationChain based on flow type
-    let destinationChain: string
-    if (initiation.flowType === 'deposit') {
-      // Deposits always go to Namada - get from tendermint chains config
-      try {
-        const tendermintConfig = await fetchTendermintChainsConfig()
-        destinationChain = getDefaultNamadaChainKey(tendermintConfig) || 'namada-testnet'
-      } catch (error) {
-        logger.warn('[FlowInitiationService] Failed to load tendermint chains config, using fallback', {
-          error: error instanceof Error ? error.message : String(error),
-        })
-        destinationChain = 'namada-testnet'
-      }
-    } else {
-      // For payments, extract destinationChain from metadata
-      const destinationChainFromMetadata = metadata?.destinationChain as string | undefined
-      if (destinationChainFromMetadata) {
-        // Try to find chain by name in config first
-        const chainConfig = jotaiStore.get(chainConfigAtom)
-        const chainByName = chainConfig?.chains.find(
-          (chain) => chain.name.toLowerCase() === destinationChainFromMetadata.toLowerCase()
-        )
-        
-        if (chainByName) {
-          // Use the chain key from config
-          destinationChain = chainByName.key
-        } else {
-          // Fallback: try to match by key (in case it's already a key)
-          const chainByKey = chainConfig ? findChainByKey(chainConfig, destinationChainFromMetadata) : undefined
-          if (chainByKey) {
-            destinationChain = chainByKey.key
-          } else {
-            // Last resort: convert name to key format (e.g., "Base Sepolia" -> "base-sepolia")
-            destinationChain = destinationChainFromMetadata.toLowerCase().replace(/\s+/g, '-')
-          }
-        }
-      } else {
-        // Fallback to default chain from config if not provided
-        const chainConfig = jotaiStore.get(chainConfigAtom)
-        const defaultChainKey = chainConfig?.defaults?.selectedChainKey
-        if (defaultChainKey) {
-          destinationChain = defaultChainKey
-        } else {
-          // Last resort: use first available chain from config
-          const firstChain = chainConfig?.chains?.[0]
-          if (firstChain) {
-            destinationChain = firstChain.key
-          } else {
-            // If no config available, log warning and use a safe fallback
-            logger.warn('[FlowInitiationService] No chain config available, using fallback', {
-              flowType: initiation.flowType,
-            })
-            destinationChain = 'sepolia' // Safe fallback for testnet
-          }
-        }
-      }
-    }
-    
-    // Build backend request payload
-    const input: StartFlowTrackingInput = {
-      flowType: initiation.flowType,
-      initialChain: initiation.initialChain,
-      destinationChain,
-      chainType: initiation.initialChainType,
-      txHash: firstTxHash,
-      metadata: {
-        amount: initiation.amount,
-        token: initiation.token,
-        localId: initiation.localId, // Include frontend localId for recovery
-        ...metadata,
-      },
-    }
-    
-    try {
-      // Register with backend
-      const response = await startFlowTracking(input)
-      const flowId = response.data.id
-      
-      // Update transaction with flowId and updated flow metadata
-      const updatedFlowMetadata: FlowInitiationMetadata = {
-        ...initiation,
-        flowId,
-        status: 'tracking',
-      }
-      
-      transactionStorageService.updateTransaction(txId, {
-        flowId,
-        flowMetadata: updatedFlowMetadata,
-      })
-      
-      logger.debug('[FlowInitiationService] Registered flow with backend', {
-        txId,
-        localId: initiation.localId,
-        flowId,
-        txHash: firstTxHash.slice(0, 16) + '...',
-      })
-      
-      return flowId
-    } catch (error) {
-      // Update transaction status to failed but keep flow metadata
-      const updatedFlowMetadata: FlowInitiationMetadata = {
-        ...initiation,
-        status: 'failed',
-      }
-      
-      transactionStorageService.updateTransaction(txId, {
-        flowMetadata: updatedFlowMetadata,
-      })
-      
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      logger.error('[FlowInitiationService] Failed to register flow with backend', {
-        txId,
-        localId: initiation.localId,
-        error: errorMessage,
-      })
-      
-      throw new Error(`Failed to register flow with backend: ${errorMessage}`)
-    }
-  }
-
-  /**
-   * Get flow initiation metadata by localId (from transaction).
-   * @deprecated Use transactionStorageService.getTransactionByLocalId() instead.
-   */
-  getFlowInitiation(localId: string): FlowInitiationMetadata | null {
-    const tx = transactionStorageService.getTransactionByLocalId(localId)
-    return tx?.flowMetadata || null
-  }
 }
 
 // Export singleton instance
