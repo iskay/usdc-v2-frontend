@@ -358,8 +358,8 @@ export async function preparePaymentParams(
   }
 
   // IBC channel configuration
-  const channelId = env.namadaToNobleChannel() || 'channel-27'
-  const receiver = env.nobleReceiverAddress() || 'noble15xt7kx5mles58vkkfxvf0lq78sw04jajvfgd4d'
+  const channelId = env.namadaToNobleChannel()
+  const receiver = env.nobleReceiverAddress()
 
   // Build IBC parameters
   const ibcParams: IbcParams = {

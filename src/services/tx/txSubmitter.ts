@@ -92,7 +92,6 @@ export async function submitEvmTx(tx: TrackedTransaction): Promise<string> {
     logger.info('[TxSubmitter] ✅ Deposit transaction submitted successfully', {
       txHash: result.txHash,
       nonce: result.nonce || 'not extracted',
-      explorerUrl: `https://${depositData.sourceChain.includes('sepolia') ? 'sepolia' : 'basescan'}.org/tx/${result.txHash}`,
     })
 
     return result.txHash

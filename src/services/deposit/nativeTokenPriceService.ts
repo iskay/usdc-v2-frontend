@@ -4,6 +4,7 @@
  */
 
 import { logger } from '@/utils/logger'
+import { env } from '@/config/env'
 
 // Map chain key to Binance symbol
 const BINANCE_SYMBOL_MAP: Record<string, string> = {
@@ -49,7 +50,8 @@ export async function fetchNativeTokenPrice(chainKey: string): Promise<number | 
   }
 
   try {
-    const url = `https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`
+    const baseUrl = env.binanceApiBaseUrl()
+    const url = `${baseUrl}/api/v3/ticker/price?symbol=${symbol}`
     logger.debug('[PriceService] Fetching price from Binance', { chainKey, symbol, url })
 
     const response = await fetch(url)

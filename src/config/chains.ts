@@ -103,6 +103,7 @@ export interface TendermintChainConfig {
   chainId?: string // Tendermint chain ID
   rpcUrls: string[]
   lcdUrl?: string // LCD (REST API) endpoint URL
+  indexerUrl?: string // Indexer API endpoint URL (optional, falls back to env var)
   explorer?: ExplorerConfig
   pollingTimeout?: PollingTimeoutConfig
   pollingConfig?: PollingConfig

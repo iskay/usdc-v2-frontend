@@ -36,6 +36,7 @@ export const env = {
   debug: () => readEnvVar('VITE_DEBUG') === 'true' || readEnvVar('VITE_DEBUG') === '1',
   logLevel: () => readEnvVar('VITE_LOG_LEVEL') || 'info',
   irisAttestationBaseUrl: () => readEnvVar('VITE_IRIS_ATTESTATION_BASE_URL') || 'https://iris-api.circle.com/attestations/',
+  binanceApiBaseUrl: () => readEnvVar('VITE_BINANCE_API_BASE_URL') || 'https://api.binance.com',
   // Noble forwarding registration config
   nobleRegMinUusdc: () => {
     const value = readEnvVar('VITE_NOBLE_REG_MIN_UUSDC')

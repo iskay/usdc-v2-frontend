@@ -192,38 +192,44 @@ export function TransactionDetailModal({
     if (type === 'address') {
       if (chainType === 'evm') {
         const chain = chainKey && evmChainsConfig ? findChainByKey(evmChainsConfig, chainKey) : null
-        if (chain?.explorer?.baseUrl && chain.explorer.addressPath) {
-          return `${chain.explorer.baseUrl}/${chain.explorer.addressPath}/${value}`
+        if (chain?.explorer?.baseUrl) {
+          const addressPath = chain.explorer.addressPath ?? 'address'
+          return `${chain.explorer.baseUrl}/${addressPath}/${value}`
         }
       } else if (chainType === 'namada') {
         const namadaChainKey = tendermintChainsConfig ? getDefaultNamadaChainKey(tendermintChainsConfig) : 'namada-testnet'
         const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, namadaChainKey || 'namada-testnet') : null
         if (chain?.explorer?.baseUrl) {
-          // Namada explorer typically uses /account/{address} or similar
-          return `${chain.explorer.baseUrl}/account/${value}`
+          const addressPath = chain.explorer.addressPath ?? 'account'
+          return `${chain.explorer.baseUrl}/${addressPath}/${value}`
         }
       } else if (chainType === 'noble') {
         const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, 'noble-testnet') : null
         if (chain?.explorer?.baseUrl) {
-          return `${chain.explorer.baseUrl}/account/${value}`
+          const addressPath = chain.explorer.addressPath ?? 'account'
+          return `${chain.explorer.baseUrl}/${addressPath}/${value}`
         }
       }
     } else if (type === 'tx') {
+      const lowercasedHash = value.toLowerCase()
       if (chainType === 'evm') {
         const chain = chainKey && evmChainsConfig ? findChainByKey(evmChainsConfig, chainKey) : null
-        if (chain?.explorer?.baseUrl && chain.explorer.txPath) {
-          return `${chain.explorer.baseUrl}/${chain.explorer.txPath}/${value}`
+        if (chain?.explorer?.baseUrl) {
+          const txPath = chain.explorer.txPath ?? 'tx'
+          return `${chain.explorer.baseUrl}/${txPath}/${lowercasedHash}`
         }
       } else if (chainType === 'namada') {
         const namadaChainKey = tendermintChainsConfig ? getDefaultNamadaChainKey(tendermintChainsConfig) : 'namada-testnet'
         const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, namadaChainKey || 'namada-testnet') : null
         if (chain?.explorer?.baseUrl) {
-          return `${chain.explorer.baseUrl}/tx/${value}`
+          const txPath = chain.explorer.txPath ?? 'tx'
+          return `${chain.explorer.baseUrl}/${txPath}/${lowercasedHash}`
         }
       } else if (chainType === 'noble') {
         const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, 'noble-testnet') : null
         if (chain?.explorer?.baseUrl) {
-          return `${chain.explorer.baseUrl}/tx/${value}`
+          const txPath = chain.explorer.txPath ?? 'tx'
+          return `${chain.explorer.baseUrl}/${txPath}/${lowercasedHash}`
         }
       }
     }
@@ -291,13 +297,15 @@ export function TransactionDetailModal({
   if (transaction.pollingState) {
     const { chainStatus } = transaction.pollingState
     if (transaction.direction === 'deposit') {
-      // Deposits: Send Tx = evm, Receive Tx = namada
+      // Deposits: Send Tx = evm, Receive Tx = namadaTxHash from metadata
       if (!sendTxHash) {
         sendTxHash = chainStatus.evm?.metadata?.txHash as string | undefined ||
           chainStatus.evm?.stages?.find(s => s.txHash)?.txHash
       }
       if (!receiveTxHash) {
-        receiveTxHash = chainStatus.namada?.metadata?.txHash as string | undefined ||
+        // For deposits, receive tx is the namadaTxHash from metadata (the transaction hash after IBC transfer completes)
+        receiveTxHash = transaction.pollingState.metadata?.namadaTxHash as string | undefined ||
+          chainStatus.namada?.metadata?.txHash as string | undefined ||
           chainStatus.namada?.stages?.find(s => s.stage === 'namada_received' && s.txHash)?.txHash
       }
     } else {

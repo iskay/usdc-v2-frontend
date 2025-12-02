@@ -10,6 +10,7 @@ import { logger } from '@/utils/logger'
 import { retryWithBackoff } from './basePoller'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
+import { getTendermintIndexerUrl } from './tendermintRpcClient'
 
 /**
  * Cache for chain configs
@@ -83,8 +84,9 @@ async function getNamadaStartHeight(
   // Convert milliseconds to seconds (indexer expects seconds)
   const timestampSeconds = Math.floor(creationTimestampMs / 1000)
 
-  // Namada testnet indexer endpoint
-  const indexerUrl = 'https://indexer.testnet.siuuu.click/api/v1/block/timestamp'
+  // Get indexer URL from config (with fallback to env)
+  const baseIndexerUrl = await getTendermintIndexerUrl('namada-testnet')
+  const indexerUrl = `${baseIndexerUrl}/api/v1/block/timestamp`
   const url = `${indexerUrl}/${timestampSeconds}`
 
   logger.debug('[BlockHeightLookup] Fetching Namada block height from indexer', {

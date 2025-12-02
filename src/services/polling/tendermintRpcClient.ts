@@ -426,3 +426,29 @@ export async function getTendermintLcdUrl(chainKey: string): Promise<string> {
   return chain.lcdUrl
 }
 
+/**
+ * Get Tendermint Indexer URL for a chain
+ * Falls back to environment variable if not configured in chain config.
+ * 
+ * @param chainKey - Chain key (e.g., 'namada-testnet')
+ * @returns Indexer URL
+ */
+export async function getTendermintIndexerUrl(chainKey: string): Promise<string> {
+  const { fetchTendermintChainsConfig } = await import('@/services/config/tendermintChainConfigService')
+  const config = await fetchTendermintChainsConfig()
+  const chain = config.chains.find((c) => c.key === chainKey)
+
+  // Try config first
+  if (chain?.indexerUrl) {
+    return chain.indexerUrl
+  }
+
+  // Fallback to env variable (only for Namada chains)
+  if (chainKey === 'namada-testnet' || chainKey.startsWith('namada')) {
+    const { env } = await import('@/config/env')
+    return env.namadaIndexerUrl()
+  }
+
+  throw new Error(`Indexer URL not found for Tendermint chain: ${chainKey}`)
+}
+

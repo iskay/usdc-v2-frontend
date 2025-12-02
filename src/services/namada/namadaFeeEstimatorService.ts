@@ -8,12 +8,13 @@ import { env } from '@/config/env'
 import { logger } from '@/utils/logger'
 import type { GasConfig } from '@/types/shielded'
 import { getUSDCAddressFromRegistry } from './namadaBalanceService'
+import { getTendermintIndexerUrl } from '@/services/polling/tendermintRpcClient'
 
 /**
- * Get the Namada indexer URL from environment.
+ * Get the Namada indexer URL from config (with fallback to env).
  */
-function getIndexerUrl(): string {
-  return env.namadaIndexerUrl() || 'https://indexer.testnet.siuuu.click'
+async function getIndexerUrl(): Promise<string> {
+  return await getTendermintIndexerUrl('namada-testnet')
 }
 
 /**
@@ -51,7 +52,8 @@ async function fetchGasEstimateForKinds(txKinds: string[]): Promise<GasEstimate>
     redelegate: String(counters['Redelegate'] || 0),
   })
 
-  const url = `${getIndexerUrl()}/api/v1/gas/estimate?${params.toString()}`
+  const indexerUrl = await getIndexerUrl()
+  const url = `${indexerUrl}/api/v1/gas/estimate?${params.toString()}`
   try {
     logger.debug('[NamadaFeeEstimator] Fetching gas estimate', { url, txKinds })
     const res = await fetch(url)
@@ -82,7 +84,8 @@ async function fetchGasEstimateForKinds(txKinds: string[]): Promise<GasEstimate>
 async function fetchGasPriceForTokenAddress(
   tokenAddress: string,
 ): Promise<{ isValid: boolean; minDenomAmount?: string }> {
-  const url = `${getIndexerUrl()}/api/v1/gas-price/${tokenAddress}`
+  const indexerUrl = await getIndexerUrl()
+  const url = `${indexerUrl}/api/v1/gas-price/${tokenAddress}`
   try {
     logger.debug('[NamadaFeeEstimator] Fetching gas price for token', {
       tokenAddress: tokenAddress.slice(0, 12) + '...',
@@ -230,7 +233,8 @@ export async function estimateGasForToken(
  * @returns Gas estimate with min, avg, max, and totalEstimates
  */
 export async function fetchGasEstimateIbcUnshieldingTransfer(): Promise<GasEstimate> {
-  const url = `${getIndexerUrl()}/api/v1/gas/estimate?ibc_unshielding_transfer=0`
+  const indexerUrl = await getIndexerUrl()
+  const url = `${indexerUrl}/api/v1/gas/estimate?ibc_unshielding_transfer=0`
   try {
     logger.debug('[NamadaFeeEstimator] Fetching IBC unshielding transfer gas estimate', { url })
     const res = await fetch(url)
