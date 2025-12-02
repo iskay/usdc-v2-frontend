@@ -9,6 +9,7 @@ import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import type { ChainKey, FlowType } from '@/shared/flowStages'
 import { getChainOrder } from '@/shared/flowStages'
 import type { ChainStatus, FlowPollingStatus } from './types'
+import { sanitizeError } from '@/utils/errorSanitizer'
 
 /**
  * Get polling status for a transaction
@@ -138,13 +139,16 @@ export function getChainStatusColor(status: ChainStatus | null): string {
 
 /**
  * Format error message with timestamp and error code if available
+ * Uses error sanitizer to provide human-readable messages
  */
 export function formatChainErrorMessage(status: ChainStatus | null): string | null {
   if (!status || !status.errorMessage) {
     return null
   }
 
-  const parts: string[] = [status.errorMessage]
+  // Sanitize the error message first
+  const sanitized = sanitizeError(status.errorMessage)
+  const parts: string[] = [sanitized.message]
 
   // Add error category if available
   if (status.errorCategory) {
@@ -179,6 +183,16 @@ export function formatChainErrorMessage(status: ChainStatus | null): string | nu
   }
 
   return parts.join(' ')
+}
+
+/**
+ * Get sanitized error message only (without metadata)
+ */
+export function getSanitizedChainErrorMessage(status: ChainStatus | null): string | null {
+  if (!status || !status.errorMessage) {
+    return null
+  }
+  return sanitizeError(status.errorMessage).message
 }
 
 /**

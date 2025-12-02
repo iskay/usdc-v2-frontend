@@ -26,6 +26,7 @@ import { findChainByKey } from '@/config/chains'
 import { findTendermintChainByKey, getDefaultNamadaChainKey } from '@/config/chains'
 import { useToast } from '@/hooks/useToast'
 import { buildCopySuccessToast, buildCopyErrorToast } from '@/utils/toastHelpers'
+import { CollapsibleError } from '@/components/common/CollapsibleError'
 
 export interface TransactionDetailModalProps {
   transaction: StoredTransaction
@@ -718,17 +719,7 @@ export function TransactionDetailModal({
 
           {/* Error Message */}
           {transaction.errorMessage && (
-            <div className="rounded-md border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950">
-              <div className="flex items-start gap-2">
-                <XCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-red-900 dark:text-red-100">Error</p>
-                  <p className="mt-1 text-sm text-red-800 dark:text-red-200">
-                    {transaction.errorMessage}
-                  </p>
-                </div>
-              </div>
-            </div>
+            <CollapsibleError error={transaction.errorMessage} />
           )}
 
           {/* Client Timeout Notice */}

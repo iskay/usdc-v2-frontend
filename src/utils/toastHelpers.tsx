@@ -9,6 +9,7 @@ import {
 import type { ToastArgs, ToastActionButton } from '@/hooks/useToast'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import { TOAST_DURATION } from '@/config/constants'
+import { getShortErrorMessage } from '@/utils/errorSanitizer'
 
 /**
  * Format transaction hash for display
@@ -149,7 +150,7 @@ export function buildTransactionSuccessToast(
  */
 export function buildTransactionErrorToast(
   transaction: StoredTransaction | { id: string; direction: 'deposit' | 'send' },
-  errorMessage: string,
+  errorMessage: string | unknown,
   options: {
     onViewTransaction?: (id: string) => void
     onRetry?: () => void
@@ -157,7 +158,7 @@ export function buildTransactionErrorToast(
 ): ToastArgs {
   const direction = transaction.direction === 'deposit' ? 'Deposit' : 'Payment'
   const title = `${direction} Failed`
-  const description = errorMessage || 'Transaction failed. Please try again.'
+  const description = errorMessage ? getShortErrorMessage(errorMessage, 150) : 'Transaction failed. Please try again.'
 
   const actions: ToastActionButton[] = []
 

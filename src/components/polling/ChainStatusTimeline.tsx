@@ -16,6 +16,7 @@ import {
   formatChainErrorMessage,
   getChainStatusColor,
 } from '@/services/polling/pollingStatusUtils'
+import { sanitizeError } from '@/utils/errorSanitizer'
 import { cn } from '@/lib/utils'
 
 export interface ChainStatusTimelineProps {
@@ -127,8 +128,8 @@ export const ChainStatusTimeline = memo(function ChainStatusTimeline({
                 </div>
                 
                 {errorMessage && (
-                  <div className="mt-1 text-xs text-red-600 dark:text-red-400">
-                    {errorMessage}
+                  <div className="mt-1 text-xs text-red-600 dark:text-red-400 break-words">
+                    {sanitizeError(errorMessage).message}
                   </div>
                 )}
 

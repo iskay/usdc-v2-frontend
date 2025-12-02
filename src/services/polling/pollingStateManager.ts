@@ -167,9 +167,19 @@ export function updateChainStatus(
       completedStages: [],
     }
 
+    // Deduplication: Only update errorMessage if it's different from current
+    // This prevents duplicate error messages from being set
+    let errorMessage = status.errorMessage
+    if (errorMessage !== undefined && errorMessage === currentChainStatus.errorMessage) {
+      // Same error message - don't update (avoid duplicate)
+      errorMessage = currentChainStatus.errorMessage
+    }
+
     const updatedChainStatus: ChainStatus = {
       ...currentChainStatus,
       ...status,
+      // Use deduplicated error message
+      errorMessage: errorMessage ?? currentChainStatus.errorMessage,
       // Preserve completed stages array
       completedStages: status.completedStages ?? currentChainStatus.completedStages,
       // Preserve stages array

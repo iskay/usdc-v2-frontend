@@ -82,10 +82,18 @@ export function useTxTracker(options?: { enablePolling?: boolean }) {
         return
       }
 
+      // Only clear error message when:
+      // 1. Status changes to 'finalized' (success)
+      // 2. Status changes from 'error' to a non-error state
+      // Otherwise, preserve the error message
+      const shouldClearError = 
+        message.stage === 'finalized' || 
+        (currentTx.status === 'error' && message.stage !== 'error')
+
       const updated: StoredTransaction = {
         ...currentTx,
         status: message.stage,
-        errorMessage: undefined, // Clear any previous error message on status update
+        errorMessage: shouldClearError ? undefined : currentTx.errorMessage,
         updatedAt: Date.now(),
       }
 
@@ -111,11 +119,21 @@ export function useTxTracker(options?: { enablePolling?: boolean }) {
         ...state,
         activeTransaction:
           state.activeTransaction && state.activeTransaction.id === message.txId
-            ? { ...state.activeTransaction, status: message.stage, errorMessage: undefined, updatedAt: Date.now() }
+            ? { 
+                ...state.activeTransaction, 
+                status: message.stage, 
+                errorMessage: shouldClearError ? undefined : state.activeTransaction.errorMessage, 
+                updatedAt: Date.now() 
+              }
             : state.activeTransaction,
         history: state.history.map((tx) =>
           tx.id === message.txId
-            ? { ...tx, status: message.stage, errorMessage: undefined, updatedAt: Date.now() }
+            ? { 
+                ...tx, 
+                status: message.stage, 
+                errorMessage: shouldClearError ? undefined : tx.errorMessage, 
+                updatedAt: Date.now() 
+              }
             : tx,
         ),
       }))
