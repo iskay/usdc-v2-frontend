@@ -25,6 +25,7 @@ import type { EvmChainsFile, TendermintChainsFile } from '@/config/chains'
 import { findChainByKey } from '@/config/chains'
 import { findTendermintChainByKey, getDefaultNamadaChainKey } from '@/config/chains'
 import { useToast } from '@/hooks/useToast'
+import { buildCopySuccessToast, buildCopyErrorToast } from '@/utils/toastHelpers'
 
 export interface TransactionDetailModalProps {
   transaction: StoredTransaction
@@ -102,18 +103,10 @@ export function TransactionDetailModal({
   const copyToClipboard = useCallback(async (text: string, label: string) => {
     try {
       await navigator.clipboard.writeText(text)
-      notify({
-        title: 'Copied',
-        description: `${label} copied to clipboard`,
-        level: 'success',
-      })
+      notify(buildCopySuccessToast(label))
     } catch (error) {
       console.error('[TransactionDetailModal] Failed to copy to clipboard:', error)
-      notify({
-        title: 'Copy Failed',
-        description: 'Failed to copy to clipboard',
-        level: 'error',
-      })
+      notify(buildCopyErrorToast())
     }
   }, [notify])
 

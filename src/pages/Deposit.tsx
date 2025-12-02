@@ -11,6 +11,13 @@ import { useBalance } from '@/hooks/useBalance'
 import { useToast } from '@/hooks/useToast'
 import { RequireMetaMaskConnection } from '@/components/wallet/RequireMetaMaskConnection'
 import { validateDepositForm, handleAmountInputChange, handleBech32InputChange, validateNamadaAddress } from '@/services/validation'
+import {
+  buildTransactionSuccessToast,
+  buildTransactionErrorToast,
+  buildTransactionStatusToast,
+  buildValidationErrorToast,
+  buildCopySuccessToast,
+} from '@/utils/toastHelpers'
 import { checkCurrentDepositRecipientRegistration } from '@/services/deposit/nobleForwardingService'
 import { useDepositFeeEstimate } from '@/hooks/useDepositFeeEstimate'
 import {
@@ -29,7 +36,7 @@ import { findChainByChainId, getDefaultChainKey } from '@/config/chains'
 export function Deposit() {
   const navigate = useNavigate()
   const { upsertTransaction } = useTxTracker({ enablePolling: false })
-  const { notify } = useToast()
+  const { notify, updateToast } = useToast()
   const { state: walletState } = useWallet()
   const { state: balanceState, refresh, sync: balanceSync } = useBalance()
   const preferredChainKey = useAtomValue(preferredChainKeyAtom)
@@ -338,10 +345,10 @@ export function Deposit() {
     // Validate form
     if (!validation.isValid) {
       if (validation.amountError) {
-        notify({ title: 'Invalid Amount', description: validation.amountError, level: 'error' })
+        notify(buildValidationErrorToast('Amount', validation.amountError))
       }
       if (validation.addressError) {
-        notify({ title: 'Invalid Address', description: validation.addressError, level: 'error' })
+        notify(buildValidationErrorToast('Address', validation.addressError))
       }
       return
     }
@@ -371,8 +378,11 @@ export function Deposit() {
         ...(evmAddress && { senderAddress: evmAddress }), // Store EVM sender address if available
       }
 
+      // Use a consistent toast ID for transaction status updates
+      const txToastId = `deposit-tx-${Date.now()}`
+
       // Build transaction
-      notify({ title: 'Building transaction...', level: 'info' })
+      notify(buildTransactionStatusToast('building', 'deposit', txToastId))
       tx = await buildDepositTransaction({
         amount,
         destinationAddress: toAddress,
@@ -389,7 +399,7 @@ export function Deposit() {
       upsertTransaction(tx)
 
       // Sign transaction
-      notify({ title: 'Signing transaction...', level: 'info' })
+      updateToast(txToastId, buildTransactionStatusToast('signing', 'deposit'))
       signedTx = await signDepositTransaction(tx)
       
       // Update status to signing
@@ -403,7 +413,7 @@ export function Deposit() {
       upsertTransaction(signedTx)
 
       // Broadcast transaction
-      notify({ title: 'Broadcasting transaction...', level: 'info' })
+      updateToast(txToastId, buildTransactionStatusToast('broadcasting', 'deposit'))
       
       // Update status to submitting before broadcast
       currentTx = {
@@ -429,12 +439,17 @@ export function Deposit() {
       // Also update in-memory state for immediate UI updates
       upsertTransaction(savedTx)
 
-      // Show success toast
-      notify({
-        title: 'Deposit Submitted',
-        description: `Transaction ${txHash.slice(0, 10)}... submitted successfully`,
-        level: 'success',
+      // Update the existing loading toast to success toast
+      const successToast = buildTransactionSuccessToast(savedTx, {
+        onViewTransaction: (id) => {
+          navigate(`/dashboard?tx=${id}`)
+        },
+        onCopyHash: () => {
+          notify(buildCopySuccessToast('Transaction hash'))
+        },
       })
+      const { id: _, ...successToastArgs } = successToast
+      updateToast(txToastId, successToastArgs)
 
       // Navigate to Dashboard
       navigate('/dashboard')
@@ -478,11 +493,23 @@ export function Deposit() {
         console.error('[Deposit] Failed to save error transaction:', saveError)
       }
       
-      notify({
-        title: 'Deposit Failed',
-        description: message,
-        level: 'error',
-      })
+      // Show error toast with action to view transaction if available
+      const errorTxForToast = currentTx || (tx ? { id: tx.id, direction: 'deposit' as const } : undefined)
+      if (errorTxForToast) {
+        notify(
+          buildTransactionErrorToast(errorTxForToast, message, {
+            onViewTransaction: (id) => {
+              navigate(`/dashboard?tx=${id}`)
+            },
+          })
+        )
+      } else {
+        notify({
+          title: 'Deposit Failed',
+          description: message,
+          level: 'error',
+        })
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -498,6 +525,7 @@ export function Deposit() {
         title: 'Address Auto-filled',
         description: 'Namada address populated from connected wallet',
         level: 'info',
+        icon: <Info className="h-5 w-5" />,
       })
     } else {
       notify({
@@ -655,11 +683,7 @@ export function Deposit() {
                               type="button"
                               onClick={() => {
                                 navigator.clipboard.writeText(registrationStatus.forwardingAddress!)
-                                notify({
-                                  title: 'Copied',
-                                  description: 'Forwarding address copied to clipboard',
-                                  level: 'success',
-                                })
+                                notify(buildCopySuccessToast('Forwarding address'))
                               }}
                               className="rounded p-1 text-green-700 dark:text-green-400 hover:bg-green-500/20 transition-colors shrink-0"
                               aria-label="Copy forwarding address"
@@ -688,11 +712,7 @@ export function Deposit() {
                               type="button"
                               onClick={() => {
                                 navigator.clipboard.writeText(registrationStatus.forwardingAddress!)
-                                notify({
-                                  title: 'Copied',
-                                  description: 'Forwarding address copied to clipboard',
-                                  level: 'success',
-                                })
+                                notify(buildCopySuccessToast('Forwarding address'))
                               }}
                               className="rounded p-1 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 transition-colors shrink-0"
                               aria-label="Copy forwarding address"

@@ -11,6 +11,7 @@ import { logger } from '@/utils/logger'
 // import { env } from '@/config/env'
 import { getUSDCAddressFromRegistry } from '@/services/namada/namadaBalanceService'
 import BigNumber from 'bignumber.js'
+import { buildShieldingToast } from '@/utils/toastHelpers'
 
 export interface UseShieldingState {
   isShielding: boolean
@@ -29,7 +30,7 @@ export interface UseShieldingReturn {
  */
 export function useShielding(): UseShieldingReturn {
   const walletState = useAtomValue(walletAtom)
-  const { notify } = useToast()
+  const { notify, updateToast } = useToast()
   const [state, setState] = useState<UseShieldingState>({
     isShielding: false,
   })
@@ -171,28 +172,17 @@ export function useShielding(): UseShieldingReturn {
                 phase,
               }))
 
-              // Show toast for each phase
+              // Show toast for each phase using consistent ID for updates
+              const shieldingToastId = 'shielding-operation'
               switch (phase) {
                 case 'building':
-                  notify({
-                    title: 'Shield',
-                    description: 'Building shielding transaction...',
-                    level: 'info',
-                  })
+                  notify(buildShieldingToast('building'))
                   break
                 case 'signing':
-                  notify({
-                    title: 'Shield',
-                    description: 'Waiting for approval...',
-                    level: 'info',
-                  })
+                  updateToast(shieldingToastId, buildShieldingToast('signing'))
                   break
                 case 'submitting':
-                  notify({
-                    title: 'Shield',
-                    description: 'Submitting transaction...',
-                    level: 'info',
-                  })
+                  updateToast(shieldingToastId, buildShieldingToast('submitting'))
                   break
                 case 'submitted':
                   // Success toast will be shown after result
@@ -209,13 +199,8 @@ export function useShielding(): UseShieldingReturn {
           txHash: result.txHash.slice(0, 16) + '...',
         })
 
-        // Show success toast
-        const txHashDisplay = `${result.txHash.slice(0, 8)}...${result.txHash.slice(-8)}`
-        notify({
-          title: 'Shield',
-          description: `Transaction submitted: ${txHashDisplay}`,
-          level: 'success',
-        })
+        // Show success toast with transaction hash
+        updateToast('shielding-operation', buildShieldingToast('submitted', result.txHash))
 
         setState({
           isShielding: false,

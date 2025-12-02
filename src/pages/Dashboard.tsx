@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Shield, Eye, RefreshCw, Loader2, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { Switch } from '@/components/common/Switch'
@@ -25,6 +25,27 @@ export function Dashboard() {
   const [openModalTxId, setOpenModalTxId] = useState<string | null>(null)
   const [historyReloadTrigger, setHistoryReloadTrigger] = useState(0)
   const previousInProgressTxIds = useRef<Set<string>>(new Set())
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // Handle tx query parameter to open transaction modal
+  useEffect(() => {
+    const txId = searchParams.get('tx')
+    if (txId) {
+      // Verify transaction exists before opening modal
+      const allTxs = [
+        ...transactionStorageService.getInProgressTransactions(),
+        ...transactionStorageService.getCompletedTransactions(),
+      ]
+      const txExists = allTxs.some(tx => tx.id === txId)
+      
+      if (txExists) {
+        setOpenModalTxId(txId)
+        // Remove query parameter from URL after opening modal
+        searchParams.delete('tx')
+        setSearchParams(searchParams, { replace: true })
+      }
+    }
+  }, [searchParams, setSearchParams])
 
   // Monitor in-progress transactions to detect when one completes
   useEffect(() => {

@@ -14,6 +14,10 @@ import { checkNamadaConnection } from '@/services/wallet/namadaKeychain'
 import { NAMADA_CHAIN_ID } from '@/config/constants'
 import { onWalletEvent, offWalletEvent } from '@/services/wallet/walletEvents'
 import { useToast } from '@/hooks/useToast'
+import {
+  buildWalletConnectionToast,
+  buildNetworkChangeToast,
+} from '@/utils/toastHelpers'
 import { requestBalanceRefresh } from '@/services/balance/balanceService'
 
 function formatAddress(address: string, startLength = 6, endLength = 4): string {
@@ -54,11 +58,7 @@ export function useWallet() {
 
       if (isNowConnected && account) {
         if (!wasConnected) {
-          notify({
-            title: 'MetaMask Connected',
-            description: `Account: ${formatAddress(account)}`,
-            level: 'success',
-          })
+          notify(buildWalletConnectionToast('metamask', account, true))
         } else if (account !== previousAccount) {
           notify({
             title: 'MetaMask Account Changed',
@@ -67,11 +67,7 @@ export function useWallet() {
           })
         }
       } else if (wasConnected) {
-        notify({
-          title: 'MetaMask Disconnected',
-          description: 'Account disconnected',
-          level: 'info',
-        })
+        notify(buildWalletConnectionToast('metamask', '', false))
       }
     }
 
@@ -97,11 +93,7 @@ export function useWallet() {
 
       // Only show toast if chain actually changed (not on initial connection)
       if (wasConnected && previousChainHex && previousChainHex !== payload.chainIdHex) {
-        notify({
-          title: 'Network Changed',
-          description: `Chain ID: ${chainId}`,
-          level: 'info',
-        })
+        notify(buildNetworkChangeToast(chainId))
       }
     }
 
@@ -124,11 +116,7 @@ export function useWallet() {
       setWalletError(undefined)
 
       if (wasConnected) {
-        notify({
-          title: 'MetaMask Disconnected',
-          description: 'Wallet disconnected',
-          level: 'info',
-        })
+        notify(buildWalletConnectionToast('metamask', '', false))
       }
     }
 
@@ -179,11 +167,7 @@ export function useWallet() {
             account: formatAddress(account, 8, 6),
             alias: payload.accountAlias,
           })
-          notify({
-            title: 'Namada Keychain Connected',
-            description: `Account: ${formatAddress(account, 8, 6)}`,
-            level: 'success',
-          })
+          notify(buildWalletConnectionToast('namada', account, true))
           // Trigger immediate balance refresh when transparent address becomes available
           void requestBalanceRefresh({ trigger: 'manual' })
         } else if (previousAccount && account !== previousAccount) {
@@ -224,11 +208,7 @@ export function useWallet() {
       setWalletError(undefined)
 
       if (wasConnected) {
-        notify({
-          title: 'Namada Keychain Disconnected',
-          description: 'Wallet disconnected',
-          level: 'info',
-        })
+        notify(buildWalletConnectionToast('namada', '', false))
       }
     }
 
