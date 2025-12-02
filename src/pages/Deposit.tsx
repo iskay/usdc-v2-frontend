@@ -36,7 +36,7 @@ import { findChainByChainId, getDefaultChainKey } from '@/config/chains'
 export function Deposit() {
   const navigate = useNavigate()
   const { upsertTransaction } = useTxTracker({ enablePolling: false })
-  const { notify, updateToast } = useToast()
+  const { notify, updateToast, dismissToast } = useToast()
   const { state: walletState } = useWallet()
   const { state: balanceState, refresh, sync: balanceSync } = useBalance()
   const preferredChainKey = useAtomValue(preferredChainKeyAtom)
@@ -367,6 +367,9 @@ export function Deposit() {
     let signedTx: Awaited<ReturnType<typeof signDepositTransaction>> | undefined
     let currentTx: StoredTransaction | undefined
 
+    // Use a consistent toast ID for transaction status updates (moved outside try so it's accessible in catch)
+    const txToastId = `deposit-tx-${Date.now()}`
+
     try {
       // Build transaction details
       const transactionDetails: DepositTransactionDetails = {
@@ -377,9 +380,6 @@ export function Deposit() {
         chainName,
         ...(evmAddress && { senderAddress: evmAddress }), // Store EVM sender address if available
       }
-
-      // Use a consistent toast ID for transaction status updates
-      const txToastId = `deposit-tx-${Date.now()}`
 
       // Build transaction
       notify(buildTransactionStatusToast('building', 'deposit', txToastId))
@@ -398,7 +398,7 @@ export function Deposit() {
       transactionStorageService.saveTransaction(currentTx)
       upsertTransaction(tx)
 
-      // Sign transaction
+      // Sign transaction (no-op, actual signing happens during broadcast)
       updateToast(txToastId, buildTransactionStatusToast('signing', 'deposit'))
       signedTx = await signDepositTransaction(tx)
       
@@ -412,9 +412,7 @@ export function Deposit() {
       transactionStorageService.saveTransaction(currentTx)
       upsertTransaction(signedTx)
 
-      // Broadcast transaction
-      updateToast(txToastId, buildTransactionStatusToast('broadcasting', 'deposit'))
-      
+      // Broadcast transaction (signing popup appears here, so keep showing "Signing transaction...")
       // Update status to submitting before broadcast
       currentTx = {
         ...currentTx,
@@ -454,6 +452,9 @@ export function Deposit() {
       // Navigate to Dashboard
       navigate('/dashboard')
     } catch (error) {
+      // Dismiss the loading toast if it exists
+      dismissToast(txToastId)
+      
       console.error('[Deposit] Deposit submission failed:', error)
       const message = error instanceof Error ? error.message : 'Failed to submit deposit'
       

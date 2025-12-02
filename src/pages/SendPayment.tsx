@@ -37,7 +37,7 @@ import { NAMADA_CHAIN_ID } from '@/config/constants'
 export function SendPayment() {
   const navigate = useNavigate()
   const { upsertTransaction } = useTxTracker({ enablePolling: false })
-  const { notify, updateToast } = useToast()
+  const { notify, updateToast, dismissToast } = useToast()
   const { state: walletState } = useWallet()
 
   // Form state
@@ -214,6 +214,9 @@ export function SendPayment() {
     let signedTx: Awaited<ReturnType<typeof signPaymentTransaction>> | undefined
     let currentTx: StoredTransaction | undefined
 
+    // Use a consistent toast ID for transaction status updates (moved outside try so it's accessible in catch)
+    const txToastId = `payment-tx-${Date.now()}`
+
     try {
       // Build transaction details
       const transactionDetails: PaymentTransactionDetails = {
@@ -237,9 +240,6 @@ export function SendPayment() {
         })
       }
 
-      // Use a consistent toast ID for transaction status updates
-      const txToastId = `payment-tx-${Date.now()}`
-
       // Build transaction (this will ensure sync completes before building)
       notify(buildTransactionStatusToast('building', 'send', txToastId))
       tx = await buildPaymentTransaction({
@@ -259,7 +259,7 @@ export function SendPayment() {
       transactionStorageService.saveTransaction(currentTx)
       upsertTransaction(tx)
 
-      // Sign transaction
+      // Sign transaction (no-op, actual signing happens during broadcast)
       updateToast(txToastId, buildTransactionStatusToast('signing', 'send'))
       signedTx = await signPaymentTransaction(tx)
       
@@ -273,9 +273,7 @@ export function SendPayment() {
       transactionStorageService.saveTransaction(currentTx)
       upsertTransaction(signedTx)
 
-      // Broadcast transaction
-      updateToast(txToastId, buildTransactionStatusToast('broadcasting', 'send'))
-      
+      // Broadcast transaction (signing popup appears here, so keep showing "Signing transaction...")
       // Update status to submitting before broadcast
       currentTx = {
         ...currentTx,
@@ -318,6 +316,9 @@ export function SendPayment() {
       // Navigate to Dashboard
       navigate('/dashboard')
     } catch (error) {
+      // Dismiss the loading toast if it exists
+      dismissToast(txToastId)
+      
       console.error('[SendPayment] Payment submission failed:', error)
       const message = error instanceof Error ? error.message : 'Failed to submit payment'
       

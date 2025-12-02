@@ -30,7 +30,7 @@ export interface UseShieldingReturn {
  */
 export function useShielding(): UseShieldingReturn {
   const walletState = useAtomValue(walletAtom)
-  const { notify, updateToast } = useToast()
+  const { notify, updateToast, dismissToast } = useToast()
   const [state, setState] = useState<UseShieldingState>({
     isShielding: false,
   })
@@ -209,6 +209,9 @@ export function useShielding(): UseShieldingReturn {
 
         return result
       } catch (error) {
+        // Dismiss the loading toast if it exists
+        dismissToast('shielding-operation')
+        
         const errorMessage = error instanceof Error ? error.message : 'Shield transaction failed'
         logger.error('[useShielding] Shielding failed', {
           error: errorMessage,
