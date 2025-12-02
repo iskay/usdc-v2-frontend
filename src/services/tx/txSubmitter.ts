@@ -279,6 +279,10 @@ export async function broadcastNamadaTx(signedTx: Uint8Array): Promise<{
   }
 }
 
+export interface SubmitNamadaTxOptions {
+  onSigningComplete?: () => void
+}
+
 /**
  * Submit a Namada transaction (sign and broadcast).
  * Handles deposit, shielding, and payment transactions.
@@ -286,7 +290,10 @@ export async function broadcastNamadaTx(signedTx: Uint8Array): Promise<{
  * For payment transactions, returns an object with hash and blockHeight.
  * For other transactions, returns a string hash.
  */
-export async function submitNamadaTx(tx: TrackedTransaction): Promise<string | { hash: string; blockHeight?: string }> {
+export async function submitNamadaTx(
+  tx: TrackedTransaction,
+  options?: SubmitNamadaTxOptions
+): Promise<string | { hash: string; blockHeight?: string }> {
   logger.info('[TxSubmitter] 📤 Submitting Namada transaction', {
     txId: tx.id,
     direction: tx.direction,
@@ -296,7 +303,7 @@ export async function submitNamadaTx(tx: TrackedTransaction): Promise<string | {
   // Handle shielding transactions
   const shieldingData = (tx as TrackedTransaction & { shieldingData?: ShieldingTxData }).shieldingData
   if (shieldingData?.encodedTxData) {
-    return submitShieldingTx(tx, shieldingData)
+    return submitShieldingTx(tx, shieldingData, options)
   }
 
   // Handle payment transactions (IBC transfers)
@@ -319,6 +326,7 @@ export async function submitNamadaTx(tx: TrackedTransaction): Promise<string | {
 async function submitShieldingTx(
   tx: TrackedTransaction,
   shieldingData: ShieldingTxData,
+  options?: SubmitNamadaTxOptions,
 ): Promise<string> {
   logger.info('[TxSubmitter] 🛡️  Submitting shielding transaction', {
     txId: tx.id,
@@ -351,6 +359,9 @@ async function submitShieldingTx(
 
     // Update signing stage to confirmed (signing is complete)
     await clientStageReporter.updateStageStatus(flowId, 'wallet_signing', 'confirmed')
+
+    // Notify that signing is complete (this allows orchestrator to update phase to 'submitting')
+    options?.onSigningComplete?.()
 
     // Report wallet broadcasting stage
     await clientStageReporter.reportWalletStage(flowId, 'wallet_broadcasting', 'namada', undefined, 'pending')

@@ -68,12 +68,17 @@ export async function executeShielding(
     onPhase?.('signing')
     onProgress?.({ phase: 'signing', message: 'Waiting for approval...' })
 
-    // Phase 3: Submitting
-    logger.info('[ShieldingOrchestrator] 📡 Phase: Submitting transaction')
-    onPhase?.('submitting')
-    onProgress?.({ phase: 'submitting', message: 'Submitting transaction...' })
-
-    const txHashResult = await submitNamadaTx(transaction)
+    // Submit transaction (this will sign first, then broadcast)
+    // The signing happens inside submitNamadaTx and waits for user confirmation
+    // We'll update to 'submitting' phase after signing completes
+    const txHashResult = await submitNamadaTx(transaction, {
+      onSigningComplete: () => {
+        // Phase 3: Submitting (only after signing is complete)
+        logger.info('[ShieldingOrchestrator] 📡 Phase: Submitting transaction')
+        onPhase?.('submitting')
+        onProgress?.({ phase: 'submitting', message: 'Submitting transaction...' })
+      },
+    })
     // Extract hash string from result (can be string or object with hash property)
     const txHash = typeof txHashResult === 'string' ? txHashResult : txHashResult.hash
 
