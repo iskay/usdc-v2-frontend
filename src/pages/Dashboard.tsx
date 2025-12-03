@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Shield, Eye, Loader2, ArrowRight, MoreVertical, RefreshCw, CheckCircle2, XCircle } from 'lucide-react'
+import { Shield, Loader2, MoreVertical, RefreshCw, CheckCircle2, XCircle, ArrowDown, Send } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { Switch } from '@/components/common/Switch'
 import { DropdownMenu, DropdownMenuItem } from '@/components/common/DropdownMenu'
@@ -89,6 +89,7 @@ export function Dashboard() {
   const shieldedBalance = balanceState.namada.usdcShielded
   const transparentBalance = balanceState.namada.usdcTransparent
   const hasTransparentBalance = parseFloat(transparentBalance || '0') > 0
+  const hasShieldedBalance = shieldedBalance && parseFloat(shieldedBalance) > 0
 
   // Check if shielded balance is loading (sync or calculation in progress)
   const isShieldedBalanceLoading = shieldedState.isSyncing || balanceSyncState.shieldedStatus === 'calculating'
@@ -186,135 +187,111 @@ export function Dashboard() {
     <RequireNamadaConnection>
       <div className="flex flex-col gap-6 p-12 max-w-[1024px] mx-auto w-full">
 
-        {/* Balance Section */}
-        <div className="flex flex-col md:flex-row items-center md:items-stretch gap-4">
-          {/* Transparent Balance Card */}
-          <div className="rounded-lg border border-yellow-200/50 bg-gradient-to-br from-yellow-50/50 to-yellow-100/30 dark:from-yellow-950/20 dark:to-yellow-900/10 dark:border-yellow-800/50 p-6 shadow-sm flex-1">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-yellow-500/20 dark:bg-yellow-600/20">
-                  <Eye className="h-5 w-5 text-yellow-600 dark:text-yellow-500" />
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Transparent</p>
-                  <p className="text-2xl font-bold mt-1">{transparentBalance} <span className="text-lg font-semibold text-muted-foreground">USDC</span></p>
-                </div>
-              </div>
-            </div>
-            <Link to="/deposit">
-              <Button variant="ghost" className="w-full gap-2 hover:bg-yellow-100/50 dark:hover:bg-yellow-900/20">
-                <span className="text-lg">+</span>
-                <span>Deposit</span>
-              </Button>
-            </Link>
+        {/* Balance and Actions Section */}
+        <div className="flex flex-col gap-8 mb-12 rounded-lg border border-border bg-card p-4 shadow-sm">
+          {/* Section Header */}
+          <div className="flex flex-col gap-2">
+            <h2 className="text-md font-semibold">Cross-chain shielded USDC</h2>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              1. DEPOSIT ➔ 2. SHIELD ➔ 3. SEND
+            </p>
           </div>
 
-          {/* Shield Button - Centered between cards */}
-          <div className="flex flex-col items-center justify-center md:flex-col gap-2">
-            <Button
-              variant="ghost"
-              className={cn(
-                "gap-2 rounded-full p-4 h-auto font-bold text-base",
-                "bg-yellow-500 hover:bg-yellow-600 text-yellow-950",
-                "border-2 border-yellow-600 shadow-lg",
-                "transition-all duration-200",
-                hasTransparentBalance && !isShieldedBalanceLoading && !isAnyTxActive && "animate-shield-blink",
-                (isShieldedBalanceLoading || !hasTransparentBalance || isAnyTxActive) && "opacity-50 cursor-not-allowed"
-              )}
-              onClick={() => {
-                // Prevent opening if any transaction is active
-                if (!isAnyTxActive) {
-                  setIsShieldingModalOpen(true)
-                }
-              }}
-              disabled={isAnyTxActive || isShieldedBalanceLoading || !hasTransparentBalance}
-              title={
-                isAnyTxActive
-                  ? `Please wait for the current ${txUiState.transactionType || 'transaction'} to complete`
-                  : !hasTransparentBalance
-                  ? 'No transparent balance to shield'
-                  : 'Shield USDC'
-              }
-            >
-              <ArrowRight className="h-5 w-5 md:rotate-0 rotate-90" />Shield
-            </Button>
-            {isAnyTxActive && (
-              <p className="text-xs text-muted-foreground text-center max-w-[200px]">
-                Please wait for the current {txUiState.transactionType || 'transaction'} to complete
+          {/* Balance Section */}
+          <div className="flex flex-col items-stretch gap-6">
+          {/* Transparent Balance Card */}
+          <div className="rounded-lg border border-slate-200/50 bg-gradient-to-br from-slate-50/50 to-slate-100/30 dark:from-slate-950/20 dark:to-slate-900/10 dark:border-slate-800/50 p-6 shadow-sm">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Transparent Balance</p>
+                <p className="text-2xl font-bold mt-1">{transparentBalance} <span className="text-lg font-semibold text-muted-foreground">USDC</span></p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex-shrink-0">
+                STEP 1 - DEPOSIT TRANSPARENT USDC
               </p>
-            )}
+              <Link to="/deposit" className="flex-shrink-0">
+                <Button 
+                  variant="primary" 
+                  className="gap-2 rounded-lg p-4 h-auto font-bold text-base min-w-84"
+                >
+                  <ArrowDown className="h-5 w-5" />Deposit USDC
+                </Button>
+              </Link>
+            </div>
           </div>
 
           {/* Shielded Balance Card */}
-          <div className="rounded-lg border border-red-200/50 bg-gradient-to-br from-red-50/50 to-red-100/30 dark:from-red-950/20 dark:to-red-900/10 dark:border-red-800/50 p-6 shadow-sm flex-1">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/20 dark:bg-red-600/20">
-                  <Shield className="h-5 w-5 text-red-600 dark:text-red-500" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Shielded</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <p className="text-2xl font-bold">{shieldedBalance} <span className="text-lg font-semibold text-muted-foreground">USDC</span></p>
-                    {isShieldedBalanceLoading && (
-                      <Loader2 className="h-4 w-4 animate-spin text-red-500" aria-label="Loading shielded balance" />
-                    )}
-                  </div>
-                  {timeAgoText && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Last refreshed {timeAgoText}
-                    </p>
+          <div className="relative rounded-lg border border-slate-200/50 bg-gradient-to-br from-slate-50/50 to-slate-100/30 dark:from-slate-950/20 dark:to-slate-900/10 dark:border-slate-800/50 p-6 shadow-sm overflow-hidden">
+            {/* Watermark Background */}
+            {/* <Shield className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-48 w-48 text-slate-600/10 dark:text-slate-900/10 pointer-events-none" /> */}
+            
+            <div className="relative flex items-start justify-between mb-4">
+              <div className="flex-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Shielded Balance</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-2xl font-bold">{shieldedBalance} <span className="text-lg font-semibold text-muted-foreground">USDC</span></p>
+                  {isShieldedBalanceLoading && (
+                    <Loader2 className="h-4 w-4 animate-spin text-red-500" aria-label="Loading shielded balance" />
                   )}
-                  {/* Sync Progress - inline */}
-                  <div className="mt-2 flex items-center gap-2">
-                    {/* Sync Button */}
-                    {shieldedState.status === 'error' ? (
-                      <Button 
-                        variant="primary" 
-                        className="h-7 px-3 text-xs gap-1.5" 
-                        onClick={startSync} 
-                        disabled={!isReady || shieldedState.isSyncing}
-                      >
-                        {syncIconState === 'syncing' ? (
-                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                        ) : syncIconState === 'error' ? (
-                          <XCircle className="h-3.5 w-3.5" />
-                        ) : (
-                          <RefreshCw className="h-3.5 w-3.5" />
-                        )}
-                        Retry
-                      </Button>
-                    ) : isReady && !shieldedState.isSyncing ? (
-                      <Button 
-                        variant="primary" 
-                        className="h-7 px-3 text-xs gap-1.5" 
-                        onClick={startSync}
-                      >
-                        {syncIconState === 'syncing' ? (
-                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                        ) : syncIconState === 'complete' ? (
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                        ) : (
-                          <RefreshCw className="h-3.5 w-3.5" />
-                        )}
-                        Sync
-                      </Button>
-                    ) : shieldedState.isSyncing ? (
-                      <Button 
-                        variant="primary" 
-                        className="h-7 px-3 text-xs gap-1.5" 
-                        disabled
-                      >
-                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                        Sync
-                      </Button>
-                    ) : null}
-                    <div className="flex-1">
-                      <ShieldedSyncProgress compact />
-                    </div>
-                  </div>
+                </div>
+                {timeAgoText && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Last refreshed {timeAgoText}
+                  </p>
+                )}
+              </div>
+              
+              {/* Sync Controls - Right side */}
+              <div className="flex flex-col items-end gap-2 ml-4">
+                {/* Sync Button */}
+                {shieldedState.status === 'error' ? (
+                  <Button 
+                    variant="ghost" 
+                    className="h-7 px-3 text-xs gap-1.5 border border-border bg-transparent hover:bg-muted/50" 
+                    onClick={startSync} 
+                    disabled={!isReady || shieldedState.isSyncing}
+                  >
+                    {syncIconState === 'syncing' ? (
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    ) : syncIconState === 'error' ? (
+                      <XCircle className="h-3.5 w-3.5" />
+                    ) : (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    )}
+                    Retry
+                  </Button>
+                ) : isReady && !shieldedState.isSyncing ? (
+                  <Button 
+                    variant="ghost" 
+                    className="h-7 px-3 text-xs gap-1.5 border border-border bg-transparent hover:bg-muted/50" 
+                    onClick={startSync}
+                  >
+                    {syncIconState === 'syncing' ? (
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    ) : syncIconState === 'complete' ? (
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    ) : (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    )}
+                    Sync Balance
+                  </Button>
+                ) : shieldedState.isSyncing ? (
+                  <Button 
+                    variant="ghost" 
+                    className="h-7 px-3 text-xs gap-1.5 border border-border bg-transparent" 
+                    disabled
+                  >
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    Syncing Balance
+                  </Button>
+                ) : null}
+                <div className="w-32">
+                  <ShieldedSyncProgress compact />
                 </div>
               </div>
+              
               {/* Settings Dropdown */}
               <DropdownMenu
                 align="right"
@@ -351,25 +328,78 @@ export function Dashboard() {
                 </DropdownMenuItem>
               </DropdownMenu>
             </div>
+            
+            {/* Shield Button */}
+            <div className="relative flex items-center justify-between gap-4 mt-4">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex-shrink-0">
+                STEP 2 - SHIELD
+              </p>
+              <div className="flex-shrink-0">
+                <Button
+                  variant="primary"
+                  className={cn(
+                    "gap-2 rounded-lg p-4 h-auto font-bold text-base min-w-84",
+                    (isShieldedBalanceLoading || !hasTransparentBalance || isAnyTxActive) && "opacity-50 cursor-not-allowed"
+                  )}
+                  onClick={() => {
+                    // Prevent opening if any transaction is active
+                    if (!isAnyTxActive) {
+                      setIsShieldingModalOpen(true)
+                    }
+                  }}
+                  disabled={isAnyTxActive || isShieldedBalanceLoading || !hasTransparentBalance}
+                  title={
+                    isAnyTxActive
+                      ? `Please wait for the current ${txUiState.transactionType || 'transaction'} to complete`
+                      : !hasTransparentBalance
+                      ? 'No transparent balance to shield'
+                      : 'Shield USDC'
+                  }
+                >
+                  <Shield className="h-5 w-5" />Shield Funds
+                </Button>
+                {isAnyTxActive && (
+                  <p className="text-xs text-muted-foreground text-center mt-2">
+                    Please wait for the current {txUiState.transactionType || 'transaction'} to complete
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+          </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-col gap-3">
-          <Link to="/send">
-            <Button variant="primary" className="w-full min-h-16">
-              Pay
-            </Button>
-          </Link>
-          {/* <Link to="/deposit">
-          <Button variant="secondary" className="w-full">
-            Get Paid
-          </Button>
-        </Link> */}
+          {/* Pay Button Card */}
+          <div className="rounded-lg border border-slate-200/50 bg-gradient-to-br from-slate-50/50 to-slate-100/30 dark:from-slate-950/20 dark:to-slate-900/10 dark:border-slate-800/50 p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex-shrink-0">
+                STEP 3 - SEND PAYMENT FROM SHIELDED BALANCE
+              </p>
+              <Link to={hasShieldedBalance ? "/send" : "#"} className="flex-shrink-0" onClick={(e) => { if (!hasShieldedBalance) e.preventDefault() }}>
+                <Button 
+                  variant="ghost" 
+                  className={cn(
+                    "gap-2 rounded-lg p-4 h-auto font-bold text-base min-w-84",
+                    "bg-yellow-500 hover:bg-yellow-600 text-yellow-950",
+                    "transition-all duration-200",
+                    !hasShieldedBalance && "opacity-50 cursor-not-allowed"
+                  )}
+                  disabled={!hasShieldedBalance}
+                >
+                  <Send className="h-5 w-5" />
+                  {hasShieldedBalance ? "Send Shielded USDC" : "Shield USDC first"}
+                </Button>
+              </Link>
+            </div>
+          </div>
         </div>
 
         {/* Transaction Activity Box */}
         <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+          {/* Section Header */}
+          <div className="flex flex-col gap-2 mb-6">
+            <h2 className="text-md font-semibold">Recent activity</h2>
+          </div>
+
           {/* In Progress Section */}
           <div className="mb-6">
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
@@ -389,7 +419,7 @@ export function Dashboard() {
               </h2>
               <Link to="/history">
                 <Button variant="ghost" className="h-6 px-2 text-xs">
-                  All
+                  View All
                 </Button>
               </Link>
             </div>
