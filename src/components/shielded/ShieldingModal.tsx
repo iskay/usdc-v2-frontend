@@ -10,9 +10,9 @@ import { useBalance } from '@/hooks/useBalance'
 import { useShieldingFeeEstimate } from '@/hooks/useShieldingFeeEstimate'
 import { useAtomValue } from 'jotai'
 import { walletAtom } from '@/atoms/walletAtom'
+import { txUiAtom, isAnyTransactionActiveAtom } from '@/atoms/txUiAtom'
 import { validateShieldAmount, handleAmountInputChange } from '@/services/validation'
 import { formatTxHash } from '@/utils/toastHelpers'
-import { getNamadaTxExplorerUrl } from '@/utils/explorerUtils'
 import { cn } from '@/lib/utils'
 
 export interface ShieldingModalProps {
@@ -24,10 +24,14 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
   const { state: balanceState } = useBalance()
   const walletState = useAtomValue(walletAtom)
   const { state: shieldingState, shield, reset } = useShielding()
+  const txUiState = useAtomValue(txUiAtom)
+  const isAnyTxActive = useAtomValue(isAnyTransactionActiveAtom)
   const [amount, setAmount] = useState('')
   const [isConfirming, setIsConfirming] = useState(false)
-  const [txHash, setTxHash] = useState<string | null>(null)
-  const [explorerUrl, setExplorerUrl] = useState<string | undefined>(undefined)
+  
+  // Use global state for txHash and explorerUrl
+  const txHash = txUiState.txHash
+  const explorerUrl = txUiState.explorerUrl
 
   // Use unified fee estimation hook (same logic as prepareShieldingParams)
   const { state: feeEstimateState } = useShieldingFeeEstimate(
@@ -35,23 +39,21 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
     walletState.namada.account,
   )
 
-  // Reset form when modal closes
+  // Reset form when modal closes (only if transaction is not active)
   useEffect(() => {
-    if (!open) {
+    if (!open && !isAnyTxActive) {
       setAmount('')
       setIsConfirming(false)
-      setTxHash(null)
-      setExplorerUrl(undefined)
       reset()
     }
-  }, [open, reset])
+  }, [open, reset, isAnyTxActive])
 
-  // Handle Escape key to close modal
+  // Handle Escape key to close modal (prevent if any transaction is active)
   useEffect(() => {
     if (!open) return
 
     function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape' && !isConfirming && !shieldingState.isShielding) {
+      if (event.key === 'Escape' && !isConfirming && !isAnyTxActive) {
         onClose()
       }
     }
@@ -60,7 +62,7 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
     return () => {
       document.removeEventListener('keydown', handleEscape)
     }
-  }, [open, onClose, isConfirming, shieldingState.isShielding])
+  }, [open, onClose, isConfirming, isAnyTxActive])
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -98,19 +100,16 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
       return
     }
 
+    // Prevent starting new transaction if any transaction is active
+    if (isAnyTxActive) {
+      return
+    }
+
     setIsConfirming(true)
-    setTxHash(null)
-    setExplorerUrl(undefined)
     const result = await shield(amount)
 
     if (result) {
-      setTxHash(result.txHash)
-      // Fetch explorer URL
-      getNamadaTxExplorerUrl(result.txHash).then((url) => {
-        setExplorerUrl(url)
-      }).catch(() => {
-        // Silently fail if explorer URL can't be fetched
-      })
+      // txHash and explorerUrl are now managed in global state by useShielding hook
       // Don't auto-close - let user close manually after reviewing success state
       setIsConfirming(false)
     } else {
@@ -121,17 +120,15 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
   const handleRetry = () => {
     reset()
     setIsConfirming(false)
-    setTxHash(null)
-    setExplorerUrl(undefined)
   }
 
   const handleMaxClick = () => {
     setAmount(transparentBalance)
   }
 
-  const isDisabled = shieldingState.isShielding || isConfirming || !isAmountValid
+  const isDisabled = isAnyTxActive || isConfirming || !isAmountValid
 
-  const isTransactionActive = shieldingState.isShielding || isConfirming
+  const isTransactionActive = isAnyTxActive || isConfirming
   const shouldShowDetails = amount && (isAmountValid || isTransactionActive)
 
   return (
@@ -142,7 +139,7 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
           "absolute inset-0 backdrop-blur-sm transition-all",
           isTransactionActive ? "bg-black/70 backdrop-blur-md" : "bg-black/60 backdrop-blur-sm"
         )}
-        onClick={!isConfirming && !shieldingState.isShielding ? onClose : undefined}
+        onClick={!isConfirming && !isAnyTxActive ? onClose : undefined}
         aria-hidden="true"
       />
 
@@ -270,8 +267,8 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
           {shieldingState.isShielding && (
             <div className="flex items-center justify-between px-2 py-4">
               {(['building', 'signing', 'submitting'] as const).map((phase, idx) => {
-                const isActive = shieldingState.phase === phase
-                const phaseIndex = ['building', 'signing', 'submitting'].indexOf(shieldingState.phase || '')
+                const isActive = txUiState.phase === phase
+                const phaseIndex = ['building', 'signing', 'submitting'].indexOf(txUiState.phase || '')
                 const isComplete = phaseIndex > idx
                 return (
                   <div key={phase} className="flex items-center flex-1">
@@ -315,14 +312,14 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
                   {shieldingState.phase === 'building' && 'Building transaction...'}
                   {shieldingState.phase === 'signing' && 'Waiting for approval...'}
                   {shieldingState.phase === 'submitting' && 'Submitting transaction...'}
-                  {shieldingState.phase === 'submitted' && 'Transaction submitted successfully!'}
+                  {txUiState.showSuccessState && 'Transaction submitted successfully!'}
                 </span>
               </div>
             </div>
           )}
 
           {/* Enhanced Success State */}
-          {shieldingState.phase === 'submitted' && txHash && (
+          {txUiState.showSuccessState && txHash && (
             <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
@@ -393,10 +390,10 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   <span className="transition-opacity duration-200">
-                    {shieldingState.phase === 'building' && 'Building...'}
-                    {shieldingState.phase === 'signing' && 'Signing...'}
-                    {shieldingState.phase === 'submitting' && 'Submitting...'}
-                    {!shieldingState.phase && 'Processing...'}
+                    {txUiState.phase === 'building' && 'Building...'}
+                    {txUiState.phase === 'signing' && 'Signing...'}
+                    {txUiState.phase === 'submitting' && 'Submitting...'}
+                    {!txUiState.phase && 'Processing...'}
                   </span>
                 </>
               ) : (
@@ -407,7 +404,7 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
         </form>
 
         {/* Success Celebration Animation */}
-        {shieldingState.phase === 'submitted' && (
+        {txUiState.showSuccessState && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="animate-in zoom-in-95 duration-500 fade-out duration-300 delay-[800ms]">
               <CheckCircle2 className="h-16 w-16 text-green-500" />
@@ -417,13 +414,15 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
 
         {/* ARIA Live Region for Screen Readers */}
         <div aria-live="polite" aria-atomic="true" className="sr-only">
-          {shieldingState.phase && (
+          {txUiState.phase && (
             <span>
-              {shieldingState.phase === 'building' && 'Building transaction'}
-              {shieldingState.phase === 'signing' && 'Waiting for wallet approval'}
-              {shieldingState.phase === 'submitting' && 'Submitting transaction'}
-              {shieldingState.phase === 'submitted' && 'Transaction submitted successfully'}
+              {txUiState.phase === 'building' && 'Building transaction'}
+              {txUiState.phase === 'signing' && 'Waiting for wallet approval'}
+              {txUiState.phase === 'submitting' && 'Submitting transaction'}
             </span>
+          )}
+          {txUiState.showSuccessState && (
+            <span>Transaction submitted successfully</span>
           )}
         </div>
       </div>

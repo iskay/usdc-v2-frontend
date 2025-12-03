@@ -6,14 +6,13 @@ import { BackToHome } from '@/components/common/BackToHome'
 import { RequireNamadaConnection } from '@/components/wallet/RequireNamadaConnection'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { PaymentConfirmationModal } from '@/components/payment/PaymentConfirmationModal'
-import { type TransactionPhase } from '@/components/tx/ProgressStepper'
 import { TransactionSuccessOverlay } from '@/components/tx/TransactionSuccessOverlay'
 import { FormLockOverlay } from '@/components/tx/FormLockOverlay'
 import { useBalance } from '@/hooks/useBalance'
 import { useShieldedSync } from '@/hooks/useShieldedSync'
 import { useWallet } from '@/hooks/useWallet'
 import { useToast } from '@/hooks/useToast'
-import { useAtomValue } from 'jotai'
+import { useAtomValue, useAtom } from 'jotai'
 import { balanceSyncAtom } from '@/atoms/balanceAtom'
 import { validatePaymentForm, handleAmountInputChange, handleEvmAddressInputChange } from '@/services/validation'
 import {
@@ -38,6 +37,7 @@ import { triggerShieldedBalanceRefresh } from '@/services/balance/shieldedBalanc
 import { NAMADA_CHAIN_ID } from '@/config/constants'
 import { getNamadaTxExplorerUrl } from '@/utils/explorerUtils'
 import { sanitizeError } from '@/utils/errorSanitizer'
+import { txUiAtom, isAnyTransactionActiveAtom, resetTxUiState } from '@/atoms/txUiAtom'
 import { cn } from '@/lib/utils'
 
 export function SendPayment() {
@@ -50,15 +50,18 @@ export function SendPayment() {
   const [amount, setAmount] = useState('')
   const [toAddress, setToAddress] = useState('')
   const [selectedChain, setSelectedChain] = useState<string | undefined>(undefined)
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const [showConfirmationModal, setShowConfirmationModal] = useState(false)
   
-  // Transaction phase tracking
-  const [currentPhase, setCurrentPhase] = useState<TransactionPhase>(null)
-  const [txHash, setTxHash] = useState<string | null>(null)
-  const [explorerUrl, setExplorerUrl] = useState<string | undefined>(undefined)
-  const [errorState, setErrorState] = useState<{ message: string } | null>(null)
-  const [showSuccessState, setShowSuccessState] = useState(false)
+  // Global transaction UI state
+  const [txUiState, setTxUiState] = useAtom(txUiAtom)
+  const isAnyTxActive = useAtomValue(isAnyTransactionActiveAtom)
+  
+  // Local state derived from global state for convenience
+  const currentPhase = txUiState.phase
+  const txHash = txUiState.txHash
+  const explorerUrl = txUiState.explorerUrl
+  const errorState = txUiState.errorState
+  const showSuccessState = txUiState.showSuccessState
 
   // Get live shielded balance from balance state
   const { state: balanceState } = useBalance()
@@ -220,12 +223,16 @@ export function SendPayment() {
   // Handle confirmation and submit transaction
   async function handleConfirmPayment(): Promise<void> {
     setShowConfirmationModal(false)
-    setIsSubmitting(true)
-    setCurrentPhase('building')
-    setErrorState(null)
-    setTxHash(null)
-    setExplorerUrl(undefined)
-    setShowSuccessState(false)
+    setTxUiState({
+      ...txUiState,
+      isSubmitting: true,
+      phase: 'building',
+      errorState: null,
+      txHash: null,
+      explorerUrl: undefined,
+      showSuccessState: false,
+      transactionType: 'send',
+    })
 
     // Track transaction state for error handling
     let tx: Awaited<ReturnType<typeof buildPaymentTransaction>> | undefined
@@ -278,7 +285,7 @@ export function SendPayment() {
       upsertTransaction(tx)
 
       // Sign transaction (no-op, actual signing happens during broadcast)
-      setCurrentPhase('signing')
+      setTxUiState({ ...txUiState, phase: 'signing' })
       updateToast(txToastId, buildTransactionStatusToast('signing', 'send'))
       signedTx = await signPaymentTransaction(tx)
       
@@ -304,7 +311,7 @@ export function SendPayment() {
       const broadcastResult = await broadcastPaymentTransaction(signedTx, {
         onSigningComplete: () => {
           // Phase 3: Submitting (only after signing is complete)
-          setCurrentPhase('submitting')
+          setTxUiState({ ...txUiState, phase: 'submitting' })
           updateToast(txToastId, buildTransactionStatusToast('submitting', 'send'))
         },
       })
@@ -339,14 +346,12 @@ export function SendPayment() {
       updateToast(txToastId, successToastArgs)
 
       // Set success state and fetch explorer URL
-      setCurrentPhase(null)
-      setTxHash(txHash)
+      setTxUiState({ ...txUiState, phase: null, txHash, showSuccessState: true })
       getNamadaTxExplorerUrl(txHash).then((url) => {
-        setExplorerUrl(url)
+        setTxUiState((prev) => ({ ...prev, explorerUrl: url }))
       }).catch(() => {
         // Silently fail if explorer URL can't be fetched
       })
-      setShowSuccessState(true)
     } catch (error) {
       // Dismiss the loading toast if it exists
       dismissToast(txToastId)
@@ -410,20 +415,17 @@ export function SendPayment() {
       }
       
       // Set error state for enhanced error display
-      setErrorState({ message })
-      setCurrentPhase(null)
+      setTxUiState({ ...txUiState, errorState: { message }, phase: null, isSubmitting: false })
     } finally {
-      setIsSubmitting(false)
+      // Reset isSubmitting in global state if not already reset
+      if (txUiState.isSubmitting) {
+        setTxUiState((prev) => ({ ...prev, isSubmitting: false }))
+      }
     }
   }
 
   const handleRetry = () => {
-    setErrorState(null)
-    setIsSubmitting(false)
-    setCurrentPhase(null)
-    setTxHash(null)
-    setExplorerUrl(undefined)
-    setShowSuccessState(false)
+    resetTxUiState(setTxUiState)
   }
 
   // Transaction details for confirmation modal
@@ -448,7 +450,10 @@ export function SendPayment() {
         <TransactionSuccessOverlay
           txHash={txHash}
           explorerUrl={explorerUrl}
-          onNavigate={() => navigate('/dashboard')}
+          onNavigate={() => {
+            resetTxUiState(setTxUiState)
+            navigate('/dashboard')
+          }}
           countdownSeconds={3}
         />
       )}
@@ -487,9 +492,9 @@ export function SendPayment() {
           </div>
         )}
 
-        <div className={cn("flex flex-col gap-6 relative", isSubmitting && "opacity-60")}>
+        <div className={cn("flex flex-col gap-6 relative", isAnyTxActive && "opacity-60")}>
           {/* Form Lock Overlay - covers both balance card and form */}
-          <FormLockOverlay isLocked={isSubmitting} currentPhase={currentPhase} />
+          <FormLockOverlay isLocked={isAnyTxActive} currentPhase={currentPhase} />
           
           {/* Shielded Balance Card */}
           <div className="rounded-lg border border-red-200/50 bg-gradient-to-br from-red-50/50 to-red-100/30 dark:from-red-950/20 dark:to-red-900/10 dark:border-red-800/50 p-4 shadow-sm">
@@ -524,7 +529,7 @@ export function SendPayment() {
                 className="flex-1 border-none bg-transparent p-0 text-3xl font-bold focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30"
                 placeholder="0.00"
                 inputMode="decimal"
-                disabled={isSubmitting}
+                disabled={isAnyTxActive}
               />
               <span className="text-sm text-muted-foreground">USDC</span>
             </div>
@@ -544,9 +549,9 @@ export function SendPayment() {
               <button
                 type="button"
                 onClick={handleAutoFill}
-                disabled={!walletState.metaMask.isConnected || isSubmitting}
+                disabled={!walletState.metaMask.isConnected || isAnyTxActive}
                 className={`text-sm font-medium text-primary hover:text-primary/80 transition-colors ${
-                  !walletState.metaMask.isConnected || isSubmitting
+                  !walletState.metaMask.isConnected || isAnyTxActive
                     ? 'opacity-50 cursor-not-allowed'
                     : ''
                 }`}
@@ -564,7 +569,7 @@ export function SendPayment() {
                   : 'border-input focus-visible:ring-ring focus-visible:border-ring'
               }`}
               placeholder="0x..."
-              disabled={isSubmitting}
+              disabled={isAnyTxActive}
             />
             {/* Validation error for address */}
             {validation.addressError && toAddress.trim() !== '' && (
@@ -581,7 +586,7 @@ export function SendPayment() {
             <ChainSelect
               value={selectedChain}
               onChange={setSelectedChain}
-              disabled={isSubmitting}
+              disabled={isAnyTxActive}
               showEstimatedTime={true}
               timeType="send"
             />
@@ -619,31 +624,31 @@ export function SendPayment() {
             <Button
               type="submit"
               variant="primary"
-              className={cn(
-                "w-full py-6 text-lg font-semibold gap-2 transition-all",
-                isSubmitting && "animate-pulse cursor-not-allowed opacity-60",
-                !validation.isValid && !isSubmitting && "opacity-50 cursor-not-allowed"
-              )}
-              disabled={!validation.isValid || isSubmitting}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  <span className="transition-opacity duration-200">
-                    {currentPhase === 'building' && 'Building transaction...'}
-                    {currentPhase === 'signing' && 'Waiting for approval...'}
-                    {currentPhase === 'submitting' && 'Submitting transaction...'}
-                    {!currentPhase && 'Processing...'}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <ArrowRight className="h-5 w-5" />
-                  Send Payment
-                </>
-              )}
-            </Button>
-            {!validation.isValid && !isSubmitting && (
+            className={cn(
+              "w-full py-6 text-lg font-semibold gap-2 transition-all",
+              isAnyTxActive && "animate-pulse cursor-not-allowed opacity-60",
+              !validation.isValid && !isAnyTxActive && "opacity-50 cursor-not-allowed"
+            )}
+            disabled={!validation.isValid || isAnyTxActive}
+          >
+            {isAnyTxActive ? (
+              <>
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span className="transition-opacity duration-200">
+                  {currentPhase === 'building' && 'Building transaction...'}
+                  {currentPhase === 'signing' && 'Waiting for approval...'}
+                  {currentPhase === 'submitting' && 'Submitting transaction...'}
+                  {!currentPhase && 'Processing...'}
+                </span>
+              </>
+            ) : (
+              <>
+                <ArrowRight className="h-5 w-5" />
+                Send Payment
+              </>
+            )}
+          </Button>
+            {!validation.isValid && !isAnyTxActive && (
               <p className="text-xs text-muted-foreground text-center">
                 {validation.amountError || validation.addressError || 'Please fill in all required fields'}
               </p>

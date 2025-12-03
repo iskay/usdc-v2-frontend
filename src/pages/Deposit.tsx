@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useSetAtom, useAtomValue } from 'jotai'
+import { useSetAtom, useAtomValue, useAtom } from 'jotai'
 import { Loader2, Wallet, ArrowRight, AlertCircle, CheckCircle2, Info, Copy } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { BackToHome } from '@/components/common/BackToHome'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { DepositConfirmationModal } from '@/components/deposit/DepositConfirmationModal'
-import { type TransactionPhase } from '@/components/tx/ProgressStepper'
 import { TransactionSuccessOverlay } from '@/components/tx/TransactionSuccessOverlay'
 import { FormLockOverlay } from '@/components/tx/FormLockOverlay'
 import { useWallet } from '@/hooks/useWallet'
@@ -37,6 +36,7 @@ import { preferredChainKeyAtom, depositRecipientAddressAtom } from '@/atoms/appA
 import { findChainByChainId, getDefaultChainKey } from '@/config/chains'
 import { getEvmTxExplorerUrl } from '@/utils/explorerUtils'
 import { sanitizeError } from '@/utils/errorSanitizer'
+import { txUiAtom, isAnyTransactionActiveAtom, resetTxUiState } from '@/atoms/txUiAtom'
 import { cn } from '@/lib/utils'
 
 export function Deposit() {
@@ -53,15 +53,18 @@ export function Deposit() {
   const [amount, setAmount] = useState('')
   const [toAddress, setToAddress] = useState('')
   const [selectedChain, setSelectedChain] = useState<string | undefined>(undefined)
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const [showConfirmationModal, setShowConfirmationModal] = useState(false)
   
-  // Transaction phase tracking
-  const [currentPhase, setCurrentPhase] = useState<TransactionPhase>(null)
-  const [txHash, setTxHash] = useState<string | null>(null)
-  const [explorerUrl, setExplorerUrl] = useState<string | undefined>(undefined)
-  const [errorState, setErrorState] = useState<{ message: string } | null>(null)
-  const [showSuccessState, setShowSuccessState] = useState(false)
+  // Global transaction UI state
+  const [txUiState, setTxUiState] = useAtom(txUiAtom)
+  const isAnyTxActive = useAtomValue(isAnyTransactionActiveAtom)
+  
+  // Local state derived from global state for convenience
+  const currentPhase = txUiState.phase
+  const txHash = txUiState.txHash
+  const explorerUrl = txUiState.explorerUrl
+  const errorState = txUiState.errorState
+  const showSuccessState = txUiState.showSuccessState
 
   // Noble forwarding registration status
   const [registrationStatus, setRegistrationStatus] = useState<{
@@ -373,12 +376,16 @@ export function Deposit() {
   // Handle confirmation and submit transaction
   async function handleConfirmDeposit(): Promise<void> {
     setShowConfirmationModal(false)
-    setIsSubmitting(true)
-    setCurrentPhase('building')
-    setErrorState(null)
-    setTxHash(null)
-    setExplorerUrl(undefined)
-    setShowSuccessState(false)
+    setTxUiState({
+      ...txUiState,
+      isSubmitting: true,
+      phase: 'building',
+      errorState: null,
+      txHash: null,
+      explorerUrl: undefined,
+      showSuccessState: false,
+      transactionType: 'deposit',
+    })
 
     // Track transaction state for error handling
     let tx: Awaited<ReturnType<typeof buildDepositTransaction>> | undefined
@@ -417,7 +424,7 @@ export function Deposit() {
       upsertTransaction(tx)
 
       // Sign transaction (no-op, actual signing happens during broadcast)
-      setCurrentPhase('signing')
+      setTxUiState({ ...txUiState, phase: 'signing' })
       updateToast(txToastId, buildTransactionStatusToast('signing', 'deposit'))
       signedTx = await signDepositTransaction(tx)
       
@@ -443,7 +450,7 @@ export function Deposit() {
       const txHashResult = await broadcastDepositTransaction(signedTx, {
         onSigningComplete: () => {
           // Phase 3: Submitting (only after signing is complete)
-          setCurrentPhase('submitting')
+          setTxUiState({ ...txUiState, phase: 'submitting' })
           updateToast(txToastId, buildTransactionStatusToast('submitting', 'deposit'))
         },
       })
@@ -477,16 +484,14 @@ export function Deposit() {
       updateToast(txToastId, successToastArgs)
 
       // Set success state and fetch explorer URL
-      setCurrentPhase(null)
-      setTxHash(txHash)
+      setTxUiState({ ...txUiState, phase: null, txHash, showSuccessState: true })
       if (selectedChain) {
         getEvmTxExplorerUrl(selectedChain, txHash).then((url) => {
-          setExplorerUrl(url)
+          setTxUiState((prev) => ({ ...prev, explorerUrl: url }))
         }).catch(() => {
           // Silently fail if explorer URL can't be fetched
         })
       }
-      setShowSuccessState(true)
     } catch (error) {
       // Dismiss the loading toast if it exists
       dismissToast(txToastId)
@@ -550,20 +555,17 @@ export function Deposit() {
       }
       
       // Set error state for enhanced error display
-      setErrorState({ message })
-      setCurrentPhase(null)
+      setTxUiState({ ...txUiState, errorState: { message }, phase: null, isSubmitting: false })
     } finally {
-      setIsSubmitting(false)
+      // Reset isSubmitting in global state if not already reset
+      if (txUiState.isSubmitting) {
+        setTxUiState((prev) => ({ ...prev, isSubmitting: false }))
+      }
     }
   }
 
   const handleRetry = () => {
-    setErrorState(null)
-    setIsSubmitting(false)
-    setCurrentPhase(null)
-    setTxHash(null)
-    setExplorerUrl(undefined)
-    setShowSuccessState(false)
+    resetTxUiState(setTxUiState)
   }
 
   // Handle Auto Fill for Namada address
@@ -623,7 +625,10 @@ export function Deposit() {
         <TransactionSuccessOverlay
           txHash={txHash}
           explorerUrl={explorerUrl}
-          onNavigate={() => navigate('/dashboard')}
+          onNavigate={() => {
+            resetTxUiState(setTxUiState)
+            navigate('/dashboard')
+          }}
           countdownSeconds={3}
         />
       )}
@@ -662,9 +667,9 @@ export function Deposit() {
           </div>
         )}
 
-        <div className={cn("flex flex-col gap-6 relative", isSubmitting && "opacity-60")}>
+        <div className={cn("flex flex-col gap-6 relative", isAnyTxActive && "opacity-60")}>
           {/* Form Lock Overlay - covers both balance card and form */}
-          <FormLockOverlay isLocked={isSubmitting} currentPhase={currentPhase} />
+          <FormLockOverlay isLocked={isAnyTxActive} currentPhase={currentPhase} />
           
           {/* EVM Balance Card */}
           <div className="rounded-lg border border-blue-200/50 bg-gradient-to-br from-blue-50/50 to-blue-100/30 dark:from-blue-950/20 dark:to-blue-900/10 dark:border-blue-800/50 p-4 shadow-sm">
@@ -700,7 +705,7 @@ export function Deposit() {
                 className="flex-1 border-none bg-transparent p-0 text-3xl font-bold focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30"
                 placeholder="0.00"
                 inputMode="decimal"
-                disabled={isSubmitting}
+                disabled={isAnyTxActive}
               />
               <span className="text-sm text-muted-foreground">USDC</span>
             </div>
@@ -720,9 +725,9 @@ export function Deposit() {
               <button
                 type="button"
                 onClick={handleAutoFill}
-                disabled={!walletState.namada.isConnected || isSubmitting}
+                disabled={!walletState.namada.isConnected || isAnyTxActive}
                 className={`text-sm font-medium text-primary hover:text-primary/80 transition-colors ${
-                  !walletState.namada.isConnected || isSubmitting
+                  !walletState.namada.isConnected || isAnyTxActive
                     ? 'opacity-50 cursor-not-allowed'
                     : ''
                 }`}
@@ -740,7 +745,7 @@ export function Deposit() {
                   : 'border-input focus-visible:ring-ring focus-visible:border-ring'
               }`}
               placeholder="tnam..."
-              disabled={isSubmitting}
+              disabled={isAnyTxActive}
             />
             {/* Validation error for address */}
             {validation.addressError && toAddress.trim() !== '' && (
@@ -832,7 +837,7 @@ export function Deposit() {
             <ChainSelect
               value={selectedChain}
               onChange={setSelectedChain}
-              disabled={isSubmitting}
+              disabled={isAnyTxActive}
               showEstimatedTime={true}
               timeType="deposit"
             />
@@ -864,31 +869,31 @@ export function Deposit() {
             <Button
               type="submit"
               variant="primary"
-              className={cn(
-                "w-full py-6 text-lg font-semibold gap-2 transition-all",
-                isSubmitting && "animate-pulse cursor-not-allowed opacity-60",
-                !validation.isValid && !isSubmitting && "opacity-50 cursor-not-allowed"
-              )}
-              disabled={!validation.isValid || isSubmitting}
+            className={cn(
+              "w-full py-6 text-lg font-semibold gap-2 transition-all",
+              isAnyTxActive && "animate-pulse cursor-not-allowed opacity-60",
+              !validation.isValid && !isAnyTxActive && "opacity-50 cursor-not-allowed"
+            )}
+            disabled={!validation.isValid || isAnyTxActive}
             >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  <span className="transition-opacity duration-200">
-                    {currentPhase === 'building' && 'Building transaction...'}
-                    {currentPhase === 'signing' && 'Waiting for approval...'}
-                    {currentPhase === 'submitting' && 'Submitting transaction...'}
-                    {!currentPhase && 'Processing...'}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <ArrowRight className="h-5 w-5" />
-                  Deposit Now
-                </>
-              )}
-            </Button>
-            {!validation.isValid && !isSubmitting && (
+            {isAnyTxActive ? (
+              <>
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span className="transition-opacity duration-200">
+                  {currentPhase === 'building' && 'Building transaction...'}
+                  {currentPhase === 'signing' && 'Waiting for approval...'}
+                  {currentPhase === 'submitting' && 'Submitting transaction...'}
+                  {!currentPhase && 'Processing...'}
+                </span>
+              </>
+            ) : (
+              <>
+                <ArrowRight className="h-5 w-5" />
+                Deposit Now
+              </>
+            )}
+          </Button>
+            {!validation.isValid && !isAnyTxActive && (
               <p className="text-xs text-muted-foreground text-center">
                 {validation.amountError || validation.addressError || 'Please fill in all required fields'}
               </p>

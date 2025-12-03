@@ -13,6 +13,7 @@ import { useShieldedSync } from '@/hooks/useShieldedSync'
 import { useAtom, useAtomValue } from 'jotai'
 import { balanceSyncAtom } from '@/atoms/balanceAtom'
 import { autoShieldedSyncEnabledAtom } from '@/atoms/appAtom'
+import { isAnyTransactionActiveAtom, txUiAtom } from '@/atoms/txUiAtom'
 import { cn } from '@/lib/utils'
 import { transactionStorageService } from '@/services/tx/transactionStorageService'
 
@@ -20,6 +21,8 @@ export function Dashboard() {
   const { state: balanceState } = useBalance()
   const { startSync, isReady, state: shieldedState } = useShieldedSync()
   const balanceSyncState = useAtomValue(balanceSyncAtom)
+  const isAnyTxActive = useAtomValue(isAnyTransactionActiveAtom)
+  const txUiState = useAtomValue(txUiAtom)
   const [autoShieldedSyncEnabled, setAutoShieldedSyncEnabled] = useAtom(autoShieldedSyncEnabledAtom)
   const [isShieldingModalOpen, setIsShieldingModalOpen] = useState(false)
   const [openModalTxId, setOpenModalTxId] = useState<string | null>(null)
@@ -111,7 +114,7 @@ export function Dashboard() {
           </div>
 
           {/* Shield Button - Centered between cards */}
-          <div className="flex items-center justify-center md:flex-col">
+          <div className="flex flex-col items-center justify-center md:flex-col gap-2">
             <Button
               variant="ghost"
               className={cn(
@@ -119,15 +122,31 @@ export function Dashboard() {
                 "bg-yellow-500 hover:bg-yellow-600 text-yellow-950",
                 "border-2 border-yellow-600 shadow-lg",
                 "transition-all duration-200",
-                hasTransparentBalance && !isShieldedBalanceLoading && "animate-shield-blink",
-                (isShieldedBalanceLoading || !hasTransparentBalance) && "opacity-50 cursor-not-allowed"
+                hasTransparentBalance && !isShieldedBalanceLoading && !isAnyTxActive && "animate-shield-blink",
+                (isShieldedBalanceLoading || !hasTransparentBalance || isAnyTxActive) && "opacity-50 cursor-not-allowed"
               )}
-              onClick={() => setIsShieldingModalOpen(true)}
-              disabled={isShieldedBalanceLoading || !hasTransparentBalance}
-              title={!hasTransparentBalance ? 'No transparent balance to shield' : 'Shield USDC'}
+              onClick={() => {
+                // Prevent opening if any transaction is active
+                if (!isAnyTxActive) {
+                  setIsShieldingModalOpen(true)
+                }
+              }}
+              disabled={isAnyTxActive || isShieldedBalanceLoading || !hasTransparentBalance}
+              title={
+                isAnyTxActive
+                  ? `Please wait for the current ${txUiState.transactionType || 'transaction'} to complete`
+                  : !hasTransparentBalance
+                  ? 'No transparent balance to shield'
+                  : 'Shield USDC'
+              }
             >
               <ArrowRight className="h-5 w-5 md:rotate-0 rotate-90" />Shield
             </Button>
+            {isAnyTxActive && (
+              <p className="text-xs text-muted-foreground text-center max-w-[200px]">
+                Please wait for the current {txUiState.transactionType || 'transaction'} to complete
+              </p>
+            )}
           </div>
 
           {/* Shielded Balance Card */}
@@ -235,7 +254,12 @@ export function Dashboard() {
         {/* Shielding Modal */}
         <ShieldingModal
           open={isShieldingModalOpen}
-          onClose={() => setIsShieldingModalOpen(false)}
+          onClose={() => {
+            // Only allow closing if no transaction is active
+            if (!isAnyTxActive) {
+              setIsShieldingModalOpen(false)
+            }
+          }}
         />
       </div>
     </RequireNamadaConnection>

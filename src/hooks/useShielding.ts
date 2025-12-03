@@ -2,16 +2,17 @@
  * Hook for shielding transactions.
  */
 
-import { useState, useCallback } from 'react'
-import { useAtomValue } from 'jotai'
+import { useCallback } from 'react'
+import { useAtomValue, useAtom } from 'jotai'
 import { walletAtom } from '@/atoms/walletAtom'
+import { txUiAtom, resetTxUiState } from '@/atoms/txUiAtom'
 import { useToast } from '@/hooks/useToast'
 import { executeShielding, type ShieldingPhase, type ShieldingResult } from '@/services/shielded/shieldingOrchestrator'
 import { logger } from '@/utils/logger'
-// import { env } from '@/config/env'
 import { getUSDCAddressFromRegistry } from '@/services/namada/namadaBalanceService'
 import BigNumber from 'bignumber.js'
 import { buildShieldingToast } from '@/utils/toastHelpers'
+import type { TransactionPhase } from '@/components/tx/ProgressStepper'
 
 export interface UseShieldingState {
   isShielding: boolean
@@ -26,20 +27,33 @@ export interface UseShieldingReturn {
 }
 
 /**
+ * Maps ShieldingPhase to TransactionPhase for global state.
+ */
+function mapShieldingPhaseToTransactionPhase(phase: ShieldingPhase): TransactionPhase {
+  if (phase === 'submitted') {
+    return null // Success overlay handles completion
+  }
+  return phase as TransactionPhase
+}
+
+/**
  * Hook for executing shielding transactions.
  */
 export function useShielding(): UseShieldingReturn {
   const walletState = useAtomValue(walletAtom)
   const { notify, updateToast, dismissToast } = useToast()
-  const [state, setState] = useState<UseShieldingState>({
-    isShielding: false,
-  })
+  const [txUiState, setTxUiState] = useAtom(txUiAtom)
+
+  // Derive UseShieldingState from global state for backward compatibility
+  const state: UseShieldingState = {
+    isShielding: txUiState.isSubmitting || txUiState.phase !== null,
+    phase: txUiState.phase ? (txUiState.phase as ShieldingPhase) : undefined,
+    error: txUiState.errorState?.message,
+  }
 
   const reset = useCallback(() => {
-    setState({
-      isShielding: false,
-    })
-  }, [])
+    resetTxUiState(setTxUiState)
+  }, [setTxUiState])
 
   const shield = useCallback(
     async (amount: string): Promise<ShieldingResult | null> => {
@@ -51,7 +65,7 @@ export function useShielding(): UseShieldingReturn {
           description: error,
           level: 'error',
         })
-        setState({ isShielding: false, error })
+        setTxUiState({ ...txUiState, isSubmitting: false, errorState: { message: error }, transactionType: null })
         return null
       }
 
@@ -93,7 +107,7 @@ export function useShielding(): UseShieldingReturn {
           description: error,
           level: 'error',
         })
-        setState({ isShielding: false, error })
+        setTxUiState({ ...txUiState, isSubmitting: false, errorState: { message: error }, transactionType: null })
         return null
       }
 
@@ -105,7 +119,7 @@ export function useShielding(): UseShieldingReturn {
           description: error,
           level: 'error',
         })
-        setState({ isShielding: false, error })
+        setTxUiState({ ...txUiState, isSubmitting: false, errorState: { message: error }, transactionType: null })
         return null
       }
 
@@ -125,7 +139,7 @@ export function useShielding(): UseShieldingReturn {
           description: errorMessage,
           level: 'error',
         })
-        setState({ isShielding: false, error: errorMessage })
+        setTxUiState({ ...txUiState, isSubmitting: false, errorState: { message: errorMessage }, transactionType: null })
         return null
       }
 
@@ -138,14 +152,20 @@ export function useShielding(): UseShieldingReturn {
           description: error,
           level: 'error',
         })
-        setState({ isShielding: false, error })
+        setTxUiState({ ...txUiState, isSubmitting: false, errorState: { message: error }, transactionType: null })
         return null
       }
 
-      setState({
-        isShielding: true,
+      // Initialize global state for shield transaction
+      setTxUiState({
+        ...txUiState,
+        isSubmitting: true,
         phase: 'building',
-        error: undefined,
+        errorState: null,
+        txHash: null,
+        explorerUrl: undefined,
+        showSuccessState: false,
+        transactionType: 'shield',
       })
 
       try {
@@ -167,9 +187,11 @@ export function useShielding(): UseShieldingReturn {
           {
             onPhase: (phase) => {
               logger.debug('[useShielding] Phase update', { phase })
-              setState((prev) => ({
+              // Map ShieldingPhase to TransactionPhase for global state
+              const transactionPhase = mapShieldingPhaseToTransactionPhase(phase)
+              setTxUiState((prev) => ({
                 ...prev,
-                phase,
+                phase: transactionPhase,
               }))
 
               // Show toast for each phase using consistent ID for updates
@@ -202,9 +224,21 @@ export function useShielding(): UseShieldingReturn {
         // Show success toast with transaction hash
         updateToast('shielding-operation', buildShieldingToast('submitted', result.txHash))
 
-        setState({
-          isShielding: false,
-          phase: 'submitted',
+        // Update global state with success (phase is null, success overlay handles completion)
+        setTxUiState({
+          ...txUiState,
+          isSubmitting: false,
+          phase: null,
+          txHash: result.txHash,
+          showSuccessState: true,
+        })
+
+        // Fetch explorer URL
+        const { getNamadaTxExplorerUrl } = await import('@/utils/explorerUtils')
+        getNamadaTxExplorerUrl(result.txHash).then((url) => {
+          setTxUiState((prev) => ({ ...prev, explorerUrl: url }))
+        }).catch(() => {
+          // Silently fail if explorer URL can't be fetched
         })
 
         return result
@@ -224,15 +258,19 @@ export function useShielding(): UseShieldingReturn {
           level: 'error',
         })
 
-        setState({
-          isShielding: false,
-          error: errorMessage,
+        // Update global state with error
+        setTxUiState({
+          ...txUiState,
+          isSubmitting: false,
+          phase: null,
+          errorState: { message: errorMessage },
+          transactionType: null,
         })
 
         return null
       }
     },
-    [walletState.namada, notify],
+    [walletState.namada, notify, txUiState, setTxUiState],
   )
 
   return {
