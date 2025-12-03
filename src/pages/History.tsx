@@ -69,7 +69,7 @@ export function History() {
   })
 
   return (
-    <div className="space-y-6 p-24 max-w-[1024px] mx-auto w-full">
+    <div className="space-y-6 p-12 max-w-[1024px] mx-auto w-full">
       <BackToHome />
 
       <header className="space-y-2">
@@ -159,6 +159,7 @@ export function History() {
           </div>
         </div>
       )}
+      <div className='min-h-12' />
     </div>
   )
 }

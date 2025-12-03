@@ -85,7 +85,7 @@ export function Dashboard() {
 
   return (
     <RequireNamadaConnection>
-      <div className="flex flex-col gap-6 p-24 max-w-[1024px] mx-auto w-full">
+      <div className="flex flex-col gap-6 p-12 max-w-[1024px] mx-auto w-full">
 
         {/* Balance Section */}
         <div className="flex flex-col md:flex-row items-center md:items-stretch gap-4">
@@ -230,6 +230,7 @@ export function Dashboard() {
             />
           </div>
         </div>
+        <div className='min-h-12' />
 
         {/* Shielding Modal */}
         <ShieldingModal

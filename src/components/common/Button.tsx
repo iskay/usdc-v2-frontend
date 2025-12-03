@@ -17,13 +17,15 @@ const variantStyles: Record<ButtonVariant, string> = {
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = 'primary', type = 'button', ...props }, ref) => (
+  ({ className, variant = 'primary', type = 'button', disabled, ...props }, ref) => (
     <button
       ref={ref}
       type={type}
+      disabled={disabled}
       className={cn(
         'inline-flex items-center justify-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2',
         variantStyles[variant],
+        disabled && 'opacity-50 cursor-not-allowed pointer-events-none',
         className,
       )}
       {...props}

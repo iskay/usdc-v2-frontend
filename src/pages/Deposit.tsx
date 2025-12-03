@@ -6,6 +6,9 @@ import { Button } from '@/components/common/Button'
 import { BackToHome } from '@/components/common/BackToHome'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { DepositConfirmationModal } from '@/components/deposit/DepositConfirmationModal'
+import { type TransactionPhase } from '@/components/tx/ProgressStepper'
+import { TransactionSuccessOverlay } from '@/components/tx/TransactionSuccessOverlay'
+import { FormLockOverlay } from '@/components/tx/FormLockOverlay'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useToast } from '@/hooks/useToast'
@@ -32,6 +35,9 @@ import { transactionStorageService, type StoredTransaction } from '@/services/tx
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 import { preferredChainKeyAtom, depositRecipientAddressAtom } from '@/atoms/appAtom'
 import { findChainByChainId, getDefaultChainKey } from '@/config/chains'
+import { getEvmTxExplorerUrl } from '@/utils/explorerUtils'
+import { sanitizeError } from '@/utils/errorSanitizer'
+import { cn } from '@/lib/utils'
 
 export function Deposit() {
   const navigate = useNavigate()
@@ -49,6 +55,13 @@ export function Deposit() {
   const [selectedChain, setSelectedChain] = useState<string | undefined>(undefined)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showConfirmationModal, setShowConfirmationModal] = useState(false)
+  
+  // Transaction phase tracking
+  const [currentPhase, setCurrentPhase] = useState<TransactionPhase>(null)
+  const [txHash, setTxHash] = useState<string | null>(null)
+  const [explorerUrl, setExplorerUrl] = useState<string | undefined>(undefined)
+  const [errorState, setErrorState] = useState<{ message: string } | null>(null)
+  const [showSuccessState, setShowSuccessState] = useState(false)
 
   // Noble forwarding registration status
   const [registrationStatus, setRegistrationStatus] = useState<{
@@ -361,6 +374,11 @@ export function Deposit() {
   async function handleConfirmDeposit(): Promise<void> {
     setShowConfirmationModal(false)
     setIsSubmitting(true)
+    setCurrentPhase('building')
+    setErrorState(null)
+    setTxHash(null)
+    setExplorerUrl(undefined)
+    setShowSuccessState(false)
 
     // Track transaction state for error handling
     let tx: Awaited<ReturnType<typeof buildDepositTransaction>> | undefined
@@ -399,6 +417,7 @@ export function Deposit() {
       upsertTransaction(tx)
 
       // Sign transaction (no-op, actual signing happens during broadcast)
+      setCurrentPhase('signing')
       updateToast(txToastId, buildTransactionStatusToast('signing', 'deposit'))
       signedTx = await signDepositTransaction(tx)
       
@@ -413,7 +432,7 @@ export function Deposit() {
       upsertTransaction(signedTx)
 
       // Broadcast transaction (signing popup appears here, so keep showing "Signing transaction...")
-      // Update status to submitting before broadcast
+      // Update status to submitting after signing completes
       currentTx = {
         ...currentTx,
         status: 'submitting',
@@ -421,7 +440,15 @@ export function Deposit() {
       }
       transactionStorageService.saveTransaction(currentTx)
       
-      const txHash = await broadcastDepositTransaction(signedTx)
+      const txHashResult = await broadcastDepositTransaction(signedTx, {
+        onSigningComplete: () => {
+          // Phase 3: Submitting (only after signing is complete)
+          setCurrentPhase('submitting')
+          updateToast(txToastId, buildTransactionStatusToast('submitting', 'deposit'))
+        },
+      })
+      
+      const txHash = txHashResult
 
       // Update transaction with hash
       const txWithHash = {
@@ -449,14 +476,24 @@ export function Deposit() {
       const { id: _, ...successToastArgs } = successToast
       updateToast(txToastId, successToastArgs)
 
-      // Navigate to Dashboard
-      navigate('/dashboard')
+      // Set success state and fetch explorer URL
+      setCurrentPhase(null)
+      setTxHash(txHash)
+      if (selectedChain) {
+        getEvmTxExplorerUrl(selectedChain, txHash).then((url) => {
+          setExplorerUrl(url)
+        }).catch(() => {
+          // Silently fail if explorer URL can't be fetched
+        })
+      }
+      setShowSuccessState(true)
     } catch (error) {
       // Dismiss the loading toast if it exists
       dismissToast(txToastId)
       
       console.error('[Deposit] Deposit submission failed:', error)
-      const message = error instanceof Error ? error.message : 'Failed to submit deposit'
+      const sanitized = sanitizeError(error)
+      const message = sanitized.message
       
       // Save error transaction to storage for history tracking
       try {
@@ -511,9 +548,22 @@ export function Deposit() {
           level: 'error',
         })
       }
+      
+      // Set error state for enhanced error display
+      setErrorState({ message })
+      setCurrentPhase(null)
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const handleRetry = () => {
+    setErrorState(null)
+    setIsSubmitting(false)
+    setCurrentPhase(null)
+    setTxHash(null)
+    setExplorerUrl(undefined)
+    setShowSuccessState(false)
   }
 
   // Handle Auto Fill for Namada address
@@ -568,7 +618,17 @@ export function Deposit() {
 
   return (
     <RequireMetaMaskConnection message="Please connect your MetaMask wallet to deposit USDC. EVM deposits require a connected wallet.">
-      <div className="flex flex-col gap-6 p-24 max-w-[1024px] mx-auto w-full">
+      {/* Success Overlay */}
+      {showSuccessState && txHash && (
+        <TransactionSuccessOverlay
+          txHash={txHash}
+          explorerUrl={explorerUrl}
+          onNavigate={() => navigate('/dashboard')}
+          countdownSeconds={3}
+        />
+      )}
+
+      <div className="flex flex-col gap-6 p-12 max-w-[1024px] mx-auto w-full">
         <BackToHome />
 
         <header className="space-y-2">
@@ -578,28 +638,57 @@ export function Deposit() {
           </p>
         </header>
 
-        {/* EVM Balance Card */}
-        <div className="rounded-lg border border-blue-200/50 bg-gradient-to-br from-blue-50/50 to-blue-100/30 dark:from-blue-950/20 dark:to-blue-900/10 dark:border-blue-800/50 p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/20 dark:bg-blue-600/20">
-                <Wallet className="h-5 w-5 text-blue-600 dark:text-blue-500" />
+        {/* Enhanced Error State */}
+        {errorState && (
+          <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-red-700 dark:text-red-400 mb-1">
+                  Transaction Failed
+                </h3>
+                <p className="text-sm text-red-600 dark:text-red-300 mb-3">
+                  {errorState.message}
+                </p>
+                <Button
+                  variant="secondary"
+                  onClick={handleRetry}
+                  className="h-8 text-sm"
+                >
+                  Try Again
+                </Button>
               </div>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Available Balance</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <p className="text-xl font-bold">{availableBalance} <span className="text-base font-semibold text-muted-foreground">USDC</span></p>
-                  {isEvmBalanceLoading && (
-                    <Loader2 className="h-4 w-4 animate-spin text-blue-500" aria-label="Loading balance" />
-                  )}
+            </div>
+          </div>
+        )}
+
+        <div className={cn("flex flex-col gap-6 relative", isSubmitting && "opacity-60")}>
+          {/* Form Lock Overlay - covers both balance card and form */}
+          <FormLockOverlay isLocked={isSubmitting} currentPhase={currentPhase} />
+          
+          {/* EVM Balance Card */}
+          <div className="rounded-lg border border-blue-200/50 bg-gradient-to-br from-blue-50/50 to-blue-100/30 dark:from-blue-950/20 dark:to-blue-900/10 dark:border-blue-800/50 p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/20 dark:bg-blue-600/20">
+                  <Wallet className="h-5 w-5 text-blue-600 dark:text-blue-500" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Available Balance</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-xl font-bold">{availableBalance} <span className="text-base font-semibold text-muted-foreground">USDC</span></p>
+                    {isEvmBalanceLoading && (
+                      <Loader2 className="h-4 w-4 animate-spin text-blue-500" aria-label="Loading balance" />
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
-          {/* Amount Input Section */}
+          <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
+            
+            {/* Amount Input Section */}
           <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
             <label className="block text-sm font-medium text-muted-foreground mb-3">Amount</label>
             <div className="flex items-baseline gap-2">
@@ -771,25 +860,43 @@ export function Deposit() {
           </div>
 
           {/* Action Button */}
-          <Button
-            type="submit"
-            variant="primary"
-            className="w-full py-6 text-lg font-semibold gap-2"
-            disabled={!validation.isValid || isSubmitting}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin" />
-                Processing...
-              </>
-            ) : (
-              <>
-                <ArrowRight className="h-5 w-5" />
-                Deposit Now
-              </>
+          <div className="space-y-1">
+            <Button
+              type="submit"
+              variant="primary"
+              className={cn(
+                "w-full py-6 text-lg font-semibold gap-2 transition-all",
+                isSubmitting && "animate-pulse cursor-not-allowed opacity-60",
+                !validation.isValid && !isSubmitting && "opacity-50 cursor-not-allowed"
+              )}
+              disabled={!validation.isValid || isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span className="transition-opacity duration-200">
+                    {currentPhase === 'building' && 'Building transaction...'}
+                    {currentPhase === 'signing' && 'Waiting for approval...'}
+                    {currentPhase === 'submitting' && 'Submitting transaction...'}
+                    {!currentPhase && 'Processing...'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <ArrowRight className="h-5 w-5" />
+                  Deposit Now
+                </>
+              )}
+            </Button>
+            {!validation.isValid && !isSubmitting && (
+              <p className="text-xs text-muted-foreground text-center">
+                {validation.amountError || validation.addressError || 'Please fill in all required fields'}
+              </p>
             )}
-          </Button>
-        </form>
+          </div>
+          </form>
+          <div className='min-h-12' />
+        </div>
 
         {/* Confirmation Modal */}
         <DepositConfirmationModal
@@ -798,6 +905,17 @@ export function Deposit() {
           onConfirm={handleConfirmDeposit}
           transactionDetails={transactionDetails}
         />
+
+        {/* ARIA Live Region for Screen Readers */}
+        <div aria-live="polite" aria-atomic="true" className="sr-only">
+          {currentPhase && (
+            <span>
+              {currentPhase === 'building' && 'Building transaction'}
+              {currentPhase === 'signing' && 'Waiting for wallet approval'}
+              {currentPhase === 'submitting' && 'Submitting transaction'}
+            </span>
+          )}
+        </div>
       </div>
     </RequireMetaMaskConnection>
   )

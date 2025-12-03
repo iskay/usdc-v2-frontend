@@ -26,6 +26,7 @@ export interface DepositForBurnParams {
   amountUsdc: string
   forwardingAddressBytes32: string
   destinationDomain?: number
+  onSigningComplete?: () => void
 }
 
 export interface DepositForBurnResult {
@@ -175,7 +176,7 @@ export async function approveUsdc(
 export async function depositForBurn(
   params: DepositForBurnParams
 ): Promise<DepositForBurnResult> {
-  const { chainKey, amountUsdc, forwardingAddressBytes32, destinationDomain } =
+  const { chainKey, amountUsdc, forwardingAddressBytes32, destinationDomain, onSigningComplete } =
     params
 
   const usdcAddress = getUsdcContractAddress(chainKey)
@@ -278,6 +279,10 @@ export async function depositForBurn(
       from: walletAddress,
       to: tokenMessengerAddress,
     })
+
+    // Signing is complete when the transaction is submitted (user approved in MetaMask)
+    // Now we're in the submitting phase (waiting for confirmation)
+    onSigningComplete?.()
 
     logger.info('[EvmContractService] ⏳ Waiting for transaction confirmation...')
     const receipt = await tx.wait()

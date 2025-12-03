@@ -3,7 +3,7 @@
  * Handles IBC unshielding transactions with orbiter payload for cross-chain payments.
  */
 
-import { submitNamadaTx } from '@/services/tx/txSubmitter'
+import { submitNamadaTx, type SubmitNamadaTxOptions } from '@/services/tx/txSubmitter'
 import { buildOrbiterCctpMemo, verifyOrbiterPayload } from './orbiterPayloadService'
 import { buildIbcTransaction } from './ibcService'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
@@ -499,15 +499,17 @@ export async function signPaymentTransaction(
  * Broadcast a payment transaction.
  * 
  * @param tx - The signed transaction to broadcast
+ * @param options - Optional callbacks for phase updates
  * @returns Object with inner tx hash and block height
  */
 export async function broadcastPaymentTransaction(
-  tx: TrackedTransaction
+  tx: TrackedTransaction,
+  options?: SubmitNamadaTxOptions
 ): Promise<{ hash: string; blockHeight?: string }> {
   logger.debug('[PaymentService] Broadcasting payment transaction', { txId: tx.id })
 
   // Use existing txSubmitter service
-  const result = await submitNamadaTx(tx)
+  const result = await submitNamadaTx(tx, options)
 
   // Payment transactions return an object, other types return a string
   if (typeof result === 'object' && 'hash' in result) {

@@ -3,8 +3,9 @@
  */
 
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
-import { getDefaultNamadaChainKey, findTendermintChainByKey } from '@/config/chains'
-import type { TendermintChainsFile } from '@/config/chains'
+import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
+import { getDefaultNamadaChainKey, findTendermintChainByKey, findChainByKey } from '@/config/chains'
+import type { TendermintChainsFile, EvmChainsFile } from '@/config/chains'
 
 let cachedTendermintConfig: TendermintChainsFile | null = null
 
@@ -47,6 +48,50 @@ export async function getNamadaTxExplorerUrl(txHash: string): Promise<string | u
   }
 
   const txPath = chain.explorer.txPath ?? 'transactions'
+  return `${chain.explorer.baseUrl}/${txPath}/${lowercasedHash}`
+}
+
+let cachedEvmConfig: EvmChainsFile | null = null
+
+/**
+ * Get cached or fetch EVM chains configuration.
+ */
+async function getEvmChainsConfig(): Promise<EvmChainsFile | null> {
+  if (cachedEvmConfig) {
+    return cachedEvmConfig
+  }
+
+  try {
+    cachedEvmConfig = await fetchEvmChainsConfig()
+    return cachedEvmConfig
+  } catch (error) {
+    console.warn('[explorerUtils] Failed to fetch EVM chains config:', error)
+    return null
+  }
+}
+
+/**
+ * Get EVM transaction explorer URL for a given chain key and transaction hash.
+ * 
+ * @param chainKey - The EVM chain key (e.g., 'sepolia', 'base-sepolia')
+ * @param txHash - The transaction hash (will be lowercased)
+ * @returns The explorer URL, or undefined if chain config is not available
+ */
+export async function getEvmTxExplorerUrl(chainKey: string, txHash: string): Promise<string | undefined> {
+  const lowercasedHash = txHash.toLowerCase()
+  const evmConfig = await getEvmChainsConfig()
+  
+  if (!evmConfig) {
+    return undefined
+  }
+
+  const chain = findChainByKey(evmConfig, chainKey)
+
+  if (!chain?.explorer?.baseUrl) {
+    return undefined
+  }
+
+  const txPath = chain.explorer.txPath ?? 'tx'
   return `${chain.explorer.baseUrl}/${txPath}/${lowercasedHash}`
 }
 

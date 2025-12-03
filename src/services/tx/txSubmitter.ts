@@ -25,7 +25,14 @@ export interface DepositTxResult {
  * - Transaction receipt waiting
  * - Nonce extraction
  */
-export async function submitEvmTx(tx: TrackedTransaction): Promise<string> {
+export interface SubmitEvmTxOptions {
+  onSigningComplete?: () => void
+}
+
+export async function submitEvmTx(
+  tx: TrackedTransaction,
+  options?: SubmitEvmTxOptions
+): Promise<string> {
   logger.info('[TxSubmitter] 📤 Submitting EVM transaction', {
     txId: tx.id,
     direction: tx.direction,
@@ -63,13 +70,10 @@ export async function submitEvmTx(tx: TrackedTransaction): Promise<string> {
     await ensureCorrectNetwork(depositData.sourceChain)
     logger.info('[TxSubmitter] ✅ Network verified/switched')
 
-    // Update signing stage to confirmed (signing is complete)
-    await clientStageReporter.updateStageStatus(flowId, 'wallet_signing', 'confirmed')
-
     // Report wallet broadcasting stage
     await clientStageReporter.reportWalletStage(flowId, 'wallet_broadcasting', 'evm', undefined, 'pending')
 
-    // Execute depositForBurn
+    // Execute depositForBurn (signing happens inside this call when user approves in MetaMask)
     logger.info('[TxSubmitter] 🚀 Executing depositForBurn contract call...', {
       chainKey: depositData.sourceChain,
       amountUsdc: depositData.amount,
@@ -81,7 +85,11 @@ export async function submitEvmTx(tx: TrackedTransaction): Promise<string> {
       amountUsdc: depositData.amount,
       forwardingAddressBytes32: depositData.forwardingAddressBytes32,
       destinationDomain: depositData.destinationDomain,
+      onSigningComplete: options?.onSigningComplete,
     })
+
+    // Update signing stage to confirmed (signing is complete after user approves)
+    await clientStageReporter.updateStageStatus(flowId, 'wallet_signing', 'confirmed')
 
     // Update broadcasting stage to confirmed (broadcasting is complete)
     await clientStageReporter.updateStageStatus(flowId, 'wallet_broadcasting', 'confirmed')
@@ -309,7 +317,7 @@ export async function submitNamadaTx(
   // Handle payment transactions (IBC transfers)
   const paymentData = (tx as TrackedTransaction & { paymentData?: PaymentTransactionData }).paymentData
   if (paymentData?.encodedTxData) {
-    return submitPaymentTx(tx, paymentData)
+    return submitPaymentTx(tx, paymentData, options)
   }
 
   // Handle other transaction types
@@ -398,6 +406,7 @@ async function submitShieldingTx(
 async function submitPaymentTx(
   tx: TrackedTransaction,
   paymentData: PaymentTransactionData,
+  options?: SubmitNamadaTxOptions,
 ): Promise<{ hash: string; wrapperHash: string; blockHeight?: string }> {
   logger.info('[TxSubmitter] 💸 Submitting payment transaction (IBC transfer)', {
     txId: tx.id,
@@ -444,6 +453,9 @@ async function submitPaymentTx(
 
     // Update signing stage to confirmed (signing is complete)
     await clientStageReporter.updateStageStatus(flowId, 'wallet_signing', 'confirmed')
+
+    // Notify that signing is complete (this allows orchestrator to update phase to 'submitting')
+    options?.onSigningComplete?.()
 
     // Report wallet broadcasting stage
     await clientStageReporter.reportWalletStage(flowId, 'wallet_broadcasting', 'namada', undefined, 'pending')

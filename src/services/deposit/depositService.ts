@@ -4,7 +4,7 @@
  */
 
 import { buildDepositTx } from '@/services/tx/txBuilder'
-import { submitEvmTx } from '@/services/tx/txSubmitter'
+import { submitEvmTx, type SubmitEvmTxOptions } from '@/services/tx/txSubmitter'
 import { saveItem, loadItem } from '@/services/storage/localStore'
 import { logger } from '@/utils/logger'
 import { getDefaultNamadaChainKey } from '@/config/chains'
@@ -118,10 +118,12 @@ export async function signDepositTransaction(
  * Broadcast a deposit transaction.
  * 
  * @param tx - The signed transaction to broadcast
+ * @param options - Optional callbacks for phase updates
  * @returns Transaction hash
  */
 export async function broadcastDepositTransaction(
-  tx: TrackedTransaction
+  tx: TrackedTransaction,
+  options?: SubmitEvmTxOptions
 ): Promise<string> {
   logger.info('[DepositService] 📡 Broadcasting deposit transaction', {
     txId: tx.id,
@@ -130,7 +132,7 @@ export async function broadcastDepositTransaction(
   })
 
   // Use existing txSubmitter service
-  const txHash = await submitEvmTx(tx)
+  const txHash = await submitEvmTx(tx, options)
 
   logger.info('[DepositService] ✅ Deposit transaction broadcasted', {
     txId: tx.id,
