@@ -1,12 +1,15 @@
 import { useAtom } from 'jotai'
 import { useShieldedSync } from '@/hooks/useShieldedSync'
 import { shieldedProgressAtom } from '@/atoms/shieldedAtom'
-import { AlertBox } from '@/components/common/AlertBox'
 import { Button } from '@/components/common/Button'
 import { CheckCircle2, XCircle, Loader2, Shield } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export function ShieldedSyncProgress() {
+interface ShieldedSyncProgressProps {
+  compact?: boolean
+}
+
+export function ShieldedSyncProgress({ compact = false }: ShieldedSyncProgressProps) {
   const { state, startSync, isReady } = useShieldedSync()
   const [progress] = useAtom(shieldedProgressAtom)
 
@@ -16,6 +19,9 @@ export function ShieldedSyncProgress() {
 
   // Show component when ready or active, or show a message when not ready
   if (!isReady && !isActive) {
+    if (compact) {
+      return null
+    }
     return (
       <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -27,37 +33,38 @@ export function ShieldedSyncProgress() {
   }
 
   const getStatusIcon = () => {
+    const iconSize = compact ? 'h-4 w-4' : 'h-5 w-5'
     switch (status) {
       case 'complete':
-        return <CheckCircle2 className="h-5 w-5 text-green-500" />
+        return <CheckCircle2 className={cn(iconSize, 'text-green-500')} />
       case 'error':
-        return <XCircle className="h-5 w-5 text-red-500" />
+        return <XCircle className={cn(iconSize, 'text-red-500')} />
       case 'syncing':
       case 'initializing':
       case 'loading-params':
       case 'finalizing':
-        return <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+        return <Loader2 className={cn(iconSize, 'animate-spin text-blue-500')} />
       default:
-        return <Shield className="h-5 w-5 text-muted-foreground" />
+        return <Shield className={cn(iconSize, 'text-muted-foreground')} />
     }
   }
 
   const getStatusText = () => {
     switch (status) {
       case 'complete':
-        return 'Sync complete'
+        return 'Complete'
       case 'error':
-        return 'Sync failed'
+        return 'Failed'
       case 'initializing':
-        return 'Initializing...'
+        return 'Initializing'
       case 'loading-params':
-        return 'Loading MASP parameters...'
+        return 'Loading params'
       case 'syncing':
-        return 'Syncing shielded notes...'
+        return 'Syncing'
       case 'finalizing':
-        return 'Finalizing...'
+        return 'Finalizing'
       default:
-        return 'Ready to sync'
+        return 'Ready'
     }
   }
 
@@ -77,53 +84,52 @@ export function ShieldedSyncProgress() {
     }
   }
 
-  return (
-    <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex flex-1 items-center gap-3">
-          {getStatusIcon()}
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <span className={cn('text-sm font-semibold', getStatusColor())}>{getStatusText()}</span>
-              {status === 'syncing' && (
-                <span className="text-xs text-muted-foreground">{progressPercentage}%</span>
-              )}
-            </div>
+  // Don't show anything when complete or idle in compact mode
+  if (compact && (status === 'complete' || status === 'idle')) {
+    return null
+  }
 
-            {/* Progress bar */}
-            {(status === 'syncing' || status === 'initializing' || status === 'loading-params' || status === 'finalizing') && (
-              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full bg-blue-500 transition-all duration-300 ease-out"
-                  style={{ width: `${progressPercentage}%` }}
-                  role="progressbar"
-                  aria-valuenow={progressPercentage}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                />
-              </div>
-            )}
-
-            {/* Error message */}
-            {status === 'error' && state.lastError && (
-              <div className="mt-2">
-                <AlertBox tone="error" title="Sync Error">
-                  {state.lastError}
-                </AlertBox>
-              </div>
-            )}
-
-            {/* Success message */}
-            {status === 'complete' && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Shielded balance is up to date
-                {state.lastSyncedHeight && ` (synced at height ${state.lastSyncedHeight})`}
-              </p>
-            )}
-          </div>
+  const content = (
+    <div className={cn('flex items-center gap-2', compact && 'gap-1.5')}>
+      {!compact && getStatusIcon()}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          {!compact && (
+            <span className={cn('text-sm', 'font-semibold', getStatusColor())}>
+              {getStatusText()}
+            </span>
+          )}
+          {status === 'syncing' && (
+            <span className={cn('text-muted-foreground', compact ? 'text-xs' : 'text-xs')}>
+              {progressPercentage}%
+            </span>
+          )}
         </div>
 
-        {/* Action buttons */}
+        {/* Progress bar */}
+        {(status === 'syncing' || status === 'initializing' || status === 'loading-params' || status === 'finalizing') && (
+          <div className={cn('mt-1.5 w-full overflow-hidden rounded-full bg-muted', compact ? 'h-1' : 'h-2')}>
+            <div
+              className="h-full bg-blue-500 transition-all duration-300 ease-out"
+              style={{ width: `${progressPercentage}%` }}
+              role="progressbar"
+              aria-valuenow={progressPercentage}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            />
+          </div>
+        )}
+
+        {/* Error message - inline text instead of AlertBox */}
+        {status === 'error' && state.lastError && (
+          <p className={cn('text-muted-foreground', compact ? 'mt-1 text-xs' : 'mt-1.5 text-xs')}>
+            {state.lastError}
+          </p>
+        )}
+      </div>
+
+      {/* Action buttons - only show in non-compact mode */}
+      {!compact && (
         <div className="flex items-center gap-2">
           {status === 'error' ? (
             <Button variant="primary" className="h-8 px-3 text-xs" onClick={startSync} disabled={!isReady}>
@@ -135,6 +141,18 @@ export function ShieldedSyncProgress() {
             </Button>
           ) : null}
         </div>
+      )}
+    </div>
+  )
+
+  if (compact) {
+    return content
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-4">
+        {content}
       </div>
     </div>
   )
