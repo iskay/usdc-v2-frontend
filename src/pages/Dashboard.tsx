@@ -194,10 +194,12 @@ export function Dashboard() {
 
   return (
     <RequireNamadaConnection>
-      <div className="flex flex-col gap-6 p-12 max-w-[1024px] mx-auto w-full">
+      <div className="flex flex-col gap-6 p-12 mx-auto w-full">
 
-        {/* Balance and Actions Section */}
-        <div className="flex flex-col gap-8 mb-12 rounded-lg border border-border bg-card p-4 shadow-sm">
+        {/* Balance and Actions Section + Recent Activity Side by Side */}
+        <div className="flex flex-col lg:flex-row gap-6 mb-12">
+          {/* Balance and Actions Section */}
+          <div className="flex flex-col gap-8 flex-2 rounded-lg border border-border bg-card p-4 shadow-sm">
           {/* Section Header */}
           <div className="flex flex-col gap-2">
             <h2 className="text-md font-semibold">Cross-chain shielded USDC</h2>
@@ -412,13 +414,18 @@ export function Dashboard() {
               </Link>
             </div>
           </div>
-        </div>
+          </div>
 
-        {/* Transaction Activity Box */}
-        <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+          {/* Transaction Activity Box */}
+          <div className="flex-1 rounded-lg border border-border bg-card p-4 shadow-sm">
           {/* Section Header */}
-          <div className="flex flex-col gap-2 mb-6">
+          <div className="flex items-center justify-between mb-6">
             <h2 className="text-md font-semibold">Recent activity</h2>
+            <Link to="/history">
+              <Button variant="ghost" className="h-6 px-2 text-xs">
+                View All
+              </Button>
+            </Link>
           </div>
 
           {/* In Progress Section */}
@@ -434,21 +441,15 @@ export function Dashboard() {
 
           {/* History Section */}
           <div>
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                History
-              </h2>
-              <Link to="/history">
-                <Button variant="ghost" className="h-6 px-2 text-xs">
-                  View All
-                </Button>
-              </Link>
-            </div>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              History
+            </h2>
             <TxHistoryList
               openModalTxId={openModalTxId}
               onModalOpenChange={setOpenModalTxId}
               reloadTrigger={historyReloadTrigger}
             />
+          </div>
           </div>
         </div>
         <div className='min-h-12' />

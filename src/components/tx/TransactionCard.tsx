@@ -81,31 +81,51 @@ export const TransactionCard = memo(function TransactionCard({
     amount = `$${transaction.paymentDetails.amount}`
   }
 
-  // Status icon and color
-  let statusIcon = <Clock className="h-4 w-4" />
-  let statusColor = 'text-muted-foreground'
+  // Status icon, color, and badge styling
+  let statusIcon = <Clock className="h-3.5 w-3.5" />
+  let badgeBgColor = 'bg-muted'
+  let badgeTextColor = 'text-muted-foreground'
+  let badgeBorderColor = 'border-muted'
 
   const effectiveStatus = getEffectiveStatus(transaction)
+  const inProgress = isInProgress(transaction)
   
   if (isSuccess(transaction)) {
-    statusIcon = <CheckCircle2 className="h-4 w-4" />
-    statusColor = 'text-green-600'
+    statusIcon = <CheckCircle2 className="h-3.5 w-3.5" />
+    badgeBgColor = 'bg-green-100 dark:bg-green-900/30'
+    badgeTextColor = 'text-green-700 dark:text-green-400'
+    badgeBorderColor = 'border-green-200 dark:border-green-800'
   } else if (isError(transaction)) {
-    statusIcon = <XCircle className="h-4 w-4" />
-    statusColor = 'text-red-600'
+    statusIcon = <XCircle className="h-3.5 w-3.5" />
+    badgeBgColor = 'bg-red-100 dark:bg-red-900/30'
+    badgeTextColor = 'text-red-700 dark:text-red-400'
+    badgeBorderColor = 'border-red-200 dark:border-red-800'
   } else if (effectiveStatus === 'user_action_required') {
-    statusIcon = <AlertCircle className="h-4 w-4" />
-    statusColor = 'text-orange-600'
+    statusIcon = <AlertCircle className="h-3.5 w-3.5" />
+    badgeBgColor = 'bg-orange-100 dark:bg-orange-900/30'
+    badgeTextColor = 'text-orange-700 dark:text-orange-400'
+    badgeBorderColor = 'border-orange-200 dark:border-orange-800'
   } else if (effectiveStatus === 'undetermined') {
-    statusIcon = <AlertCircle className="h-4 w-4" />
-    statusColor = 'text-yellow-600'
+    statusIcon = <AlertCircle className="h-3.5 w-3.5" />
+    badgeBgColor = 'bg-yellow-100 dark:bg-yellow-900/30'
+    badgeTextColor = 'text-yellow-700 dark:text-yellow-400'
+    badgeBorderColor = 'border-yellow-200 dark:border-yellow-800'
+  } else if (inProgress) {
+    // In progress/broadcasted
+    badgeBgColor = 'bg-muted'
+    badgeTextColor = 'text-muted-foreground'
+    badgeBorderColor = 'border-muted'
   }
 
   return (
     <>
       <div
         className={cn(
-          'rounded-lg border border-border bg-card p-4 shadow-sm transition-all hover:shadow-md',
+          'rounded-lg bg-card p-4 transition-all',
+          // Conditional border and shadow: only for in-progress transactions
+          inProgress 
+            ? 'border border-border shadow-sm hover:shadow-md' 
+            : 'border-0 shadow-none',
           onClick || showExpandButton ? 'cursor-pointer' : '',
         )}
         onClick={handleClick}
@@ -123,9 +143,15 @@ export const TransactionCard = memo(function TransactionCard({
 
             {/* Status and Time */}
             <div className="flex items-center gap-3 text-xs">
-              <div className={cn('flex items-center gap-1.5', statusColor)}>
+              {/* Pill-shaped status badge */}
+              <div className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5',
+                badgeBgColor,
+                badgeTextColor,
+                badgeBorderColor
+              )}>
                 {statusIcon}
-                <span>{statusLabel}</span>
+                <span className="text-xs font-medium">{statusLabel}</span>
               </div>
               {hasClientTimeout(transaction) && (
                 <div className="group relative">
@@ -135,7 +161,11 @@ export const TransactionCard = memo(function TransactionCard({
                   </div>
                 </div>
               )}
-              <span className="text-muted-foreground">{timeElapsed}</span>
+              {/* Time with clock icon */}
+              <div className="flex items-center gap-1 text-muted-foreground">
+                <Clock className="h-3.5 w-3.5" />
+                <span>{timeElapsed}</span>
+              </div>
             </div>
 
             {/* Progress bar (for in-progress transactions) */}
