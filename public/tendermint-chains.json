@@ -7,6 +7,7 @@
       "chainId": "housefire-alpaca.cc0d3e0c033be",
       "rpcUrls": ["https://rpc.testnet.siuuu.click"],
       "indexerUrl": "https://indexer.testnet.siuuu.click",
+      "maspIndexerUrl": "https://masp.testnet.siuuu.click",
       "explorer": {
         "baseUrl": "https://testnet.namada.world",
         "txPath": "transactions",

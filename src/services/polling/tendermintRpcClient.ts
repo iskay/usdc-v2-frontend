@@ -392,6 +392,7 @@ export function createTendermintRpcClient(rpcUrl: string): TendermintRpcClient {
 
 /**
  * Get Tendermint RPC URL for a chain
+ * Falls back to environment variable if not configured in chain config.
  * 
  * @param chainKey - Chain key (e.g., 'noble-testnet', 'namada-testnet')
  * @returns RPC URL
@@ -401,11 +402,18 @@ export async function getTendermintRpcUrl(chainKey: string): Promise<string> {
   const config = await fetchTendermintChainsConfig()
   const chain = config.chains.find((c) => c.key === chainKey)
 
-  if (!chain || !chain.rpcUrls[0]) {
-    throw new Error(`RPC URL not found for Tendermint chain: ${chainKey}`)
+  // Try config first
+  if (chain?.rpcUrls?.[0]) {
+    return chain.rpcUrls[0]
   }
 
-  return chain.rpcUrls[0]
+  // Fallback to env variable (only for Namada chains)
+  if (chainKey === 'namada-testnet' || chainKey.startsWith('namada')) {
+    const { env } = await import('@/config/env')
+    return env.namadaRpc()
+  }
+
+  throw new Error(`RPC URL not found for Tendermint chain: ${chainKey}`)
 }
 
 /**
@@ -450,5 +458,61 @@ export async function getTendermintIndexerUrl(chainKey: string): Promise<string>
   }
 
   throw new Error(`Indexer URL not found for Tendermint chain: ${chainKey}`)
+}
+
+/**
+ * Get Tendermint MASP Indexer URL for a chain
+ * Falls back to environment variable if not configured in chain config.
+ * 
+ * @param chainKey - Chain key (e.g., 'namada-testnet')
+ * @returns MASP Indexer URL or undefined if not configured
+ */
+export async function getTendermintMaspIndexerUrl(chainKey: string): Promise<string | undefined> {
+  const { fetchTendermintChainsConfig } = await import('@/services/config/tendermintChainConfigService')
+  const config = await fetchTendermintChainsConfig()
+  const chain = config.chains.find((c) => c.key === chainKey)
+
+  // Try config first
+  if (chain?.maspIndexerUrl) {
+    return chain.maspIndexerUrl
+  }
+
+  // Fallback to env variable (only for Namada chains)
+  if (chainKey === 'namada-testnet' || chainKey.startsWith('namada')) {
+    const { env } = await import('@/config/env')
+    return env.namadaMaspIndexerUrl()
+  }
+
+  return undefined
+}
+
+/**
+ * Get Tendermint Chain ID for a chain
+ * Falls back to environment variable if not configured in chain config.
+ * 
+ * @param chainKey - Chain key (e.g., 'namada-testnet')
+ * @returns Chain ID
+ */
+export async function getTendermintChainId(chainKey: string): Promise<string> {
+  const { fetchTendermintChainsConfig } = await import('@/services/config/tendermintChainConfigService')
+  const config = await fetchTendermintChainsConfig()
+  const chain = config.chains.find((c) => c.key === chainKey)
+
+  // Try config first
+  if (chain?.chainId) {
+    return chain.chainId
+  }
+
+  // Fallback to env variable (only for Namada chains)
+  if (chainKey === 'namada-testnet' || chainKey.startsWith('namada')) {
+    const { env } = await import('@/config/env')
+    const chainId = env.namadaChainId()
+    if (!chainId) {
+      throw new Error('Namada chain ID not configured')
+    }
+    return chainId
+  }
+
+  throw new Error(`Chain ID not found for Tendermint chain: ${chainKey}`)
 }
 

@@ -9,12 +9,16 @@ import { logger } from '@/utils/logger'
 import type { GasConfig } from '@/types/shielded'
 import { getUSDCAddressFromRegistry } from './namadaBalanceService'
 import { getTendermintIndexerUrl } from '@/services/polling/tendermintRpcClient'
+import { getDefaultNamadaChainKey } from '@/config/chains'
+import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 
 /**
  * Get the Namada indexer URL from config (with fallback to env).
  */
 async function getIndexerUrl(): Promise<string> {
-  return await getTendermintIndexerUrl('namada-testnet')
+  const tendermintConfig = await fetchTendermintChainsConfig()
+  const namadaChainKey = getDefaultNamadaChainKey(tendermintConfig) || 'namada-testnet'
+  return await getTendermintIndexerUrl(namadaChainKey)
 }
 
 /**

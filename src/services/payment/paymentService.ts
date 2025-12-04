@@ -21,6 +21,9 @@ import { transactionStorageService, type StoredTransaction } from '@/services/tx
 import { triggerShieldedBalanceRefresh } from '@/services/balance/shieldedBalanceService'
 import { getShieldedSyncStatus } from '@/services/shielded/shieldedService'
 import { NAMADA_CHAIN_ID } from '@/config/constants'
+import { getTendermintChainId } from '@/services/polling/tendermintRpcClient'
+import { getDefaultNamadaChainKey } from '@/config/chains'
+import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 
 export interface PaymentParams {
   amount: string
@@ -310,11 +313,10 @@ export async function preparePaymentParams(
     throw new Error('Invalid amount')
   }
 
-  // Get chain ID
-  const chainId = env.namadaChainId()
-  if (!chainId) {
-    throw new Error('Namada chain ID not configured')
-  }
+  // Get chain ID from chain config (with fallback to env)
+  const tendermintConfig = await fetchTendermintChainsConfig()
+  const namadaChainKey = getDefaultNamadaChainKey(tendermintConfig) || 'namada-testnet'
+  const chainId = await getTendermintChainId(namadaChainKey)
 
   // Get shielded account (pseudoExtendedKey) for gas spending
   const pseudoExtendedKey = await getShieldedAccount(params.transparentAddress, params.shieldedAddress)

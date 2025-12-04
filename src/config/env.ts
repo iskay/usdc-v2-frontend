@@ -17,11 +17,11 @@ export const env = {
     const domainId = readEnvVar('VITE_NOBLE_DOMAIN_ID')
     return domainId ? Number.parseInt(domainId, 10) : 4
   },
-  namadaRpc: () => readEnvVar('VITE_NAMADA_RPC_URL') || readEnvVar('VITE_NAMADA_RPC') || 'https://rpc.testnet.siuuu.click',
+  namadaRpc: () => readEnvVar('VITE_NAMADA_RPC_URL') || readEnvVar('VITE_NAMADA_RPC') || 'https://rpc.siuuu.click',
   namadaChainId: () => readEnvVar('VITE_NAMADA_CHAIN_ID', true),
   namadaToken: () => readEnvVar('VITE_NAMADA_NAM_TOKEN') || 'tnam1q9gr66cvu4hrzm0sd5kmlnjje82gs3xlfg3v6nu7',
-  namadaMaspIndexerUrl: () => readEnvVar('VITE_NAMADA_MASP_INDEXER_URL') || 'https://masp.testnet.siuuu.click',
-  namadaIndexerUrl: () => readEnvVar('VITE_NAMADA_INDEXER_URL') || 'https://indexer.testnet.siuuu.click',
+  namadaMaspIndexerUrl: () => readEnvVar('VITE_NAMADA_MASP_INDEXER_URL') || 'https://masp.siuuu.click',
+  namadaIndexerUrl: () => readEnvVar('VITE_NAMADA_INDEXER_URL') || 'https://indexer.siuuu.click',
   namadaDbName: () => readEnvVar('VITE_NAMADA_DB_NAME') || 'usdcdelivery',
   namadaMaspParamsUrl: () => readEnvVar('VITE_NAMADA_MASP_PARAMS_BASE_URL') || '/masp/',
   sharedWorkerPath: () => readEnvVar('VITE_SHIELDED_WORKER_PATH'),

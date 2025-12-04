@@ -11,6 +11,7 @@ import { retryWithBackoff } from './basePoller'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 import { getTendermintIndexerUrl } from './tendermintRpcClient'
+import { getDefaultNamadaChainKey } from '@/config/chains'
 
 /**
  * Cache for chain configs
@@ -85,7 +86,9 @@ async function getNamadaStartHeight(
   const timestampSeconds = Math.floor(creationTimestampMs / 1000)
 
   // Get indexer URL from config (with fallback to env)
-  const baseIndexerUrl = await getTendermintIndexerUrl('namada-testnet')
+  const tendermintConfig = await fetchTendermintChainsConfig()
+  const namadaChainKey = getDefaultNamadaChainKey(tendermintConfig) || 'namada-testnet'
+  const baseIndexerUrl = await getTendermintIndexerUrl(namadaChainKey)
   const indexerUrl = `${baseIndexerUrl}/api/v1/block/timestamp`
   const url = `${indexerUrl}/${timestampSeconds}`
 

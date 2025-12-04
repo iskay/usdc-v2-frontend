@@ -18,6 +18,9 @@ import type {
 import { env } from '@/config/env'
 import { logger } from '@/utils/logger'
 import { getNamadaSdk } from '@/services/namada/namadaSdkService'
+import { getTendermintMaspIndexerUrl, getTendermintRpcUrl, getTendermintChainId } from '@/services/polling/tendermintRpcClient'
+import { getDefaultNamadaChainKey } from '@/config/chains'
+import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 import { estimateGasForToken } from '@/services/namada/namadaFeeEstimatorService'
 import { getUSDCAddressFromRegistry } from '@/services/namada/namadaBalanceService'
 
@@ -48,11 +51,10 @@ export async function prepareUnshieldingParams(
     throw new Error('USDC token address not found. Please configure VITE_USDC_TOKEN_ADDRESS')
   }
 
-  // Get chain ID
-  const chainId = params.chain?.chainId || env.namadaChainId()
-  if (!chainId) {
-    throw new Error('Namada chain ID not configured')
-  }
+  // Get chain ID from chain config (with fallback to env)
+  const tendermintConfigForChainId = await fetchTendermintChainsConfig()
+  const namadaChainKeyForChainId = getDefaultNamadaChainKey(tendermintConfigForChainId) || 'namada-testnet'
+  const chainId = params.chain?.chainId || await getTendermintChainId(namadaChainKeyForChainId)
 
   // Estimate gas (unshielding doesn't need RevealPK)
   const gas = params.gas || (await estimateGasForToken(tokenAddress, ['UnshieldingTransfer'], '90000'))
@@ -103,11 +105,17 @@ export async function buildUnshieldingTransaction(
   // Create worker
   const worker = new ShieldedSyncWorker()
 
+  // Get values from chain config (with fallback to env)
+  const tendermintConfig = await fetchTendermintChainsConfig()
+  const namadaChainKey = getDefaultNamadaChainKey(tendermintConfig) || 'namada-testnet'
+  const rpcUrl = await getTendermintRpcUrl(namadaChainKey)
+  const maspIndexerUrl = await getTendermintMaspIndexerUrl(namadaChainKey)
+
   // Initialize worker
   const initPayload: ShieldedWorkerInitPayload = {
-    rpcUrl: env.namadaRpc(),
+    rpcUrl: rpcUrl,
     token: env.namadaToken(),
-    maspIndexerUrl: env.namadaMaspIndexerUrl(),
+    maspIndexerUrl: maspIndexerUrl,
     dbName: env.namadaDbName(),
   }
 

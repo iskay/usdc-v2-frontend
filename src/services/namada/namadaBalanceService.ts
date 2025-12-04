@@ -1,4 +1,7 @@
 import { env } from '@/config/env'
+import { getTendermintIndexerUrl } from '@/services/polling/tendermintRpcClient'
+import { getDefaultNamadaChainKey } from '@/config/chains'
+import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 
 export interface NamadaBalance {
   tokenAddress: string
@@ -13,10 +16,12 @@ export interface NamadaUSDCBalance {
 }
 
 /**
- * Get the Namada indexer API base URL.
+ * Get the Namada indexer API base URL from chain config.
  */
-function getNamadaIndexerUrl(): string {
-  return env.namadaIndexerUrl()
+async function getNamadaIndexerUrl(): Promise<string> {
+  const tendermintConfig = await fetchTendermintChainsConfig()
+  const namadaChainKey = getDefaultNamadaChainKey(tendermintConfig) || 'namada-testnet'
+  return await getTendermintIndexerUrl(namadaChainKey)
 }
 
 /**
@@ -45,7 +50,8 @@ export async function fetchNamadaAccountBalances(
   accountAddress: string
 ): Promise<NamadaBalance[] | null> {
   try {
-    const apiUrl = `${getNamadaIndexerUrl()}/api/v1/account/${accountAddress}`
+    const indexerUrl = await getNamadaIndexerUrl()
+    const apiUrl = `${indexerUrl}/api/v1/account/${accountAddress}`
     const response = await fetch(apiUrl)
 
     if (!response.ok) {

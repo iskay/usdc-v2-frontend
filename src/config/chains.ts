@@ -104,6 +104,7 @@ export interface TendermintChainConfig {
   rpcUrls: string[]
   lcdUrl?: string // LCD (REST API) endpoint URL
   indexerUrl?: string // Indexer API endpoint URL (optional, falls back to env var)
+  maspIndexerUrl?: string // MASP indexer API endpoint URL (optional, falls back to env var)
   explorer?: ExplorerConfig
   pollingTimeout?: PollingTimeoutConfig
   pollingConfig?: PollingConfig

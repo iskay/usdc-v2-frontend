@@ -11,6 +11,9 @@ import type {
 } from '@/types/shielded'
 import { env } from '@/config/env'
 import { getNamadaSdk } from '@/services/namada/namadaSdkService'
+import { getTendermintMaspIndexerUrl, getTendermintRpcUrl } from '@/services/polling/tendermintRpcClient'
+import { getDefaultNamadaChainKey } from '@/config/chains'
+import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 
 export interface ShieldedSyncParams {
   chainId: string
@@ -153,10 +156,16 @@ class ShieldedSyncController {
 
         const worker = this.getWorker()
 
+        // Get values from chain config (with fallback to env)
+        const tendermintConfig = await fetchTendermintChainsConfig()
+        const namadaChainKey = getDefaultNamadaChainKey(tendermintConfig) || 'namada-testnet'
+        const rpcUrl = await getTendermintRpcUrl(namadaChainKey)
+        const maspIndexerUrl = await getTendermintMaspIndexerUrl(namadaChainKey)
+
         const initPayload: ShieldedWorkerInitPayload = {
-          rpcUrl: env.namadaRpc(),
+          rpcUrl: rpcUrl,
           token: env.namadaToken(),
-          maspIndexerUrl: env.namadaMaspIndexerUrl(),
+          maspIndexerUrl: maspIndexerUrl,
           dbName: env.namadaDbName(),
         }
 
