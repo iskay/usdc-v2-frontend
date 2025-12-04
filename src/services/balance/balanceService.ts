@@ -1,5 +1,5 @@
 import { jotaiStore } from '@/store/jotaiStore'
-import { balanceAtom, balanceErrorAtom, balanceSyncAtom } from '@/atoms/balanceAtom'
+import { balanceAtom, balanceErrorAtom, balanceSyncAtom, balanceErrorsAtom } from '@/atoms/balanceAtom'
 import { walletAtom } from '@/atoms/walletAtom'
 import { chainConfigAtom, preferredChainKeyAtom, autoShieldedSyncEnabledAtom } from '@/atoms/appAtom'
 import {
@@ -86,12 +86,30 @@ export async function refreshBalances(options: BalanceRefreshOptions = {}): Prom
           try {
             const balance = await fetchEvmUsdcBalance(chainKey, metaMaskAddress)
             evmBalance = { usdc: balance, chainKey }
+            // Clear EVM error on success
+            store.set(balanceErrorsAtom, (state) => {
+              const { evm, ...rest } = state
+              return rest
+            })
+            store.set(balanceSyncAtom, (state) => ({
+              ...state,
+              evmStatus: 'idle',
+            }))
           } catch (error) {
             console.error('[BalanceService] Failed to fetch EVM balance', {
               chainKey,
               error: error instanceof Error ? error.message : String(error),
             })
             evmBalance = { usdc: '--', chainKey }
+            const errorMessage = error instanceof Error ? error.message : 'Unknown EVM balance error'
+            store.set(balanceErrorsAtom, (state) => ({
+              ...state,
+              evm: errorMessage,
+            }))
+            store.set(balanceSyncAtom, (state) => ({
+              ...state,
+              evmStatus: 'error',
+            }))
           }
         } else {
           console.debug('[BalanceService] Skipping EVM balance fetch', {
@@ -100,13 +118,50 @@ export async function refreshBalances(options: BalanceRefreshOptions = {}): Prom
             chainKey,
             chainExists,
           })
+          // Clear EVM error if we're skipping (not an error condition)
+          store.set(balanceErrorsAtom, (state) => {
+            const { evm, ...rest } = state
+            return rest
+          })
+          store.set(balanceSyncAtom, (state) => ({
+            ...state,
+            evmStatus: 'idle',
+          }))
         }
       }
 
       // Fetch Namada transparent balance if requested
       let transparentBalance: { usdcTransparent: string } | undefined
       if (shouldFetchNamadaTransparent) {
+        try {
         transparentBalance = await fetchNamadaTransparentBalance(transparentAddress)
+          // Clear transparent error on success
+          if (transparentBalance && transparentBalance.usdcTransparent !== '--') {
+            store.set(balanceErrorsAtom, (state) => {
+              const { transparent, ...rest } = state
+              return rest
+            })
+            store.set(balanceSyncAtom, (state) => ({
+              ...state,
+              transparentStatus: 'idle',
+            }))
+          }
+        } catch (error) {
+          console.error('[BalanceService] Failed to fetch transparent balance', {
+            transparentAddress,
+            error: error instanceof Error ? error.message : String(error),
+          })
+          transparentBalance = { usdcTransparent: '--' }
+          const errorMessage = error instanceof Error ? error.message : 'Unknown transparent balance error'
+          store.set(balanceErrorsAtom, (state) => ({
+            ...state,
+            transparent: errorMessage,
+          }))
+          store.set(balanceSyncAtom, (state) => ({
+            ...state,
+            transparentStatus: 'error',
+          }))
+        }
       }
 
       const completedAt = Date.now()
@@ -128,7 +183,12 @@ export async function refreshBalances(options: BalanceRefreshOptions = {}): Prom
           transparentLastUpdated: transparentBalance ? completedAt : state.namada.transparentLastUpdated,
         },
       }))
+      // Only clear error if it's not a shielded balance calculation error
+      // Shielded balance errors should persist until the shielded balance calculation succeeds
+      const currentSyncState = store.get(balanceSyncAtom)
+      if (currentSyncState.shieldedStatus !== 'error') {
       store.set(balanceErrorAtom, undefined)
+      }
       store.set(balanceSyncAtom, (state) => ({
         ...state,
         status: 'idle',
@@ -226,28 +286,16 @@ async function fetchNamadaTransparentBalance(
     }
   }
 
-  try {
     const result = await getNamadaUSDCBalance(transparentAddress)
     if (!result) {
       console.warn('[BalanceService] Failed to fetch Namada transparent balance', {
         transparentAddress,
       })
-      return {
-        usdcTransparent: '--',
-      }
+    throw new Error('Could not query transparent balance from chain')
     }
 
     return {
       usdcTransparent: result.formattedBalance,
-    }
-  } catch (error) {
-    console.error('[BalanceService] Error fetching Namada transparent balance', {
-      transparentAddress,
-      error: error instanceof Error ? error.message : String(error),
-    })
-    return {
-      usdcTransparent: '--',
-    }
   }
 }
 

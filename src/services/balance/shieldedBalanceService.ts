@@ -3,6 +3,7 @@ import {
   balanceAtom,
   balanceErrorAtom,
   balanceSyncAtom,
+  balanceErrorsAtom,
 } from '@/atoms/balanceAtom'
 import { walletAtom } from '@/atoms/walletAtom'
 import { shieldedAtom, shieldedProgressAtom } from '@/atoms/shieldedAtom'
@@ -204,6 +205,10 @@ export async function computeShieldedBalancesAfterSync(_chainId: string = NAMADA
     }))
 
     store.set(balanceErrorAtom, undefined)
+    store.set(balanceErrorsAtom, (state) => {
+      const { shielded, ...rest } = state
+      return rest
+    })
     store.set(balanceSyncAtom, (state) => ({
       ...state,
       shieldedStatus: 'idle',
@@ -214,9 +219,22 @@ export async function computeShieldedBalancesAfterSync(_chainId: string = NAMADA
     const message = error instanceof Error ? error.message : 'Unknown shielded balance error'
     const store = jotaiStore
     store.set(balanceErrorAtom, message)
+    store.set(balanceErrorsAtom, (state) => ({
+      ...state,
+      shielded: message,
+    }))
     store.set(balanceSyncAtom, (state) => ({
       ...state,
       shieldedStatus: 'error',
+    }))
+    // Set balance to "--" to indicate error state
+    store.set(balanceAtom, (state) => ({
+      ...state,
+      namada: {
+        ...state.namada,
+        usdcShielded: '--',
+        shieldedLastUpdated: undefined, // Clear timestamp on error
+      },
     }))
   }
 }

@@ -35,9 +35,19 @@ export const balanceAtom = atom<BalanceState>({
 
 export const balanceErrorAtom = atom<string | undefined>(undefined)
 
+export interface BalanceErrors {
+  evm?: string
+  transparent?: string
+  shielded?: string
+}
+
+export const balanceErrorsAtom = atom<BalanceErrors>({})
+
 export interface BalanceSyncState {
   status: 'idle' | 'refreshing' | 'error'
   shieldedStatus: 'idle' | 'syncing' | 'calculating' | 'error'
+  evmStatus?: 'idle' | 'error'
+  transparentStatus?: 'idle' | 'error'
   lastSuccessAt?: number
   lastShieldedSuccessAt?: number
 }
@@ -46,6 +56,8 @@ export const balanceSyncAtom = atom<BalanceSyncState>({
   status: 'idle',
   lastSuccessAt: undefined,
   shieldedStatus: 'idle',
+  evmStatus: 'idle',
+  transparentStatus: 'idle',
   lastShieldedSuccessAt: undefined,
 })
 

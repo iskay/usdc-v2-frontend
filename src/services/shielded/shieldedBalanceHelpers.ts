@@ -28,17 +28,18 @@ export function formatMinDenom(amountMinDenom: string, decimals: number = 6): st
  * @param tokenAddresses - Array of token addresses to query
  * @param chainId - The chain ID (defaults to NAMADA_CHAIN_ID)
  * @returns Array of [tokenAddress, balance] tuples
+ * @throws Error if the query fails (e.g., RPC connection error)
  */
 export async function queryShieldedBalances(
   viewingKey: string,
   tokenAddresses: string[],
   chainId: string = NAMADA_CHAIN_ID,
 ): Promise<[string, string][]> {
-  try {
     if (!tokenAddresses || tokenAddresses.length === 0) {
       return []
     }
 
+  try {
     const sdk = getNamadaSdk()
     // SDK RPC queryBalance method signature: queryBalance(viewingKey, tokenAddresses, chainId)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -46,7 +47,8 @@ export async function queryShieldedBalances(
     return balances || []
   } catch (error) {
     console.error('[ShieldedBalanceHelpers] Failed to query shielded balances:', error)
-    return []
+    // Re-throw the error so callers can handle it appropriately
+    throw error
   }
 }
 
@@ -55,24 +57,26 @@ export async function queryShieldedBalances(
  * @param viewingKey - The viewing key to query
  * @param chainId - The chain ID (defaults to NAMADA_CHAIN_ID)
  * @returns USDC balance in min denom, or '0' if not found
+ * @throws Error if the query fails (e.g., RPC connection error)
  */
 export async function queryShieldedUSDCBalance(
   viewingKey: string,
   chainId: string = NAMADA_CHAIN_ID,
 ): Promise<string> {
-  try {
     const usdcAddress = await getUSDCAddressFromRegistry()
     if (!usdcAddress) {
       console.warn('[ShieldedBalanceHelpers] USDC token address not configured')
       return '0'
     }
 
+  try {
     const balances = await queryShieldedBalances(viewingKey, [usdcAddress], chainId)
     const match = balances.find(([addr]) => addr === usdcAddress)
     return match ? match[1] : '0'
   } catch (error) {
     console.error('[ShieldedBalanceHelpers] Failed to query shielded USDC balance:', error)
-    return '0'
+    // Re-throw the error so callers can handle it appropriately
+    throw error
   }
 }
 
@@ -81,12 +85,18 @@ export async function queryShieldedUSDCBalance(
  * @param viewingKey - The viewing key to query
  * @param chainId - The chain ID (defaults to NAMADA_CHAIN_ID)
  * @returns Formatted USDC balance string (e.g., "123.456789")
+ * @throws Error if the query fails (e.g., RPC connection error)
  */
 export async function getFormattedShieldedUSDCBalance(
   viewingKey: string,
   chainId: string = NAMADA_CHAIN_ID,
 ): Promise<string> {
+  try {
   const balanceMinDenom = await queryShieldedUSDCBalance(viewingKey, chainId)
   return formatMinDenom(balanceMinDenom, 6)
+  } catch (error) {
+    // Re-throw the error so callers can handle it appropriately
+    throw error
+  }
 }
 

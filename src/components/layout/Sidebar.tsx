@@ -2,6 +2,8 @@ import { NavLink } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { useBalance } from '@/hooks/useBalance'
+import { useAtomValue } from 'jotai'
+import { balanceSyncAtom, balanceErrorAtom } from '@/atoms/balanceAtom'
 
 const links = [
   { to: '/dashboard', label: 'Dashboard' },
@@ -16,8 +18,13 @@ interface SidebarProps {
 
 export function Sidebar({ isCollapsed }: SidebarProps) {
   const { state: balanceState } = useBalance()
-  const shieldedBalance = balanceState.namada.usdcShielded
-  const hasShieldedBalance = shieldedBalance && parseFloat(shieldedBalance) > 0
+  const balanceSyncState = useAtomValue(balanceSyncAtom)
+  const balanceError = useAtomValue(balanceErrorAtom)
+  
+  // Check for balance calculation error state
+  const hasBalanceError = balanceSyncState.shieldedStatus === 'error' && balanceError
+  const shieldedBalance = hasBalanceError ? '--' : balanceState.namada.usdcShielded
+  const hasShieldedBalance = shieldedBalance && shieldedBalance !== '--' && parseFloat(shieldedBalance) > 0
   return (
     <motion.aside
       initial={false}

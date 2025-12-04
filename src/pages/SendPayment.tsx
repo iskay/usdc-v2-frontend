@@ -2,6 +2,7 @@ import { useState, useEffect, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/common/Button'
+import { Tooltip } from '@/components/common/Tooltip'
 import { BackToHome } from '@/components/common/BackToHome'
 import { RequireNamadaConnection } from '@/components/wallet/RequireNamadaConnection'
 import { ChainSelect } from '@/components/common/ChainSelect'
@@ -15,7 +16,7 @@ import { useShieldedSync } from '@/hooks/useShieldedSync'
 import { useWallet } from '@/hooks/useWallet'
 import { useToast } from '@/hooks/useToast'
 import { useAtomValue, useAtom } from 'jotai'
-import { balanceSyncAtom } from '@/atoms/balanceAtom'
+import { balanceSyncAtom, balanceErrorAtom } from '@/atoms/balanceAtom'
 import { validatePaymentForm, handleAmountInputChange, handleEvmAddressInputChange } from '@/services/validation'
 import {
   buildTransactionSuccessToast,
@@ -69,8 +70,11 @@ export function SendPayment() {
   const { state: balanceState } = useBalance()
   const { state: shieldedState } = useShieldedSync()
   const balanceSyncState = useAtomValue(balanceSyncAtom)
+  const balanceError = useAtomValue(balanceErrorAtom)
 
-  const shieldedBalance = balanceState.namada.usdcShielded || '0.00'
+  // Check for balance calculation error state
+  const hasBalanceError = balanceSyncState.shieldedStatus === 'error' && balanceError
+  const shieldedBalance = hasBalanceError ? '--' : (balanceState.namada.usdcShielded || '--')
   const isShieldedBalanceLoading =
     shieldedState.isSyncing || balanceSyncState.shieldedStatus === 'calculating'
 
@@ -545,6 +549,11 @@ export function SendPayment() {
                         </span>
                         {isShieldedBalanceLoading && (
                           <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Loading shielded balance" />
+                        )}
+                        {hasBalanceError && (
+                          <Tooltip content="Could not query shielded balances from chain" side="top">
+                            <AlertCircle className="h-3.5 w-3.5 text-red-500" aria-label="Shielded balance error" />
+                          </Tooltip>
                         )}
                       </div>
                       <button

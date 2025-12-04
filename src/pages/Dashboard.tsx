@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Shield, Loader2, MoreVertical, RefreshCw, CheckCircle2, XCircle, ArrowDown, Send } from 'lucide-react'
+import { Shield, Loader2, MoreVertical, RefreshCw, CheckCircle2, XCircle, ArrowDown, Send, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/common/Button'
+import { Tooltip } from '@/components/common/Tooltip'
 import { Switch } from '@/components/common/Switch'
 import { DropdownMenu, DropdownMenuItem } from '@/components/common/DropdownMenu'
 import { TxInProgressList } from '@/components/tx/TxInProgressList'
@@ -12,7 +13,7 @@ import { ShieldingModal } from '@/components/shielded/ShieldingModal'
 import { useBalance } from '@/hooks/useBalance'
 import { useShieldedSync } from '@/hooks/useShieldedSync'
 import { useAtom, useAtomValue } from 'jotai'
-import { balanceSyncAtom } from '@/atoms/balanceAtom'
+import { balanceSyncAtom, balanceErrorsAtom } from '@/atoms/balanceAtom'
 import { autoShieldedSyncEnabledAtom } from '@/atoms/appAtom'
 import { isAnyTransactionActiveAtom, txUiAtom } from '@/atoms/txUiAtom'
 import { cn } from '@/lib/utils'
@@ -23,6 +24,7 @@ export function Dashboard() {
   const { state: balanceState } = useBalance()
   const { state: shieldedState, startSync, isReady } = useShieldedSync()
   const balanceSyncState = useAtomValue(balanceSyncAtom)
+  const balanceErrors = useAtomValue(balanceErrorsAtom)
   const isAnyTxActive = useAtomValue(isAnyTransactionActiveAtom)
   const txUiState = useAtomValue(txUiAtom)
   const [autoShieldedSyncEnabled, setAutoShieldedSyncEnabled] = useAtom(autoShieldedSyncEnabledAtom)
@@ -89,7 +91,14 @@ export function Dashboard() {
   const shieldedBalance = balanceState.namada.usdcShielded
   const transparentBalance = balanceState.namada.usdcTransparent
   const hasTransparentBalance = parseFloat(transparentBalance || '0') > 0
-  const hasShieldedBalance = shieldedBalance && parseFloat(shieldedBalance) > 0
+  
+  // Check for balance calculation error states
+  const hasShieldedError = balanceSyncState.shieldedStatus === 'error' && balanceErrors.shielded
+  const hasTransparentError = balanceSyncState.transparentStatus === 'error' && balanceErrors.transparent
+  
+  const displayShieldedBalance = hasShieldedError ? '--' : shieldedBalance
+  const displayTransparentBalance = hasTransparentError ? '--' : transparentBalance
+  const hasShieldedBalance = displayShieldedBalance && displayShieldedBalance !== '--' && parseFloat(displayShieldedBalance) > 0
 
   // Check if shielded balance is loading (sync or calculation in progress)
   const isShieldedBalanceLoading = shieldedState.isSyncing || balanceSyncState.shieldedStatus === 'calculating'
@@ -204,7 +213,14 @@ export function Dashboard() {
             <div className="flex items-start justify-between mb-4">
               <div>
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Transparent Balance</p>
-                <p className="text-2xl font-bold mt-1">{transparentBalance} <span className="text-lg font-semibold text-muted-foreground">USDC</span></p>
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-2xl font-bold">{displayTransparentBalance} <span className="text-lg font-semibold text-muted-foreground">USDC</span></p>
+                  {hasTransparentError && (
+                    <Tooltip content="Could not query transparent balance from chain" side="top">
+                      <AlertCircle className="h-4 w-4 text-red-500" aria-label="Transparent balance error" />
+                    </Tooltip>
+                  )}
+                </div>
               </div>
             </div>
             <div className="flex items-center justify-between gap-4">
@@ -231,12 +247,17 @@ export function Dashboard() {
               <div className="flex-1">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Shielded Balance</p>
                 <div className="flex items-center gap-2 mt-1">
-                  <p className="text-2xl font-bold">{shieldedBalance} <span className="text-lg font-semibold text-muted-foreground">USDC</span></p>
+                  <p className="text-2xl font-bold">{displayShieldedBalance} <span className="text-lg font-semibold text-muted-foreground">USDC</span></p>
                   {isShieldedBalanceLoading && (
                     <Loader2 className="h-4 w-4 animate-spin text-red-500" aria-label="Loading shielded balance" />
                   )}
+                  {hasShieldedError && (
+                    <Tooltip content="Could not query shielded balances from chain" side="top">
+                      <AlertCircle className="h-4 w-4 text-red-500" aria-label="Shielded balance error" />
+                    </Tooltip>
+                  )}
                 </div>
-                {timeAgoText && (
+                {timeAgoText && !hasShieldedError && (
                   <p className="text-xs text-muted-foreground mt-1">
                     Last refreshed {timeAgoText}
                   </p>
@@ -246,7 +267,7 @@ export function Dashboard() {
               {/* Sync Controls - Right side */}
               <div className="flex flex-col items-end gap-2 ml-4">
                 {/* Sync Button */}
-                {shieldedState.status === 'error' ? (
+                {(shieldedState.status === 'error' || hasShieldedError) ? (
                   <Button 
                     variant="ghost" 
                     className="h-7 px-3 text-xs gap-1.5 border border-border bg-transparent hover:bg-muted/50" 
@@ -262,7 +283,7 @@ export function Dashboard() {
                     )}
                     Retry
                   </Button>
-                ) : isReady && !shieldedState.isSyncing ? (
+                ) : isReady && !shieldedState.isSyncing && !hasShieldedError ? (
                   <Button 
                     variant="ghost" 
                     className="h-7 px-3 text-xs gap-1.5 border border-border bg-transparent hover:bg-muted/50" 

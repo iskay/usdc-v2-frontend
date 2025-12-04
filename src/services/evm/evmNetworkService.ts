@@ -168,11 +168,45 @@ export async function getEvmSigner(): Promise<ethers.Signer> {
 }
 
 /**
+ * Verify that an RPC URL is reachable before creating a provider.
+ * This prevents ethers.js from starting its network detection retry loop.
+ * @param rpcUrl - The RPC URL to check
+ * @param timeoutMs - Timeout in milliseconds (default: 5000ms)
+ * @returns true if RPC is reachable, false otherwise
+ */
+async function verifyRpcReachable(rpcUrl: string, timeoutMs: number = 5000): Promise<boolean> {
+  try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+    
+    const response = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'eth_chainId',
+        params: [],
+        id: 1,
+      }),
+      signal: controller.signal,
+    })
+    
+    clearTimeout(timeoutId)
+    return response.ok
+  } catch (error) {
+    // RPC is not reachable (network error, timeout, etc.)
+    return false
+  }
+}
+
+/**
  * Gets an EVM provider for a given chain key.
  * Uses the RPC URL from chain config for read operations.
  * @param chainKey - The chain key
  * @returns The ethers JSON RPC provider
- * @throws Error if chain config is not available or RPC URL is missing
+ * @throws Error if chain config is not available, RPC URL is missing, or RPC is unreachable
  */
 export async function getEvmProvider(
   chainKey: string
@@ -187,6 +221,14 @@ export async function getEvmProvider(
     throw new Error(`Chain RPC URL not found for: ${chainKey}`)
   }
 
-  return new ethers.JsonRpcProvider(chain.rpcUrls[0])
+  // Verify RPC is reachable before creating provider (prevents retry loop)
+  const isReachable = await verifyRpcReachable(chain.rpcUrls[0], 5000)
+  if (!isReachable) {
+    throw new Error('RPC unreachable')
+  }
+
+  // Create provider with static network to prevent retry loop on bad RPCs
+  const staticNetwork = ethers.Network.from(chain.chainId)
+  return new ethers.JsonRpcProvider(chain.rpcUrls[0], staticNetwork)
 }
 

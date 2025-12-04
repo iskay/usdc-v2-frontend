@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useSetAtom, useAtomValue, useAtom } from 'jotai'
 import { Loader2, AlertCircle, CheckCircle2, Info, Copy } from 'lucide-react'
 import { Button } from '@/components/common/Button'
+import { Tooltip } from '@/components/common/Tooltip'
+import { balanceSyncAtom, balanceErrorsAtom } from '@/atoms/balanceAtom'
 import { BackToHome } from '@/components/common/BackToHome'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { DepositConfirmationModal } from '@/components/deposit/DepositConfirmationModal'
@@ -47,6 +49,8 @@ export function Deposit() {
   const { notify, updateToast, dismissToast } = useToast()
   const { state: walletState } = useWallet()
   const { state: balanceState, refresh } = useBalance()
+  const balanceSyncState = useAtomValue(balanceSyncAtom)
+  const balanceErrors = useAtomValue(balanceErrorsAtom)
   const preferredChainKey = useAtomValue(preferredChainKeyAtom)
   const setPreferredChainKey = useSetAtom(preferredChainKeyAtom)
   const setDepositRecipientAddress = useSetAtom(depositRecipientAddressAtom)
@@ -200,9 +204,10 @@ export function Deposit() {
   }>({})
 
   // Get live EVM balance from balance state
-  // Show '--' when balance is '--' or when loading, otherwise show actual balance
-  const availableBalance =
-    balanceState.evm.usdc !== '--' ? balanceState.evm.usdc : '--'
+  // Check for EVM balance error state
+  const hasEvmError = balanceSyncState.evmStatus === 'error' && balanceErrors.evm
+  const evmBalance = balanceState.evm.usdc
+  const availableBalance = hasEvmError ? '--' : (evmBalance !== '--' ? evmBalance : '--')
 
   // Store refresh function in ref to avoid dependency issues
   const refreshRef = useRef(refresh)
@@ -710,9 +715,16 @@ export function Deposit() {
                       <span className="text-sm font-semibold">Amount</span>
                     </div>
                     <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
                       <span className="text-sm text-muted-foreground">
                         Available {availableBalance} USDC
                       </span>
+                        {hasEvmError && (
+                          <Tooltip content="Could not query EVM balance from chain" side="top">
+                            <AlertCircle className="h-3.5 w-3.5 text-red-500" aria-label="EVM balance error" />
+                          </Tooltip>
+                        )}
+                      </div>
                       <button
                         type="button"
                         onClick={() => {
