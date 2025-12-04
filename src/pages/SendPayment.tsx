@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, Shield, ArrowRight, AlertCircle } from 'lucide-react'
+import { Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { BackToHome } from '@/components/common/BackToHome'
 import { RequireNamadaConnection } from '@/components/wallet/RequireNamadaConnection'
@@ -8,6 +8,8 @@ import { ChainSelect } from '@/components/common/ChainSelect'
 import { PaymentConfirmationModal } from '@/components/payment/PaymentConfirmationModal'
 import { TransactionSuccessOverlay } from '@/components/tx/TransactionSuccessOverlay'
 import { FormLockOverlay } from '@/components/tx/FormLockOverlay'
+import { SendFlowSteps } from '@/components/payment/SendFlowSteps'
+import { SendSummaryCard } from '@/components/payment/SendSummaryCard'
 import { useBalance } from '@/hooks/useBalance'
 import { useShieldedSync } from '@/hooks/useShieldedSync'
 import { useWallet } from '@/hooks/useWallet'
@@ -179,6 +181,21 @@ export function SendPayment() {
   const amountNum = parseFloat(amount || '0')
   const feeNum = feeInfo && feeInfo.feeToken === 'USDC' ? parseFloat(feeInfo.feeAmount) : 0
   const total = (amountNum + feeNum).toFixed(2)
+
+  // Determine step completion for flow steps
+  const amountComplete = amount.trim() !== '' && !validation.amountError
+  const recipientComplete = toAddress.trim() !== '' && !validation.addressError
+  const destinationChainComplete = selectedChain !== undefined
+
+  // Determine active step
+  let activeStep = 1
+  if (amountComplete && !recipientComplete) {
+    activeStep = 2
+  } else if (amountComplete && recipientComplete && !destinationChainComplete) {
+    activeStep = 3
+  } else if (amountComplete && recipientComplete && destinationChainComplete) {
+    activeStep = 4
+  }
 
   // Handle form submission
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -458,7 +475,7 @@ export function SendPayment() {
         />
       )}
 
-      <div className="flex flex-col gap-6 p-12 max-w-[1024px] mx-auto w-full">
+      <div className="flex flex-col gap-6 p-12 mx-auto w-full">
         <BackToHome />
 
         <header className="space-y-2">
@@ -493,169 +510,214 @@ export function SendPayment() {
         )}
 
         <div className={cn("flex flex-col gap-6 relative", isAnyTxActive && "opacity-60")}>
-          {/* Form Lock Overlay - covers both balance card and form */}
+          {/* Form Lock Overlay */}
           <FormLockOverlay isLocked={isAnyTxActive} currentPhase={currentPhase} />
           
-          {/* Shielded Balance Card */}
-          <div className="rounded-lg border border-red-200/50 bg-gradient-to-br from-red-50/50 to-red-100/30 dark:from-red-950/20 dark:to-red-900/10 dark:border-red-800/50 p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/20 dark:bg-red-600/20">
-                  <Shield className="h-5 w-5 text-red-600 dark:text-red-500" />
+          {/* Two-column layout: Flow Steps Sidebar + Main Content */}
+          <div className="flex flex-col lg:flex-row gap-8">
+            {/* Left Sidebar - Flow Steps */}
+            <div className="w-full lg:w-64 shrink-0">
+              <SendFlowSteps
+                amountComplete={amountComplete}
+                recipientComplete={recipientComplete}
+                destinationChainComplete={destinationChainComplete}
+                activeStep={activeStep}
+              />
+            </div>
+
+            {/* Right Column - Main Content */}
+            <div className="flex-1">
+              <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
+            
+                {/* Step 1: Amount Section */}
+                <div className="rounded-lg border border-blue-200/50 bg-blue-50/50 dark:bg-blue-950/10 p-6 shadow-sm">
+                  <div className="mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
+                        Step 1
+                      </span>
+                      <span className="text-sm font-semibold">Amount</span>
+                    </div>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">
+                          Available {shieldedBalance} USDC
+                        </span>
+                        {isShieldedBalanceLoading && (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Loading shielded balance" />
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (shieldedBalance !== '--' && shieldedBalance !== '0.00') {
+                            const balanceNum = parseFloat(shieldedBalance)
+                            const feeNum = feeInfo && feeInfo.feeToken === 'USDC' ? parseFloat(feeInfo.feeAmount) : 0
+                            const maxAmount = Math.max(0, balanceNum - feeNum)
+                            // Format to 6 decimal places to match input handling
+                            setAmount(maxAmount.toFixed(6).replace(/\.?0+$/, ''))
+                          }
+                        }}
+                        disabled={isAnyTxActive || shieldedBalance === '--' || shieldedBalance === '0.00'}
+                        className="text-sm font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Use Max
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-bold text-muted-foreground">$</span>
+                    <input
+                      type="text"
+                      value={amount}
+                      onChange={(e) => handleAmountInputChange(e, setAmount, 6)}
+                      className="flex-1 border-none bg-transparent p-0 text-3xl font-bold focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30"
+                      placeholder="0.00"
+                      inputMode="decimal"
+                      disabled={isAnyTxActive}
+                    />
+                    <span className="text-sm text-muted-foreground">USDC</span>
+                  </div>
+                  {/* Validation error for amount */}
+                  {validation.amountError && amount.trim() !== '' && (
+                    <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span className="flex-1">{validation.amountError}</span>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Available Balance</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <p className="text-xl font-bold">{shieldedBalance} <span className="text-base font-semibold text-muted-foreground">USDC</span></p>
-                    {isShieldedBalanceLoading && (
-                      <Loader2 className="h-4 w-4 animate-spin text-red-500" aria-label="Loading shielded balance" />
+
+                {/* Step 2 & 3: Recipient Address and Destination Chain Sections */}
+                <div className="flex flex-col lg:flex-row gap-6">
+                  {/* Step 2: Recipient Address Section */}
+                  <div className="flex-1 rounded-lg border border-blue-200/50 bg-blue-50/50 dark:bg-blue-950/10 p-6 shadow-sm">
+                    <div className="flex items-baseline justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
+                          Step 2
+                        </span>
+                        <label className="text-sm font-semibold">Recipient address</label>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAutoFill}
+                        disabled={!walletState.metaMask.isConnected || isAnyTxActive}
+                        className={`text-sm font-medium text-primary hover:text-primary/80 transition-colors ${
+                          !walletState.metaMask.isConnected || isAnyTxActive
+                            ? 'opacity-50 cursor-not-allowed'
+                            : ''
+                        }`}
+                      >
+                        Auto-fill
+                      </button>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Where your USDC will be sent
+                    </p>
+                    <input
+                      type="text"
+                      value={toAddress}
+                      onChange={(e) => handleEvmAddressInputChange(e, setToAddress)}
+                      className={`w-full rounded-lg border bg-background px-4 py-3 text-sm font-mono shadow-sm focus-visible:outline-none focus-visible:ring-2 transition-colors ${
+                        validation.addressError && toAddress.trim() !== ''
+                          ? 'border-destructive focus-visible:ring-destructive/20 focus-visible:border-destructive'
+                          : 'border-input focus-visible:ring-ring focus-visible:border-ring'
+                      }`}
+                      placeholder="0x..."
+                      disabled={isAnyTxActive}
+                    />
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Tip: Can be your address or someone else's
+                    </p>
+                    {/* Validation error for address */}
+                    {validation.addressError && toAddress.trim() !== '' && (
+                      <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                        <span className="flex-1">{validation.addressError}</span>
+                      </div>
                     )}
                   </div>
+
+                  {/* Step 3: Destination Chain Section */}
+                  <div className="flex-1 rounded-lg border border-blue-200/50 bg-blue-50/50 dark:bg-blue-950/10 p-6 shadow-sm">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
+                        Step 3
+                      </span>
+                      <label className="text-sm font-semibold">Destination chain</label>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      The chain you wish to send USDC to
+                    </p>
+                    <ChainSelect
+                      value={selectedChain}
+                      onChange={setSelectedChain}
+                      disabled={isAnyTxActive}
+                      showEstimatedTime={true}
+                      timeType="send"
+                    />
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Estimated time for the payment to complete
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </div>
 
-          <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
-          {/* Amount Input Section */}
-          <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
-            <label className="block text-sm font-medium text-muted-foreground mb-3">Amount</label>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-muted-foreground">$</span>
-              <input
-                type="text"
-                value={amount}
-                onChange={(e) => handleAmountInputChange(e, setAmount, 6)}
-                className="flex-1 border-none bg-transparent p-0 text-3xl font-bold focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30"
-                placeholder="0.00"
-                inputMode="decimal"
-                disabled={isAnyTxActive}
-              />
-              <span className="text-sm text-muted-foreground">USDC</span>
-            </div>
-            {/* Validation error for amount */}
-            {validation.amountError && amount.trim() !== '' && (
-              <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                <span className="flex-1">{validation.amountError}</span>
-              </div>
-            )}
-          </div>
-
-          {/* To Address Section */}
-          <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
-            <div className="flex items-baseline justify-between mb-3">
-              <label className="text-sm font-medium text-muted-foreground">Recipient Address</label>
-              <button
-                type="button"
-                onClick={handleAutoFill}
-                disabled={!walletState.metaMask.isConnected || isAnyTxActive}
-                className={`text-sm font-medium text-primary hover:text-primary/80 transition-colors ${
-                  !walletState.metaMask.isConnected || isAnyTxActive
-                    ? 'opacity-50 cursor-not-allowed'
-                    : ''
-                }`}
-              >
-                Auto Fill
-              </button>
-            </div>
-            <input
-              type="text"
-              value={toAddress}
-              onChange={(e) => handleEvmAddressInputChange(e, setToAddress)}
-              className={`w-full rounded-lg border bg-background px-4 py-3 text-sm font-mono shadow-sm focus-visible:outline-none focus-visible:ring-2 transition-colors ${
-                validation.addressError && toAddress.trim() !== ''
-                  ? 'border-destructive focus-visible:ring-destructive/20 focus-visible:border-destructive'
-                  : 'border-input focus-visible:ring-ring focus-visible:border-ring'
-              }`}
-              placeholder="0x..."
-              disabled={isAnyTxActive}
-            />
-            {/* Validation error for address */}
-            {validation.addressError && toAddress.trim() !== '' && (
-              <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                <span className="flex-1">{validation.addressError}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Chain Select Component */}
-          <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
-            <label className="block text-sm font-medium text-muted-foreground mb-3">Destination Chain</label>
-            <ChainSelect
-              value={selectedChain}
-              onChange={setSelectedChain}
-              disabled={isAnyTxActive}
-              showEstimatedTime={true}
-              timeType="send"
-            />
-          </div>
-
-          {/* Fee and Total Summary */}
-          <div className="rounded-lg border border-border bg-card p-6 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Network Fee</span>
-              {isEstimatingFee ? (
-                <div className="flex items-center gap-1.5">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">Estimating...</span>
+                {/* Step 4: Fees & Review Section */}
+                <div className="space-y-3 mx-auto my-8">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Network fee</span>
+                    {isEstimatingFee ? (
+                      <div className="flex items-center gap-1.5">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground">Estimating...</span>
+                      </div>
+                    ) : feeInfo ? (
+                      <span className="text-sm font-semibold">
+                        {feeInfo.feeToken === 'USDC'
+                          ? `$${parseFloat(feeInfo.feeAmount).toFixed(2)}`
+                          : `${parseFloat(feeInfo.feeAmount).toFixed(6)} NAM`}
+                      </span>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">--</span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between border-t border-border pt-3 space-x-24">
+                    <span className="text-base font-semibold">Total amount deducted</span>
+                    <span className="text-xl font-bold">
+                      {feeInfo && feeInfo.feeToken === 'USDC' ? `$${total}` : `$${amount || '0.00'}`}
+                    </span>
+                  </div>
                 </div>
-              ) : feeInfo ? (
-                <span className="text-sm font-semibold">
-                  {feeInfo.feeToken === 'USDC'
-                    ? `$${parseFloat(feeInfo.feeAmount).toFixed(2)}`
-                    : `${parseFloat(feeInfo.feeAmount).toFixed(6)} NAM`}
-                </span>
-              ) : (
-                <span className="text-sm text-muted-foreground">--</span>
-              )}
-            </div>
-            <div className="flex items-center justify-between border-t border-border pt-3">
-              <span className="text-base font-semibold">Total</span>
-              <span className="text-xl font-bold">
-                {feeInfo && feeInfo.feeToken === 'USDC' ? `$${total}` : `$${amount || '0.00'}`}
-              </span>
-            </div>
-          </div>
 
-          {/* Action Button */}
-          <div className="space-y-1">
-            <Button
-              type="submit"
-              variant="primary"
-            className={cn(
-              "w-full py-6 text-lg font-semibold gap-2 transition-all",
-              isAnyTxActive && "animate-pulse cursor-not-allowed opacity-60",
-              !validation.isValid && !isAnyTxActive && "opacity-50 cursor-not-allowed"
-            )}
-            disabled={!validation.isValid || isAnyTxActive}
-          >
-            {isAnyTxActive ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin" />
-                <span className="transition-opacity duration-200">
-                  {currentPhase === 'building' && 'Building transaction...'}
-                  {currentPhase === 'signing' && 'Waiting for approval...'}
-                  {currentPhase === 'submitting' && 'Submitting transaction...'}
-                  {!currentPhase && 'Processing...'}
-                </span>
-              </>
-            ) : (
-              <>
-                <ArrowRight className="h-5 w-5" />
-                Send Payment
-              </>
-            )}
-          </Button>
-            {!validation.isValid && !isAnyTxActive && (
-              <p className="text-xs text-muted-foreground text-center">
-                {validation.amountError || validation.addressError || 'Please fill in all required fields'}
-              </p>
-            )}
+                {/* Send Summary Card */}
+                <SendSummaryCard
+                  amount={amount}
+                  chainName={chainName}
+                  isValid={validation.isValid}
+                  validationError={
+                    !validation.isValid && !isAnyTxActive
+                      ? validation.amountError || validation.addressError || 'Please fill in all required fields'
+                      : null
+                  }
+                  onContinue={() => {
+                    if (validation.isValid) {
+                      setShowConfirmationModal(true)
+                    } else {
+                      if (validation.amountError) {
+                        notify(buildValidationErrorToast('Amount', validation.amountError))
+                      }
+                      if (validation.addressError) {
+                        notify(buildValidationErrorToast('Address', validation.addressError))
+                      }
+                    }
+                  }}
+                  isSubmitting={isAnyTxActive}
+                  currentPhase={currentPhase}
+                />
+              </form>
+              <div className='min-h-12' />
+            </div>
           </div>
-          </form>
-          <div className='min-h-12' />
         </div>
 
         {/* Confirmation Modal */}

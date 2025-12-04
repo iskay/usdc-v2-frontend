@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSetAtom, useAtomValue, useAtom } from 'jotai'
-import { Loader2, Wallet, ArrowRight, AlertCircle, CheckCircle2, Info, Copy } from 'lucide-react'
+import { Loader2, AlertCircle, CheckCircle2, Info, Copy } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { BackToHome } from '@/components/common/BackToHome'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { DepositConfirmationModal } from '@/components/deposit/DepositConfirmationModal'
+import { DepositFlowSteps } from '@/components/deposit/DepositFlowSteps'
+import { DepositSummaryCard } from '@/components/deposit/DepositSummaryCard'
 import { TransactionSuccessOverlay } from '@/components/tx/TransactionSuccessOverlay'
 import { FormLockOverlay } from '@/components/tx/FormLockOverlay'
 import { useWallet } from '@/hooks/useWallet'
@@ -44,7 +46,7 @@ export function Deposit() {
   const { upsertTransaction } = useTxTracker({ enablePolling: false })
   const { notify, updateToast, dismissToast } = useToast()
   const { state: walletState } = useWallet()
-  const { state: balanceState, refresh, sync: balanceSync } = useBalance()
+  const { state: balanceState, refresh } = useBalance()
   const preferredChainKey = useAtomValue(preferredChainKeyAtom)
   const setPreferredChainKey = useSetAtom(preferredChainKeyAtom)
   const setDepositRecipientAddress = useSetAtom(depositRecipientAddressAtom)
@@ -197,10 +199,6 @@ export function Deposit() {
     chainId?: number
   }>({})
 
-  // Determine if EVM balance is currently being fetched
-  const isEvmBalanceLoading =
-    balanceSync.status === 'refreshing' && walletState.metaMask.isConnected
-
   // Get live EVM balance from balance state
   // Show '--' when balance is '--' or when loading, otherwise show actual balance
   const availableBalance =
@@ -346,6 +344,21 @@ export function Deposit() {
   // TODO: In Phase 2, we might want to convert native token fees to USD for validation
   const feeValueForValidation = '0.00' // Native token fees don't affect USDC amount validation
   const validation = validateDepositForm(amount, availableBalance, feeValueForValidation, toAddress)
+
+  // Determine step completion for flow steps
+  const amountComplete = amount.trim() !== '' && !validation.amountError
+  const recipientComplete = toAddress.trim() !== '' && !validation.addressError
+  const sourceChainComplete = selectedChain !== undefined
+
+  // Determine active step
+  let activeStep = 1
+  if (amountComplete && !recipientComplete) {
+    activeStep = 2
+  } else if (amountComplete && recipientComplete && !sourceChainComplete) {
+    activeStep = 3
+  } else if (amountComplete && recipientComplete && sourceChainComplete) {
+    activeStep = 4
+  }
 
   // Calculate total - USDC amount + fee USD (if available) + Noble registration fee
   const amountNum = parseFloat(amount || '0')
@@ -633,7 +646,7 @@ export function Deposit() {
         />
       )}
 
-      <div className="flex flex-col gap-6 p-12 max-w-[1024px] mx-auto w-full">
+      <div className="flex flex-col gap-6 p-12 mx-auto w-full">
         <BackToHome />
 
         <header className="space-y-2">
@@ -668,239 +681,282 @@ export function Deposit() {
         )}
 
         <div className={cn("flex flex-col gap-6 relative", isAnyTxActive && "opacity-60")}>
-          {/* Form Lock Overlay - covers both balance card and form */}
+          {/* Form Lock Overlay */}
           <FormLockOverlay isLocked={isAnyTxActive} currentPhase={currentPhase} />
           
-          {/* EVM Balance Card */}
-          <div className="rounded-lg border border-blue-200/50 bg-gradient-to-br from-blue-50/50 to-blue-100/30 dark:from-blue-950/20 dark:to-blue-900/10 dark:border-blue-800/50 p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/20 dark:bg-blue-600/20">
-                  <Wallet className="h-5 w-5 text-blue-600 dark:text-blue-500" />
+          {/* Two-column layout: Flow Steps Sidebar + Main Content */}
+          <div className="flex flex-col lg:flex-row gap-8">
+            {/* Left Sidebar - Flow Steps */}
+            <div className="w-full lg:w-64 shrink-0">
+              <DepositFlowSteps
+                amountComplete={amountComplete}
+                recipientComplete={recipientComplete}
+                sourceChainComplete={sourceChainComplete}
+                activeStep={activeStep}
+              />
+            </div>
+
+            {/* Right Column - Main Content */}
+            <div className="flex-1">
+              <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
+            
+                {/* Step 1: Amount Section */}
+                <div className="rounded-lg border border-blue-200/50 bg-blue-50/50 dark:bg-blue-950/10 p-6 shadow-sm">
+                  <div className="mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
+                        Step 1
+                      </span>
+                      <span className="text-sm font-semibold">Amount</span>
+                    </div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm text-muted-foreground">
+                        Available {availableBalance} USDC
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (availableBalance !== '--') {
+                            const balanceNum = parseFloat(availableBalance)
+                            const feeUsd = feeInfo?.totalUsd ?? 0
+                            const nobleRegUsd = feeInfo?.nobleRegUsd ?? 0
+                            const totalFees = feeUsd + nobleRegUsd
+                            const maxAmount = Math.max(0, balanceNum - totalFees)
+                            // Format to 6 decimal places to match input handling
+                            setAmount(maxAmount.toFixed(6).replace(/\.?0+$/, ''))
+                          }
+                        }}
+                        disabled={isAnyTxActive || availableBalance === '--'}
+                        className="text-sm font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Use Max
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-bold text-muted-foreground">$</span>
+                    <input
+                      type="text"
+                      value={amount}
+                      onChange={(e) => handleAmountInputChange(e, setAmount, 6)}
+                      className="flex-1 border-none bg-transparent p-0 text-3xl font-bold focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30"
+                      placeholder="0.00"
+                      inputMode="decimal"
+                      disabled={isAnyTxActive}
+                    />
+                    <span className="text-sm text-muted-foreground">USDC</span>
+                  </div>
+                  {/* Validation error for amount */}
+                  {validation.amountError && amount.trim() !== '' && (
+                    <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span className="flex-1">{validation.amountError}</span>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Available Balance</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <p className="text-xl font-bold">{availableBalance} <span className="text-base font-semibold text-muted-foreground">USDC</span></p>
-                    {isEvmBalanceLoading && (
-                      <Loader2 className="h-4 w-4 animate-spin text-blue-500" aria-label="Loading balance" />
+
+                {/* Step 2 & 3: Recipient Address and Source Chain Sections */}
+                <div className="flex flex-col lg:flex-row gap-6">
+                  {/* Step 2: Recipient Address Section */}
+                  <div className="flex-1 rounded-lg border border-blue-200/50 bg-blue-50/50 dark:bg-blue-950/10 p-6 shadow-sm">
+                  <div className="flex items-baseline justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
+                        Step 2
+                      </span>
+                      <label className="text-sm font-semibold">Recipient address</label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAutoFill}
+                      disabled={!walletState.namada.isConnected || isAnyTxActive}
+                      className={`text-sm font-medium text-primary hover:text-primary/80 transition-colors ${
+                        !walletState.namada.isConnected || isAnyTxActive
+                          ? 'opacity-50 cursor-not-allowed'
+                          : ''
+                      }`}
+                    >
+                      Auto-fill
+                    </button>
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Where your bridged USDC will arrive
+                  </p>
+                  <input
+                    type="text"
+                    value={toAddress}
+                    onChange={(e) => handleBech32InputChange(e, setToAddress)}
+                    className={`w-full rounded-lg border bg-background px-4 py-3 text-sm font-mono shadow-sm focus-visible:outline-none focus-visible:ring-2 transition-colors ${
+                      validation.addressError && toAddress.trim() !== ''
+                        ? 'border-destructive focus-visible:ring-destructive/20 focus-visible:border-destructive'
+                        : 'border-input focus-visible:ring-ring focus-visible:border-ring'
+                    }`}
+                    placeholder="tnam1..."
+                    disabled={isAnyTxActive}
+                  />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Tip: Use your Namada transparent address that controls this deposit
+                  </p>
+                  {/* Validation error for address */}
+                  {validation.addressError && toAddress.trim() !== '' && (
+                    <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span className="flex-1">{validation.addressError}</span>
+                    </div>
+                  )}
+                  {/* Noble forwarding registration status */}
+                  {!validation.addressError && toAddress.trim() !== '' && (
+                    <div className="mt-3">
+                      {registrationStatus.isLoading && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Checking registration status...</span>
+                        </div>
+                      )}
+                      {!registrationStatus.isLoading && registrationStatus.isRegistered === true && (
+                        <div className="rounded-lg border border-blue-200/50 bg-blue-50/30 dark:bg-blue-950/20 dark:border-blue-800/50 p-4 shadow-sm">
+                          <div className="flex items-start gap-3">
+                            <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" />
+                            <div className="flex-1 space-y-2">
+                              <p className="text-sm text-foreground">Noble forwarding address is already registered</p>
+                              {registrationStatus.forwardingAddress && (
+                                <div className="flex items-center gap-2 pt-2 border-t border-blue-200/50 dark:border-blue-800/50">
+                                  <span className="font-mono text-xs text-muted-foreground break-all">
+                                    {registrationStatus.forwardingAddress}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(registrationStatus.forwardingAddress!)
+                                      notify(buildCopySuccessToast('Forwarding address'))
+                                    }}
+                                    className="rounded p-1 text-muted-foreground hover:bg-blue-100/50 dark:hover:bg-blue-900/30 transition-colors shrink-0"
+                                    aria-label="Copy forwarding address"
+                                    title="Copy forwarding address"
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {!registrationStatus.isLoading && registrationStatus.isRegistered === false && (
+                        <div className="rounded-lg border border-orange-200/50 bg-orange-50/30 dark:bg-orange-950/20 dark:border-orange-800/50 p-4 shadow-sm">
+                          <div className="flex items-start gap-3">
+                            <Info className="h-4 w-4 shrink-0 mt-0.5 text-orange-600 dark:text-orange-400" />
+                            <div className="flex-1 space-y-2">
+                              <p className="text-sm text-foreground">Noble forwarding address not yet registered. A $0.02 registration fee will be included.</p>
+                              {registrationStatus.forwardingAddress && (
+                                <div className="flex items-center gap-2 pt-2 border-t border-orange-200/50 dark:border-orange-800/50">
+                                  <span className="font-mono text-xs text-muted-foreground break-all">
+                                    {registrationStatus.forwardingAddress}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(registrationStatus.forwardingAddress!)
+                                      notify(buildCopySuccessToast('Forwarding address'))
+                                    }}
+                                    className="rounded p-1 text-muted-foreground hover:bg-orange-100/50 dark:hover:bg-orange-900/30 transition-colors shrink-0"
+                                    aria-label="Copy forwarding address"
+                                    title="Copy forwarding address"
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {!registrationStatus.isLoading && registrationStatus.error && (
+                        <div className="rounded-lg border border-blue-200/50 bg-blue-50/30 dark:bg-blue-950/20 dark:border-blue-800/50 p-4 shadow-sm">
+                          <div className="flex items-start gap-3">
+                            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-destructive" />
+                            <span className="flex-1 text-sm text-destructive">Unable to check registration status: {registrationStatus.error}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  </div>
+
+                  {/* Step 3: Source Chain Section */}
+                  <div className="flex-1 rounded-lg border border-blue-200/50 bg-blue-50/50 dark:bg-blue-950/10 p-6 shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
+                      Step 3
+                    </span>
+                    <label className="text-sm font-semibold">Source chain</label>
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    The chain you wish to deposit USDC from
+                  </p>
+                  <ChainSelect
+                    value={selectedChain}
+                    onChange={setSelectedChain}
+                    disabled={isAnyTxActive}
+                    showEstimatedTime={true}
+                    timeType="deposit"
+                  />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Estimated time for the deposit to complete
+                  </p>
+                  </div>
+                </div>
+
+                {/* Step 4: Fees & Review Section */}
+                <div className="space-y-3 mx-auto my-8">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Network fee</span>
+                    {isEstimatingFee ? (
+                      <div className="flex items-center gap-1.5">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground">Estimating...</span>
+                      </div>
+                    ) : feeInfo ? (
+                      <span className="text-sm font-semibold">{estimatedFee}</span>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">--</span>
                     )}
                   </div>
+                  <div className="flex items-center justify-between border-t border-border pt-3 space-x-24 ">
+                    <span className="text-base font-semibold">Total amount deducted</span>
+                    <span className="text-xl font-bold">${total}</span>
+                  </div>
                 </div>
-              </div>
+
+                {/* Deposit Summary Card */}
+                <DepositSummaryCard
+                  amount={amount}
+                  chainName={chainName}
+                  isValid={validation.isValid}
+                  validationError={
+                    !validation.isValid && !isAnyTxActive
+                      ? validation.amountError || validation.addressError || 'Please fill in all required fields'
+                      : null
+                  }
+                  onContinue={() => {
+                    if (validation.isValid) {
+                      setShowConfirmationModal(true)
+                    } else {
+                      if (validation.amountError) {
+                        notify(buildValidationErrorToast('Amount', validation.amountError))
+                      }
+                      if (validation.addressError) {
+                        notify(buildValidationErrorToast('Address', validation.addressError))
+                      }
+                    }
+                  }}
+                  isSubmitting={isAnyTxActive}
+                  currentPhase={currentPhase}
+                />
+              </form>
+              <div className='min-h-12' />
             </div>
           </div>
-
-          <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
-            
-            {/* Amount Input Section */}
-          <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
-            <label className="block text-sm font-medium text-muted-foreground mb-3">Amount</label>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-muted-foreground">$</span>
-              <input
-                type="text"
-                value={amount}
-                onChange={(e) => handleAmountInputChange(e, setAmount, 6)}
-                className="flex-1 border-none bg-transparent p-0 text-3xl font-bold focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30"
-                placeholder="0.00"
-                inputMode="decimal"
-                disabled={isAnyTxActive}
-              />
-              <span className="text-sm text-muted-foreground">USDC</span>
-            </div>
-            {/* Validation error for amount */}
-            {validation.amountError && amount.trim() !== '' && (
-              <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                <span className="flex-1">{validation.amountError}</span>
-              </div>
-            )}
-          </div>
-
-          {/* To Namada Address Section */}
-          <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
-            <div className="flex items-baseline justify-between mb-3">
-              <label className="text-sm font-medium text-muted-foreground">Recipient Address</label>
-              <button
-                type="button"
-                onClick={handleAutoFill}
-                disabled={!walletState.namada.isConnected || isAnyTxActive}
-                className={`text-sm font-medium text-primary hover:text-primary/80 transition-colors ${
-                  !walletState.namada.isConnected || isAnyTxActive
-                    ? 'opacity-50 cursor-not-allowed'
-                    : ''
-                }`}
-              >
-                Auto Fill
-              </button>
-            </div>
-            <input
-              type="text"
-              value={toAddress}
-              onChange={(e) => handleBech32InputChange(e, setToAddress)}
-              className={`w-full rounded-lg border bg-background px-4 py-3 text-sm font-mono shadow-sm focus-visible:outline-none focus-visible:ring-2 transition-colors ${
-                validation.addressError && toAddress.trim() !== ''
-                  ? 'border-destructive focus-visible:ring-destructive/20 focus-visible:border-destructive'
-                  : 'border-input focus-visible:ring-ring focus-visible:border-ring'
-              }`}
-              placeholder="tnam..."
-              disabled={isAnyTxActive}
-            />
-            {/* Validation error for address */}
-            {validation.addressError && toAddress.trim() !== '' && (
-              <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                <span className="flex-1">{validation.addressError}</span>
-              </div>
-            )}
-            {/* Noble forwarding registration status */}
-            {!validation.addressError && toAddress.trim() !== '' && (
-              <div className="mt-3">
-                {registrationStatus.isLoading && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Checking registration status...</span>
-                  </div>
-                )}
-                {!registrationStatus.isLoading && registrationStatus.isRegistered === true && (
-                  <div className="rounded-md border border-green-500/50 bg-green-500/10 px-3 py-2 text-sm text-green-700 dark:text-green-400">
-                    <div className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-                      <div className="flex-1 space-y-1">
-                        <p>Noble forwarding address is already registered</p>
-                        {registrationStatus.forwardingAddress && (
-                          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-green-500/20">
-                            <span className="font-mono text-xs opacity-90 break-all">
-                              {registrationStatus.forwardingAddress}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText(registrationStatus.forwardingAddress!)
-                                notify(buildCopySuccessToast('Forwarding address'))
-                              }}
-                              className="rounded p-1 text-green-700 dark:text-green-400 hover:bg-green-500/20 transition-colors shrink-0"
-                              aria-label="Copy forwarding address"
-                              title="Copy forwarding address"
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {!registrationStatus.isLoading && registrationStatus.isRegistered === false && (
-                  <div className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
-                    <div className="flex items-start gap-2">
-                      <Info className="h-4 w-4 shrink-0 mt-0.5" />
-                      <div className="flex-1 space-y-1">
-                        <p>Noble forwarding address not yet registered. A $0.02 registration fee will be included.</p>
-                        {registrationStatus.forwardingAddress && (
-                          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-amber-500/20">
-                            <span className="font-mono text-xs opacity-90 break-all">
-                              {registrationStatus.forwardingAddress}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText(registrationStatus.forwardingAddress!)
-                                notify(buildCopySuccessToast('Forwarding address'))
-                              }}
-                              className="rounded p-1 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 transition-colors shrink-0"
-                              aria-label="Copy forwarding address"
-                              title="Copy forwarding address"
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {!registrationStatus.isLoading && registrationStatus.error && (
-                  <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                    <span className="flex-1">Unable to check registration status: {registrationStatus.error}</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Chain Select Component */}
-          <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
-            <label className="block text-sm font-medium text-muted-foreground mb-3">Source Chain</label>
-            <ChainSelect
-              value={selectedChain}
-              onChange={setSelectedChain}
-              disabled={isAnyTxActive}
-              showEstimatedTime={true}
-              timeType="deposit"
-            />
-          </div>
-
-          {/* Fee and Total Summary */}
-          <div className="rounded-lg border border-border bg-card p-6 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Network Fee</span>
-              {isEstimatingFee ? (
-                <div className="flex items-center gap-1.5">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">Estimating...</span>
-                </div>
-              ) : feeInfo ? (
-                <span className="text-sm font-semibold">{estimatedFee}</span>
-              ) : (
-                <span className="text-sm text-muted-foreground">--</span>
-              )}
-            </div>
-            <div className="flex items-center justify-between border-t border-border pt-3">
-              <span className="text-base font-semibold">Total</span>
-              <span className="text-xl font-bold">${total}</span>
-            </div>
-          </div>
-
-          {/* Action Button */}
-          <div className="space-y-1">
-            <Button
-              type="submit"
-              variant="primary"
-            className={cn(
-              "w-full py-6 text-lg font-semibold gap-2 transition-all",
-              isAnyTxActive && "animate-pulse cursor-not-allowed opacity-60",
-              !validation.isValid && !isAnyTxActive && "opacity-50 cursor-not-allowed"
-            )}
-            disabled={!validation.isValid || isAnyTxActive}
-            >
-            {isAnyTxActive ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin" />
-                <span className="transition-opacity duration-200">
-                  {currentPhase === 'building' && 'Building transaction...'}
-                  {currentPhase === 'signing' && 'Waiting for approval...'}
-                  {currentPhase === 'submitting' && 'Submitting transaction...'}
-                  {!currentPhase && 'Processing...'}
-                </span>
-              </>
-            ) : (
-              <>
-                <ArrowRight className="h-5 w-5" />
-                Deposit Now
-              </>
-            )}
-          </Button>
-            {!validation.isValid && !isAnyTxActive && (
-              <p className="text-xs text-muted-foreground text-center">
-                {validation.amountError || validation.addressError || 'Please fill in all required fields'}
-              </p>
-            )}
-          </div>
-          </form>
-          <div className='min-h-12' />
         </div>
 
         {/* Confirmation Modal */}

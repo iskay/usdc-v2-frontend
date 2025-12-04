@@ -112,7 +112,7 @@ export function ChainSelect({
   // Render select with chain info
   return (
     <div className="flex flex-col gap-2">
-      <label className="text-sm font-medium text-muted-foreground">Network</label>
+      {/* <label className="text-sm font-medium text-muted-foreground">Network</label> */}
       <div className="flex items-center gap-3 rounded-lg border border-input bg-background px-4 py-3 shadow-sm">
         {/* Chain logo */}
         {selectedChain?.logo && (
