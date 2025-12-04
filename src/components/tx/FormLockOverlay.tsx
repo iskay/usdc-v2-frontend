@@ -26,7 +26,7 @@ export function FormLockOverlay({
   return (
     <div
       className={cn(
-        "absolute inset-0 z-10 flex items-center justify-center bg-background/50 backdrop-blur-sm rounded-lg",
+        "absolute inset-0 z-10 flex items-center justify-center bg-background backdrop-blur-2xl rounded-lg",
         className
       )}
     >

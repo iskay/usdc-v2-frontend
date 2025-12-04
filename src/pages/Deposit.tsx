@@ -638,20 +638,25 @@ export function Deposit() {
 
   return (
     <RequireMetaMaskConnection message="Please connect your MetaMask wallet to deposit USDC. EVM deposits require a connected wallet.">
-      {/* Success Overlay */}
-      {showSuccessState && txHash && (
-        <TransactionSuccessOverlay
-          txHash={txHash}
-          explorerUrl={explorerUrl}
-          onNavigate={() => {
-            resetTxUiState(setTxUiState)
-            navigate('/dashboard')
-          }}
-          countdownSeconds={3}
-        />
-      )}
+      <div className="relative min-h-full min-w-full">
+        {/* Success Overlay */}
+        {showSuccessState && txHash && (
+          <TransactionSuccessOverlay
+            txHash={txHash}
+            explorerUrl={explorerUrl}
+            onNavigate={() => {
+              // Navigate first, then reset state after route transition completes
+              navigate('/dashboard')
+              // Delay state reset to allow overlay fade-out and route transition (500ms fade + 350ms route transition)
+              setTimeout(() => {
+                resetTxUiState(setTxUiState)
+              }, 600)
+            }}
+            countdownSeconds={3}
+          />
+        )}
 
-      <div className="flex flex-col gap-6 p-12 mx-auto w-full">
+        <div className="flex flex-col gap-6 p-12 mx-auto w-full">
         <BackToHome />
 
         <header className="space-y-2">
@@ -989,6 +994,7 @@ export function Deposit() {
             </span>
           )}
         </div>
+      </div>
       </div>
     </RequireMetaMaskConnection>
   )

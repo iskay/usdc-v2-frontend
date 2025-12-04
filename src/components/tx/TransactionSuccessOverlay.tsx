@@ -25,18 +25,29 @@ export function TransactionSuccessOverlay({
   className,
 }: TransactionSuccessOverlayProps) {
   const [countdown, setCountdown] = useState(countdownSeconds)
+  const [isFadingOut, setIsFadingOut] = useState(false)
 
   useEffect(() => {
     if (countdown <= 0) {
-      onNavigate()
-      return
+      // Start fade-out animation before navigation
+      setIsFadingOut(true)
+      // Wait for fade-out to complete (500ms) before navigating
+      const navigateTimer = setTimeout(() => {
+        onNavigate()
+      }, 500)
+      return () => clearTimeout(navigateTimer)
     }
 
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timer)
-          onNavigate()
+          // Start fade-out animation before navigation
+          setIsFadingOut(true)
+          // Wait for fade-out to complete (500ms) before navigating
+          setTimeout(() => {
+            onNavigate()
+          }, 500)
           return 0
         }
         return prev - 1
@@ -49,7 +60,8 @@ export function TransactionSuccessOverlay({
   return (
     <div
       className={cn(
-        "fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm animate-in fade-in duration-300",
+        "absolute inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm animate-in fade-in duration-300",
+        isFadingOut && "animate-out fade-out duration-500",
         className
       )}
     >
