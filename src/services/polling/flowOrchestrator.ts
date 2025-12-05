@@ -871,7 +871,7 @@ export class FlowOrchestrator {
     })
 
     // Set up chain-level timeout check
-    const chainTimeoutTimer = setTimeout(() => {
+    const chainTimeoutTimer = setTimeout(async () => {
       // Check if chain is still pending after timeout
       const currentState = getPollingState(this.txId)
       const currentChainStatus = currentState?.chainStatus[chain]
@@ -888,6 +888,9 @@ export class FlowOrchestrator {
           errorMessage: `Chain polling timed out after ${chainTimeout}ms`,
           timeoutOccurredAt: Date.now(),
         })
+
+        // Check flow completion to update overall flowStatus and transaction status
+        await this.checkFlowCompletion()
       }
     }, chainTimeout)
 

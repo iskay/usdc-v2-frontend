@@ -800,7 +800,7 @@ export function TransactionDetailModal({
           )}
 
           {/* Undetermined Status Notice */}
-          {transaction.status === 'undetermined' && (
+          {effectiveStatus === 'undetermined' && (
             <div className="border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-950">
               <div className="flex items-start gap-2">
                 <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
