@@ -1,5 +1,5 @@
-import { useState, memo } from 'react'
-import { Clock, CheckCircle2, XCircle, AlertCircle, ChevronRight, Trash2 } from 'lucide-react'
+import { useState, memo, cloneElement } from 'react'
+import { Clock, CheckCircle2, XCircle, AlertCircle, Trash2, ArrowDown, Send, MoreVertical } from 'lucide-react'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import {
   isInProgress,
@@ -14,6 +14,7 @@ import {
 } from '@/services/tx/transactionStatusService'
 import { TransactionDetailModal } from './TransactionDetailModal'
 import { DeleteTransactionConfirmationDialog } from './DeleteTransactionConfirmationDialog'
+import { DropdownMenu, DropdownMenuItem } from '@/components/common/DropdownMenu'
 import { cn } from '@/lib/utils'
 
 export interface TransactionCardProps {
@@ -22,6 +23,7 @@ export interface TransactionCardProps {
   onClick?: () => void
   showExpandButton?: boolean
   onDelete?: (txId: string) => void
+  hideActions?: boolean // Hide the actions column (dropdown menu)
   // Optional external modal state control (for persistence across component remounts)
   isModalOpen?: boolean
   onModalOpenChange?: (open: boolean) => void
@@ -33,6 +35,7 @@ export const TransactionCard = memo(function TransactionCard({
   onClick,
   showExpandButton = true,
   onDelete,
+  hideActions = false,
   isModalOpen: externalIsModalOpen,
   onModalOpenChange,
 }: TransactionCardProps) {
@@ -49,11 +52,6 @@ export const TransactionCard = memo(function TransactionCard({
     } else if (showExpandButton) {
       setIsModalOpen(true)
     }
-  }
-
-  const handleDeleteClick = (e: React.MouseEvent) => {
-    e.stopPropagation() // Prevent card click handler
-    setIsDeleteDialogOpen(true)
   }
 
   const handleDeleteConfirm = () => {
@@ -124,7 +122,7 @@ export const TransactionCard = memo(function TransactionCard({
           'bg-card transition-all',
           // Conditional border, shadow, and padding: only for in-progress transactions
           inProgress 
-            ? 'rounded-lg border border-border shadow-sm hover:shadow-md p-4' 
+            ? 'rounded-lg border border-border shadow-sm hover:shadow-md p-4 bg-blue-200/20' 
             : variant === 'compact' 
               ? 'p-3' 
               : 'rounded-lg border-0 shadow-none p-4',
@@ -132,22 +130,118 @@ export const TransactionCard = memo(function TransactionCard({
         )}
         onClick={handleClick}
       >
-        <div className={cn(
-          'flex items-center justify-between',
-          variant === 'compact' ? 'gap-3' : 'gap-4'
-        )}>
-          {/* Left side: Transaction info */}
-          {variant === 'compact' ? (
-            // Compact horizontal layout: Type/Amount, Status, Time all on one line
-            <div className="flex-1 flex items-center gap-3 flex-wrap">
-              {/* Type and Amount */}
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium capitalize">
-                  {transaction.direction === 'deposit' ? 'Deposit' : 'Payment'}
-                </span>
-                {amount && <span className="text-sm text-muted-foreground">{amount}</span>}
+        {/* Dashboard compact layout (when hideActions is true and variant is compact) */}
+        {hideActions && variant === 'compact' ? (
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+            {/* Column 1: Transaction - Type and source chain */}
+            <div className="flex items-center gap-2 min-w-0">
+              {/* Transaction type icon - smaller for dashboard */}
+              <div className="flex-shrink-0">
+                {transaction.direction === 'deposit' ? (
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900/30">
+                    <ArrowDown className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                  </div>
+                ) : (
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
+                    <Send className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  </div>
+                )}
               </div>
               
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm font-medium capitalize truncate">
+                  {transaction.direction === 'deposit' ? 'Deposit' : 'Payment'}
+                </span>
+                <span className="text-xs text-muted-foreground truncate">
+                  {transaction.direction === 'deposit' 
+                    ? `From: ${transaction.chain}`
+                    : `To: ${transaction.paymentDetails?.chainName || transaction.chain}`
+                  }
+                </span>
+              </div>
+            </div>
+
+            {/* Column 2: Amount only */}
+            <div className="flex items-center justify-end min-w-0">
+              {amount && (
+                <span className="text-sm font-medium">{amount}</span>
+              )}
+            </div>
+
+            {/* Column 3: Status and time - stacked vertically */}
+            <div className="flex flex-col items-end gap-1 min-w-0">
+              {/* Status badge */}
+              <div className="flex items-center gap-1.5">
+                <div className={cn(
+                  'inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5',
+                  badgeBgColor,
+                  badgeTextColor,
+                  badgeBorderColor
+                )}>
+                  {cloneElement(statusIcon, { className: 'h-3 w-3' })}
+                  <span className="text-[10px] font-medium leading-tight">{statusLabel}</span>
+                </div>
+                
+                {hasClientTimeout(transaction) && (
+                  <div className="group relative">
+                    <AlertCircle className="h-3 w-3 text-yellow-600" />
+                    <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition-opacity group-hover:block group-hover:opacity-100">
+                      {getTimeoutMessage(transaction)}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Time with clock icon - smaller */}
+              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                <span>{timeElapsed}</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+        <div className={cn(
+            'grid items-center',
+            hideActions ? 'grid-cols-[1fr_1fr]' : 'grid-cols-[1fr_1fr_auto]',
+          variant === 'compact' ? 'gap-3' : 'gap-4'
+        )}>
+            {/* Column 1: Transaction - Type and source chain */}
+            <div className="flex items-center gap-3 min-w-0">
+              {/* Transaction type icon */}
+              <div className="flex-shrink-0">
+                {transaction.direction === 'deposit' ? (
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900/30">
+                    <ArrowDown className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+                  </div>
+                ) : (
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
+                    <Send className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm font-medium capitalize truncate">
+                  {transaction.direction === 'deposit' ? 'Deposit' : 'Payment'}
+                </span>
+                <span className="text-xs text-muted-foreground truncate">
+                  {transaction.direction === 'deposit' 
+                    ? `From: ${transaction.chain}`
+                    : `To: ${transaction.paymentDetails?.chainName || transaction.chain}`
+                  }
+                </span>
+              </div>
+            </div>
+
+            {/* Column 2: Amount & Status - Amount, status and time */}
+            <div className="flex flex-col gap-2 min-w-0">
+              {/* Amount */}
+              {amount && (
+                <span className="text-sm font-medium">{amount}</span>
+              )}
+              
+              {/* Status and Time */}
+              <div className="flex items-center gap-2 flex-wrap">
               {/* Pill-shaped status badge */}
               <div className={cn(
                 'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5',
@@ -170,43 +264,6 @@ export const TransactionCard = memo(function TransactionCard({
               
               {/* Time with clock icon */}
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Clock className="h-3.5 w-3.5" />
-                <span>{timeElapsed}</span>
-              </div>
-            </div>
-          ) : (
-            // Detailed vertical layout
-            <div className="flex-1 space-y-2">
-              {/* Header: Type and Amount */}
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium capitalize">
-                  {transaction.direction === 'deposit' ? 'Deposit' : 'Payment'}
-                </span>
-                {amount && <span className="text-sm text-muted-foreground">{amount}</span>}
-              </div>
-
-              {/* Status and Time */}
-              <div className="flex items-center gap-3 text-xs">
-                {/* Pill-shaped status badge */}
-                <div className={cn(
-                  'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5',
-                  badgeBgColor,
-                  badgeTextColor,
-                  badgeBorderColor
-                )}>
-                  {statusIcon}
-                  <span className="text-xs font-medium">{statusLabel}</span>
-                </div>
-                {hasClientTimeout(transaction) && (
-                  <div className="group relative">
-                    <AlertCircle className="h-3.5 w-3.5 text-yellow-600" />
-                    <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition-opacity group-hover:block group-hover:opacity-100">
-                      {getTimeoutMessage(transaction)}
-                    </div>
-                  </div>
-                )}
-                {/* Time with clock icon */}
-                <div className="flex items-center gap-1 text-muted-foreground">
                   <Clock className="h-3.5 w-3.5" />
                   <span>{timeElapsed}</span>
                 </div>
@@ -227,31 +284,42 @@ export const TransactionCard = memo(function TransactionCard({
                   </div>
                 </div>
               )}
-
-              {/* Chain info */}
-              <div className="text-xs text-muted-foreground">
-                Chain: {transaction.chain}
-              </div>
             </div>
-          )}
 
-          {/* Right side: Actions */}
+            {/* Column 3: Actions - Action icons */}
+            {!hideActions && (
           <div className="flex items-center gap-2 flex-shrink-0">
             {onDelete && (
+                  <DropdownMenu
+                    trigger={
               <button
                 type="button"
-                onClick={handleDeleteClick}
-                className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
-                aria-label="Delete transaction"
+                        className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-muted/80 transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
+                        aria-label="Transaction actions"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </button>
+                    }
+                    align="right"
+                  >
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setIsDeleteDialogOpen(true)
+                      }}
+                      stopPropagation
+                      className="text-destructive hover:bg-destructive/10"
               >
+                      <div className="flex items-center gap-2">
                 <Trash2 className="h-4 w-4" />
-              </button>
+                        <span>Delete</span>
+                      </div>
+                    </DropdownMenuItem>
+                  </DropdownMenu>
             )}
-            {showExpandButton && (onClick || showExpandButton) && (
-              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+              </div>
             )}
           </div>
-        </div>
+        )}
       </div>
 
       {/* Detail Modal */}

@@ -197,7 +197,7 @@ export function Dashboard() {
       <div className="flex flex-col gap-6 p-12 mx-auto w-full">
 
         {/* Balance and Actions Section + Recent Activity Side by Side */}
-        <div className="flex flex-col lg:flex-row gap-6 mb-12">
+        <div className="flex flex-col lg:flex-row gap-6 mb-12 items-start">
           {/* Balance and Actions Section */}
           <div className="flex flex-col gap-8 flex-2 rounded-lg border border-border bg-card p-4 shadow-sm">
           {/* Section Header */}
@@ -460,6 +460,7 @@ export function Dashboard() {
             <TxInProgressList
               openModalTxId={openModalTxId}
               onModalOpenChange={setOpenModalTxId}
+              hideActions={true}
             />
           </div>
 
@@ -472,6 +473,7 @@ export function Dashboard() {
               openModalTxId={openModalTxId}
               onModalOpenChange={setOpenModalTxId}
               reloadTrigger={historyReloadTrigger}
+              hideActions={true}
             />
           </div>
           </div>

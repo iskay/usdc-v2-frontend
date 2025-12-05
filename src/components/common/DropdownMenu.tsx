@@ -1,5 +1,11 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, createContext, useContext } from 'react'
 import { cn } from '@/lib/utils'
+
+interface DropdownContextType {
+  close: () => void
+}
+
+const DropdownContext = createContext<DropdownContextType | null>(null)
 
 interface DropdownMenuProps {
   trigger: React.ReactNode
@@ -11,6 +17,8 @@ interface DropdownMenuProps {
 export function DropdownMenu({ trigger, children, align = 'right', className }: DropdownMenuProps) {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const close = () => setIsOpen(false)
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -27,9 +35,15 @@ export function DropdownMenu({ trigger, children, align = 'right', className }: 
     }
   }, [isOpen])
 
+  const handleTriggerClick = (e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent parent click handlers
+    setIsOpen(!isOpen)
+  }
+
   return (
+    <DropdownContext.Provider value={{ close }}>
     <div className="relative" ref={dropdownRef}>
-      <div onClick={() => setIsOpen(!isOpen)}>{trigger}</div>
+        <div onClick={handleTriggerClick}>{trigger}</div>
       {isOpen && (
         <div
           className={cn(
@@ -37,11 +51,13 @@ export function DropdownMenu({ trigger, children, align = 'right', className }: 
             align === 'right' ? 'right-0' : 'left-0',
             className
           )}
+            onClick={(e) => e.stopPropagation()}
         >
           {children}
         </div>
       )}
     </div>
+    </DropdownContext.Provider>
   )
 }
 
@@ -53,11 +69,15 @@ interface DropdownMenuItemProps {
 }
 
 export function DropdownMenuItem({ children, onClick, className, stopPropagation = false }: DropdownMenuItemProps) {
+  const context = useContext(DropdownContext)
+
   const handleClick = (e: React.MouseEvent) => {
     if (stopPropagation) {
       e.stopPropagation()
     }
     onClick?.()
+    // Close dropdown after item click
+    context?.close()
   }
 
   return (

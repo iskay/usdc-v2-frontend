@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
+import { AlertTriangle, Download } from 'lucide-react'
 import { AlertBox } from '@/components/common/AlertBox'
 import { Button } from '@/components/common/Button'
+import { Tooltip } from '@/components/common/Tooltip'
 import { BackToHome } from '@/components/common/BackToHome'
 import { TransactionCard } from '@/components/tx/TransactionCard'
 import { Spinner } from '@/components/common/Spinner'
@@ -70,41 +72,51 @@ export function History() {
   })
 
   return (
-    <div className="space-y-6 p-12 max-w-[1024px] mx-auto w-full">
+    <div className="space-y-6 p-12 mx-auto w-full">
       <BackToHome />
 
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">Transaction History</h1>
         <p className="text-muted-foreground">
-          Review deposits, payments, and transaction activity across your connected accounts.
+          Review your recent transaction activity.
         </p>
+        <AlertBox tone="warning">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <p>
+              History is only available on this device. Browser storage can be volatile, so don't rely on this to save important information long-term.
+            </p>
+          </div>
+        </AlertBox>
       </header>
 
       {/* Filters Section */}
-      <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-2">
             {FILTERS.map((filter) => (
               <Button
                 key={filter}
                 variant={activeFilter === filter ? 'primary' : 'ghost'}
                 onClick={() => setActiveFilter(filter)}
-                className="transition-all"
+                className="transition-all rounded-xl"
               >
                 {filter === 'all' ? 'All Activity' : filter === 'deposits' ? 'Deposits' : 'Payments'}
               </Button>
             ))}
           </div>
-          <Button variant="ghost" className="ml-auto" disabled>
-            Export History
-          </Button>
+          <div>
+          <Tooltip 
+            content="TODO: Add CSV export functionality for transaction history."
+            side="top"
+            className="whitespace-normal max-w-xs"
+          >
+            <Button variant="ghost" className="ml-auto rounded-xl" disabled>
+              <Download className="h-4 w-4" />
+              Export History
+            </Button>
+          </Tooltip>
+          </div>
         </div>
-      </div>
-
-      {/* Alert Box */}
-      <AlertBox tone="info" title="Export roadmap">
-        TODO: Add CSV export functionality for transaction history.
-      </AlertBox>
 
       {/* Transaction List */}
       {isLoading ? (
@@ -143,6 +155,13 @@ export function History() {
         </div>
       ) : (
         <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+          {/* Column Headers */}
+          <div className="grid grid-cols-[1fr_1fr_auto] items-center gap-4 pb-4 mb-4 border-b border-border">
+            <div className="text-sm font-semibold text-muted-foreground">Transaction<span className="text-xs font-normal ml-1">(click for details)</span></div>
+            <div className="text-sm font-semibold text-muted-foreground">Amount & Status</div>
+            <div className="text-sm font-semibold text-muted-foreground">Actions</div>
+          </div>
+          
           <div className="space-y-0">
             {filteredTransactions.map((tx, index) => {
               const isCompleted = !isInProgress(tx)
@@ -151,7 +170,7 @@ export function History() {
               const showDivider = isCompleted && nextIsCompleted && index < filteredTransactions.length - 1
               
               return (
-                <div key={tx.id}>
+                <div key={tx.id} className='mb-4'>
                   <TransactionCard
                     transaction={tx}
                     variant="detailed"

@@ -8,9 +8,10 @@ export interface TxHistoryListProps {
   openModalTxId?: string | null
   onModalOpenChange?: (txId: string | null) => void
   reloadTrigger?: number // When changed, triggers immediate reload
+  hideActions?: boolean // Hide the actions column (dropdown menu)
 }
 
-export function TxHistoryList({ openModalTxId, onModalOpenChange, reloadTrigger }: TxHistoryListProps = {}) {
+export function TxHistoryList({ openModalTxId, onModalOpenChange, reloadTrigger, hideActions = false }: TxHistoryListProps = {}) {
   const [completedTxs, setCompletedTxs] = useState<StoredTransaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -94,6 +95,7 @@ export function TxHistoryList({ openModalTxId, onModalOpenChange, reloadTrigger 
             variant="compact"
             showExpandButton={true}
             onDelete={handleDelete}
+            hideActions={hideActions}
             isModalOpen={openModalTxId === tx.id}
             onModalOpenChange={(open) => {
               if (onModalOpenChange) {

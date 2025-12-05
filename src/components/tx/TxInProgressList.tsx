@@ -8,9 +8,10 @@ import { useDeleteTransaction } from '@/hooks/useDeleteTransaction'
 export interface TxInProgressListProps {
   openModalTxId?: string | null
   onModalOpenChange?: (txId: string | null) => void
+  hideActions?: boolean // Hide the actions column (dropdown menu)
 }
 
-export function TxInProgressList({ openModalTxId, onModalOpenChange }: TxInProgressListProps = {}) {
+export function TxInProgressList({ openModalTxId, onModalOpenChange, hideActions = false }: TxInProgressListProps = {}) {
   const [inProgressTxs, setInProgressTxs] = useState<StoredTransaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -93,6 +94,7 @@ export function TxInProgressList({ openModalTxId, onModalOpenChange }: TxInProgr
             variant="compact"
             showExpandButton={true}
             onDelete={handleDelete}
+            hideActions={hideActions}
             isModalOpen={openModalTxId === tx.id}
             onModalOpenChange={(open) => {
               if (onModalOpenChange) {
