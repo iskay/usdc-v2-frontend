@@ -121,28 +121,33 @@ export const TransactionCard = memo(function TransactionCard({
     <>
       <div
         className={cn(
-          'rounded-lg bg-card p-4 transition-all',
-          // Conditional border and shadow: only for in-progress transactions
+          'bg-card transition-all',
+          // Conditional border, shadow, and padding: only for in-progress transactions
           inProgress 
-            ? 'border border-border shadow-sm hover:shadow-md' 
-            : 'border-0 shadow-none',
+            ? 'rounded-lg border border-border shadow-sm hover:shadow-md p-4' 
+            : variant === 'compact' 
+              ? 'p-3' 
+              : 'rounded-lg border-0 shadow-none p-4',
           onClick || showExpandButton ? 'cursor-pointer' : '',
         )}
         onClick={handleClick}
       >
-        <div className="flex items-start justify-between gap-4">
+        <div className={cn(
+          'flex items-center justify-between',
+          variant === 'compact' ? 'gap-3' : 'gap-4'
+        )}>
           {/* Left side: Transaction info */}
-          <div className="flex-1 space-y-2">
-            {/* Header: Type and Amount */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium capitalize">
-                {transaction.direction === 'deposit' ? 'Deposit' : 'Payment'}
-              </span>
-              {amount && <span className="text-sm text-muted-foreground">{amount}</span>}
-            </div>
-
-            {/* Status and Time */}
-            <div className="flex items-center gap-3 text-xs">
+          {variant === 'compact' ? (
+            // Compact horizontal layout: Type/Amount, Status, Time all on one line
+            <div className="flex-1 flex items-center gap-3 flex-wrap">
+              {/* Type and Amount */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium capitalize">
+                  {transaction.direction === 'deposit' ? 'Deposit' : 'Payment'}
+                </span>
+                {amount && <span className="text-sm text-muted-foreground">{amount}</span>}
+              </div>
+              
               {/* Pill-shaped status badge */}
               <div className={cn(
                 'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5',
@@ -153,6 +158,7 @@ export const TransactionCard = memo(function TransactionCard({
                 {statusIcon}
                 <span className="text-xs font-medium">{statusLabel}</span>
               </div>
+              
               {hasClientTimeout(transaction) && (
                 <div className="group relative">
                   <AlertCircle className="h-3.5 w-3.5 text-yellow-600" />
@@ -161,36 +167,73 @@ export const TransactionCard = memo(function TransactionCard({
                   </div>
                 </div>
               )}
+              
               {/* Time with clock icon */}
-              <div className="flex items-center gap-1 text-muted-foreground">
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Clock className="h-3.5 w-3.5" />
                 <span>{timeElapsed}</span>
               </div>
             </div>
+          ) : (
+            // Detailed vertical layout
+            <div className="flex-1 space-y-2">
+              {/* Header: Type and Amount */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium capitalize">
+                  {transaction.direction === 'deposit' ? 'Deposit' : 'Payment'}
+                </span>
+                {amount && <span className="text-sm text-muted-foreground">{amount}</span>}
+              </div>
 
-            {/* Progress bar (for in-progress transactions) */}
-            {isInProgress(transaction) && variant === 'detailed' && (
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Progress</span>
-                  <span className="font-medium">{progress}%</span>
+              {/* Status and Time */}
+              <div className="flex items-center gap-3 text-xs">
+                {/* Pill-shaped status badge */}
+                <div className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5',
+                  badgeBgColor,
+                  badgeTextColor,
+                  badgeBorderColor
+                )}>
+                  {statusIcon}
+                  <span className="text-xs font-medium">{statusLabel}</span>
                 </div>
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full bg-primary transition-all duration-300"
-                    style={{ width: `${progress}%` }}
-                  />
+                {hasClientTimeout(transaction) && (
+                  <div className="group relative">
+                    <AlertCircle className="h-3.5 w-3.5 text-yellow-600" />
+                    <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition-opacity group-hover:block group-hover:opacity-100">
+                      {getTimeoutMessage(transaction)}
+                    </div>
+                  </div>
+                )}
+                {/* Time with clock icon */}
+                <div className="flex items-center gap-1 text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5" />
+                  <span>{timeElapsed}</span>
                 </div>
               </div>
-            )}
 
-            {/* Chain info */}
-            {variant === 'detailed' && (
+              {/* Progress bar (for in-progress transactions) */}
+              {isInProgress(transaction) && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Progress</span>
+                    <span className="font-medium">{progress}%</span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full bg-primary transition-all duration-300"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Chain info */}
               <div className="text-xs text-muted-foreground">
                 Chain: {transaction.chain}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Right side: Actions */}
           <div className="flex items-center gap-2 flex-shrink-0">

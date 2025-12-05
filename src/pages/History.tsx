@@ -6,6 +6,7 @@ import { TransactionCard } from '@/components/tx/TransactionCard'
 import { Spinner } from '@/components/common/Spinner'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
 import { useDeleteTransaction } from '@/hooks/useDeleteTransaction'
+import { isInProgress } from '@/services/tx/transactionStatusService'
 
 const FILTERS = ['all', 'deposits', 'payments'] as const
 
@@ -142,20 +143,32 @@ export function History() {
         </div>
       ) : (
         <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
-          <div className="space-y-3">
-            {filteredTransactions.map((tx) => (
-              <TransactionCard
-                key={tx.id}
-                transaction={tx}
-                variant="detailed"
-                showExpandButton={true}
-                onDelete={handleDelete}
-                isModalOpen={openModalTxId === tx.id}
-                onModalOpenChange={(open) => {
-                  setOpenModalTxId(open ? tx.id : null)
-                }}
-              />
-            ))}
+          <div className="space-y-0">
+            {filteredTransactions.map((tx, index) => {
+              const isCompleted = !isInProgress(tx)
+              const nextTx = filteredTransactions[index + 1]
+              const nextIsCompleted = nextTx ? !isInProgress(nextTx) : false
+              const showDivider = isCompleted && nextIsCompleted && index < filteredTransactions.length - 1
+              
+              return (
+                <div key={tx.id}>
+                  <TransactionCard
+                    transaction={tx}
+                    variant="detailed"
+                    showExpandButton={true}
+                    onDelete={handleDelete}
+                    isModalOpen={openModalTxId === tx.id}
+                    onModalOpenChange={(open) => {
+                      setOpenModalTxId(open ? tx.id : null)
+                    }}
+                  />
+                  {/* Add divider between completed items */}
+                  {showDivider && (
+                    <div className="border-b border-border/60 my-2" />
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

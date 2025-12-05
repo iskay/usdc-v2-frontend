@@ -86,21 +86,26 @@ export function TxHistoryList({ openModalTxId, onModalOpenChange, reloadTrigger 
   }
 
   return (
-    <div className="space-y-2">
-      {completedTxs.map((tx) => (
-        <TransactionCard
-          key={tx.id}
-          transaction={tx}
-          variant="compact"
-          showExpandButton={true}
-          onDelete={handleDelete}
-          isModalOpen={openModalTxId === tx.id}
-          onModalOpenChange={(open) => {
-            if (onModalOpenChange) {
-              onModalOpenChange(open ? tx.id : null)
-            }
-          }}
-        />
+    <div className="space-y-0">
+      {completedTxs.map((tx, index) => (
+        <div key={tx.id}>
+          <TransactionCard
+            transaction={tx}
+            variant="compact"
+            showExpandButton={true}
+            onDelete={handleDelete}
+            isModalOpen={openModalTxId === tx.id}
+            onModalOpenChange={(open) => {
+              if (onModalOpenChange) {
+                onModalOpenChange(open ? tx.id : null)
+              }
+            }}
+          />
+          {/* Add divider between items, but not after the last one */}
+          {index < completedTxs.length - 1 && (
+            <div className="border-b border-border/60 my-2" />
+          )}
+        </div>
       ))}
     </div>
   )

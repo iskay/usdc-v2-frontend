@@ -208,12 +208,11 @@ export function Dashboard() {
             </p>
           </div>
 
-          {/* Balance Section */}
-          <div className="flex flex-col items-stretch gap-6">
-          {/* Transparent Balance Card */}
-          <div className="rounded-lg border border-slate-200/50 bg-gradient-to-br from-slate-50/50 to-slate-100/30 dark:from-slate-950/20 dark:to-slate-900/10 dark:border-slate-800/50 p-6 shadow-sm">
-            <div className="flex items-start justify-between mb-4">
-              <div>
+          {/* Unified Balance Card */}
+          <div className="rounded-lg border border-slate-200 bg-slate-200/50 dark:from-slate-950/20 dark:to-slate-900/10 dark:border-slate-800/50 p-6 shadow-xs">
+            <div className="flex items-start justify-between gap-6">
+              {/* Left side: Transparent Balance */}
+              <div className="flex-1">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Transparent Balance</p>
                 <div className="flex items-center gap-2 mt-1">
                   <p className="text-2xl font-bold">{displayTransparentBalance} <span className="text-lg font-semibold text-muted-foreground">USDC</span></p>
@@ -224,28 +223,8 @@ export function Dashboard() {
                   )}
                 </div>
               </div>
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex-shrink-0">
-                STEP 1 - DEPOSIT TRANSPARENT USDC
-              </p>
-              <Link to="/deposit" className="flex-shrink-0">
-                <Button 
-                  variant="primary" 
-                  className="gap-2 rounded-lg p-4 h-auto font-bold text-base min-w-84"
-                >
-                  <ArrowDown className="h-5 w-5" />Deposit USDC
-                </Button>
-              </Link>
-            </div>
-          </div>
 
-          {/* Shielded Balance Card */}
-          <div className="relative rounded-lg border border-slate-200/50 bg-gradient-to-br from-slate-50/50 to-slate-100/30 dark:from-slate-950/20 dark:to-slate-900/10 dark:border-slate-800/50 p-6 shadow-sm overflow-hidden">
-            {/* Watermark Background */}
-            {/* <Shield className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-48 w-48 text-slate-600/10 dark:text-slate-900/10 pointer-events-none" /> */}
-            
-            <div className="relative flex items-start justify-between mb-4">
+              {/* Middle: Shielded Balance */}
               <div className="flex-1">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Shielded Balance</p>
                 <div className="flex items-center gap-2 mt-1">
@@ -265,9 +244,9 @@ export function Dashboard() {
                   </p>
                 )}
               </div>
-              
-              {/* Sync Controls - Right side */}
-              <div className="flex flex-col items-end gap-2 ml-4">
+
+              {/* Right side: Sync Controls */}
+              <div className="flex flex-col items-end gap-2">
                 {/* Sync Button */}
                 {(shieldedState.status === 'error' || hasShieldedError) ? (
                   <Button 
@@ -314,7 +293,7 @@ export function Dashboard() {
                   <ShieldedSyncProgress compact />
                 </div>
               </div>
-              
+
               {/* Settings Dropdown */}
               <DropdownMenu
                 align="right"
@@ -351,67 +330,112 @@ export function Dashboard() {
                 </DropdownMenuItem>
               </DropdownMenu>
             </div>
-            
-            {/* Shield Button */}
-            <div className="relative flex items-center justify-between gap-4 mt-4">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex-shrink-0">
-                STEP 2 - SHIELD
-              </p>
-              <div className="flex-shrink-0">
-                <Button
-                  variant="primary"
-                  className={cn(
-                    "gap-2 rounded-lg p-4 h-auto font-bold text-base min-w-84",
-                    (isShieldedBalanceLoading || !hasTransparentBalance || isAnyTxActive) && "opacity-50 cursor-not-allowed"
-                  )}
-                  onClick={() => {
-                    // Prevent opening if any transaction is active
-                    if (!isAnyTxActive) {
-                      setIsShieldingModalOpen(true)
-                    }
-                  }}
-                  disabled={isAnyTxActive || isShieldedBalanceLoading || !hasTransparentBalance}
-                  title={
-                    isAnyTxActive
-                      ? `Please wait for the current ${txUiState.transactionType || 'transaction'} to complete`
-                      : !hasTransparentBalance
-                      ? 'No transparent balance to shield'
-                      : 'Shield USDC'
-                  }
-                >
-                  <Shield className="h-5 w-5" />Shield Funds
-                </Button>
-                {isAnyTxActive && (
-                  <p className="text-xs text-muted-foreground text-center mt-2">
-                    Please wait for the current {txUiState.transactionType || 'transaction'} to complete
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
           </div>
 
-          {/* Pay Button Card */}
-          <div className="rounded-lg border border-slate-200/50 bg-gradient-to-br from-slate-50/50 to-slate-100/30 dark:from-slate-950/20 dark:to-slate-900/10 dark:border-slate-800/50 p-6 shadow-sm">
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex-shrink-0">
-                STEP 3 - SEND PAYMENT FROM SHIELDED BALANCE
-              </p>
-              <Link to={hasShieldedBalance ? "/send" : "#"} className="flex-shrink-0" onClick={(e) => { if (!hasShieldedBalance) e.preventDefault() }}>
-                <Button 
-                  variant="ghost" 
-                  className={cn(
-                    "gap-2 rounded-lg p-4 h-auto font-bold text-base min-w-84",
-                    "bg-yellow-500 hover:bg-yellow-600 text-yellow-950",
-                    "transition-all duration-200",
-                    !hasShieldedBalance && "opacity-50 cursor-not-allowed"
+          {/* Action Steps Section */}
+          <div className="flex flex-col gap-0 rounded-lg overflow-hidden">
+            {/* Step 1: Deposit */}
+            <div className="p-6">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4 flex-1">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-muted-foreground/30 bg-transparent text-muted-foreground text-sm font-medium flex-shrink-0">
+                    1
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-sm font-medium">Deposit transparent USDC</p>
+                    <p className="text-xs text-muted-foreground">Add USDC from your connected Metamask wallet to your transparent balance.</p>
+                  </div>
+                </div>
+                <Link to="/deposit" className="flex-shrink-0">
+                  <Button 
+                    variant="primary" 
+                    className="gap-2 rounded-lg px-8 py-3 h-auto font-bold text-base"
+                  >
+                    <ArrowDown className="h-5 w-5" />Deposit USDC
+                  </Button>
+                </Link>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="h-px bg-border" />
+
+            {/* Step 2: Shield */}
+            <div className="p-6">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4 flex-1">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-muted-foreground/30 bg-transparent text-muted-foreground text-sm font-medium flex-shrink-0">
+                    2
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-sm font-medium">Shield funds</p>
+                    <p className="text-xs text-muted-foreground">Move funds from your transparent balance to your shielded balance.</p>
+                  </div>
+                </div>
+                <div className="flex-shrink-0">
+                  <Button
+                    variant="primary"
+                    className={cn(
+                      "gap-2 rounded-lg px-8 py-3 h-auto font-bold text-base",
+                      (isShieldedBalanceLoading || !hasTransparentBalance || isAnyTxActive) && "opacity-50 cursor-not-allowed"
+                    )}
+                    onClick={() => {
+                      // Prevent opening if any transaction is active
+                      if (!isAnyTxActive) {
+                        setIsShieldingModalOpen(true)
+                      }
+                    }}
+                    disabled={isAnyTxActive || isShieldedBalanceLoading || !hasTransparentBalance}
+                    title={
+                      isAnyTxActive
+                        ? `Please wait for the current ${txUiState.transactionType || 'transaction'} to complete`
+                        : !hasTransparentBalance
+                        ? 'No transparent balance to shield'
+                        : 'Shield USDC'
+                    }
+                  >
+                    <Shield className="h-5 w-5" />Shield Funds
+                  </Button>
+                  {isAnyTxActive && (
+                    <p className="text-xs text-muted-foreground text-center mt-2">
+                      Please wait for the current {txUiState.transactionType || 'transaction'} to complete
+                    </p>
                   )}
-                  disabled={!hasShieldedBalance}
-                >
-                  <Send className="h-5 w-5" />
-                  {hasShieldedBalance ? "Send Shielded USDC" : "Shield USDC first"}
-                </Button>
-              </Link>
+                </div>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="h-px bg-border" />
+
+            {/* Step 3: Send */}
+            <div className="p-6">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4 flex-1">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-muted-foreground/30 bg-transparent text-muted-foreground text-sm font-medium flex-shrink-0">
+                    3
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-sm font-medium">Send payment from shielded balance</p>
+                    <p className="text-xs text-muted-foreground">Send shielded USDC cross-chain to another address.</p>
+                  </div>
+                </div>
+                <Link to={hasShieldedBalance ? "/send" : "#"} className="flex-shrink-0" onClick={(e) => { if (!hasShieldedBalance) e.preventDefault() }}>
+                  <Button 
+                    variant="ghost" 
+                    className={cn(
+                      "gap-2 rounded-lg px-8 py-3 h-auto font-bold text-base",
+                      "bg-yellow-500 hover:bg-yellow-600 text-yellow-950",
+                      "transition-all duration-200",
+                      !hasShieldedBalance && "opacity-50 cursor-not-allowed"
+                    )}
+                    disabled={!hasShieldedBalance}
+                  >
+                    <Send className="h-5 w-5" />
+                    {hasShieldedBalance ? "Send Shielded USDC" : "Shield USDC first"}
+                  </Button>
+                </Link>
+              </div>
             </div>
           </div>
           </div>
