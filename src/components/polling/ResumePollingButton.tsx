@@ -1,7 +1,7 @@
 /**
- * Resume Polling Button Component
+ * Resume Status Tracking Button Component
  * 
- * Button to resume polling for a transaction that was cancelled, errored, or timed out.
+ * Button to resume status tracking for a transaction that was cancelled, errored, or timed out.
  */
 
 import { useState } from 'react'
@@ -42,14 +42,14 @@ export function ResumePollingButton({
     try {
       await resumePolling(transaction.id)
       notify({
-        title: 'Polling Resumed',
-        description: 'Transaction polling has been resumed.',
+        title: 'Status Tracking Resumed',
+        description: 'Transaction status tracking has been resumed.',
         level: 'success',
       })
     } catch (error) {
       notify({
         title: 'Resume Failed',
-        description: error instanceof Error ? error.message : 'Failed to resume polling.',
+        description: error instanceof Error ? error.message : 'Failed to resume status tracking.',
         level: 'error',
       })
     } finally {
@@ -86,14 +86,14 @@ export function ResumePollingButton({
         variantClasses[variant],
         className,
       )}
-      aria-label="Resume polling"
+      aria-label="Resume status tracking"
     >
       <Play className={cn(
         'h-3 w-3',
         size === 'lg' && 'h-4 w-4',
         isLoading && 'animate-spin',
       )} />
-      <span>{isLoading ? 'Resuming...' : 'Resume Polling'}</span>
+      <span>{isLoading ? 'Resuming...' : 'Resume Tracking'}</span>
     </button>
   )
 }

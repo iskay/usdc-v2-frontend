@@ -23,6 +23,7 @@ import { logger } from '@/utils/logger'
 import { DEPOSIT_STAGES, PAYMENT_STAGES } from '@/shared/flowStages'
 import { extractMessageSent, pollIrisAttestation } from './irisAttestationService'
 import type { MessageSentExtractionResult, IrisPollingResult } from './irisAttestationService'
+import { extractEvmBlockMetadata } from './blockMetadataExtractor'
 
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
 const DEFAULT_EVM_MAX_BLOCK_RANGE = 2000n
@@ -411,6 +412,24 @@ async function pollUsdcMintByNonce(
             nonce: parsed.nonce,
           })
 
+          // Extract block metadata (height, timestamp, tx hash)
+          let blockMetadata: { blockHeight?: number | string; blockTimestamp?: number; eventTxHash?: string } = {}
+          try {
+            blockMetadata = await extractEvmBlockMetadata(
+              provider,
+              blockNumber,
+              log.transactionHash,
+              abortSignal,
+            )
+          } catch (error) {
+            // Log warning but continue - block metadata extraction failure shouldn't break polling
+            logger.warn('[EvmPoller] Failed to extract block metadata for payment (nonce-based)', {
+              flowId: params.flowId,
+              txHash: log.transactionHash,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
+
           // Update EVM_MINT_POLLING stage to confirmed
           stages[0] = {
             stage: PAYMENT_STAGES.EVM_MINT_POLLING,
@@ -425,6 +444,8 @@ async function pollUsdcMintByNonce(
             source: 'poller',
             txHash: log.transactionHash,
             occurredAt: new Date().toISOString(),
+            // Add block metadata to stage metadata
+            metadata: Object.keys(blockMetadata).length > 0 ? blockMetadata : undefined,
           })
 
           cleanup()
@@ -587,6 +608,24 @@ async function pollUsdcMintByTransfer(
               blockNumber: blockNumber.toString(),
             })
 
+            // Extract block metadata (height, timestamp, tx hash)
+            let blockMetadata: { blockHeight?: number | string; blockTimestamp?: number; eventTxHash?: string } = {}
+            try {
+              blockMetadata = await extractEvmBlockMetadata(
+                provider,
+                blockNumber,
+                log.transactionHash,
+                abortSignal,
+              )
+            } catch (error) {
+              // Log warning but continue - block metadata extraction failure shouldn't break polling
+              logger.warn('[EvmPoller] Failed to extract block metadata for payment (transfer-based)', {
+                flowId: params.flowId,
+                txHash: log.transactionHash,
+                error: error instanceof Error ? error.message : String(error),
+              })
+            }
+
             // Update EVM_MINT_POLLING stage to confirmed
             stages[0] = {
               stage: PAYMENT_STAGES.EVM_MINT_POLLING,
@@ -601,6 +640,8 @@ async function pollUsdcMintByTransfer(
               source: 'poller',
               txHash: log.transactionHash,
               occurredAt: new Date().toISOString(),
+              // Add block metadata to stage metadata
+              metadata: Object.keys(blockMetadata).length > 0 ? blockMetadata : undefined,
             })
 
             cleanup()
@@ -766,10 +807,39 @@ async function pollDepositWithIris(
 
     const { irisLookupID, nonce, sourceDomain, destinationDomain } = extractionResult.data
 
+    // Extract block metadata (height, timestamp, tx hash)
+    let blockMetadata: { blockHeight?: number | string; blockTimestamp?: number; eventTxHash?: string } = {}
+    try {
+      // Get receipt to extract block number
+      const receipt = await provider.getTransactionReceipt(txHash)
+      if (receipt?.blockNumber) {
+        blockMetadata = await extractEvmBlockMetadata(
+          provider,
+          receipt.blockNumber,
+          txHash,
+          abortSignal,
+        )
+      }
+    } catch (error) {
+      // Log warning but continue - block metadata extraction failure shouldn't break polling
+      logger.warn('[EvmPoller] Failed to extract block metadata for deposit', {
+        flowId: params.flowId,
+        txHash,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+
     // Mark EVM_BURN_CONFIRMED as confirmed (we have the receipt)
     stages[0].status = 'confirmed'
     stages[0].txHash = txHash
     stages[0].occurredAt = new Date().toISOString()
+    // Add block metadata to stage metadata (preserve existing metadata if any)
+    if (Object.keys(blockMetadata).length > 0) {
+      stages[0].metadata = {
+        ...(stages[0].metadata || {}),
+        ...blockMetadata,
+      }
+    }
 
     // Add Iris attestation polling stage
     stages.push({

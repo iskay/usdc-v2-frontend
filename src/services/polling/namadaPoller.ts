@@ -29,6 +29,7 @@ import {
 } from './tendermintRpcClient'
 import { DEPOSIT_STAGES, PAYMENT_STAGES } from '@/shared/flowStages'
 import { logger } from '@/utils/logger'
+import { extractTendermintBlockMetadata } from './blockMetadataExtractor'
 
 /**
  * Sleep utility
@@ -195,6 +196,25 @@ async function pollForDeposit(
               txHash: namadaTxHash,
             })
 
+            // Extract block metadata (height, timestamp, tx hash)
+            let blockMetadata: { blockHeight?: number | string; blockTimestamp?: number; eventTxHash?: string } = {}
+            try {
+              blockMetadata = await extractTendermintBlockMetadata(
+                rpcClient,
+                nextHeight,
+                namadaTxHash || '',
+                params.abortSignal,
+              )
+            } catch (error) {
+              // Log warning but continue - block metadata extraction failure shouldn't break polling
+              logger.warn('[NamadaPoller] Failed to extract block metadata for deposit', {
+                flowId: params.flowId,
+                blockHeight: nextHeight,
+                txHash: namadaTxHash,
+                error: error instanceof Error ? error.message : String(error),
+              })
+            }
+
             // Update NAMADA_POLLING stage to confirmed
             stages[0] = {
               stage: DEPOSIT_STAGES.NAMADA_POLLING,
@@ -209,6 +229,8 @@ async function pollForDeposit(
               source: 'poller',
               txHash: namadaTxHash,
               occurredAt: new Date().toISOString(),
+              // Add block metadata to stage metadata
+              metadata: Object.keys(blockMetadata).length > 0 ? blockMetadata : undefined,
             })
             break
           }
@@ -421,12 +443,33 @@ async function pollForPaymentIbcSend(
             packetSequence,
           })
 
+          // Extract block metadata (height, timestamp, tx hash)
+          let blockMetadata: { blockHeight?: number | string; blockTimestamp?: number; eventTxHash?: string } = {}
+          try {
+            blockMetadata = await extractTendermintBlockMetadata(
+              rpcClient,
+              namadaBlockHeight,
+              namadaIbcTxHash,
+              params.abortSignal,
+            )
+          } catch (error) {
+            // Log warning but continue - block metadata extraction failure shouldn't break polling
+            logger.warn('[NamadaPoller] Failed to extract block metadata for payment', {
+              flowId: params.flowId,
+              blockHeight: namadaBlockHeight,
+              txHash: namadaIbcTxHash,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
+
           stages.push({
             stage: PAYMENT_STAGES.NAMADA_IBC_SENT,
             status: 'confirmed',
             source: 'poller',
             txHash: namadaIbcTxHash,
             occurredAt: new Date().toISOString(),
+            // Add block metadata to stage metadata
+            metadata: Object.keys(blockMetadata).length > 0 ? blockMetadata : undefined,
           })
 
           return {

@@ -389,6 +389,9 @@ export function getStageTimings(
 /**
  * Get total duration of a transaction.
  * 
+ * Uses the on-chain block timestamp of the final event when available,
+ * otherwise falls back to updatedAt or current time.
+ * 
  * @param tx - Transaction to get duration for
  * @returns Total duration in milliseconds, or undefined if transaction hasn't started
  */
@@ -398,9 +401,37 @@ export function getTotalDuration(tx: StoredTransaction): number | undefined {
   }
 
   const effectiveStatus = getEffectiveStatus(tx)
-  const endTime = effectiveStatus === 'finalized' || effectiveStatus === 'error' || effectiveStatus === 'undetermined'
-    ? tx.updatedAt
-    : Date.now()
+  
+  // Try to get the on-chain timestamp of the final event
+  // This is more accurate than using poller detection time, especially if polling is rerun later
+  const flowType = tx.direction === 'deposit' ? 'deposit' : 'payment'
+  const allStages = getAllStagesFromTransaction(tx, flowType)
+  
+  // Find the final confirmed stage with block timestamp
+  let finalBlockTimestamp: number | undefined
+  for (let i = allStages.length - 1; i >= 0; i--) {
+    const stage = allStages[i]
+    if (stage.status === 'confirmed') {
+      const blockMetadata = stage.metadata as {
+        blockTimestamp?: number
+      } | undefined
+      if (blockMetadata?.blockTimestamp) {
+        // blockTimestamp is in seconds (Unix timestamp), convert to milliseconds
+        finalBlockTimestamp = blockMetadata.blockTimestamp * 1000
+        break
+      }
+    }
+  }
+  
+  // Use final block timestamp if available, otherwise fall back to previous logic
+  let endTime: number
+  if (finalBlockTimestamp) {
+    endTime = finalBlockTimestamp
+  } else if (effectiveStatus === 'finalized' || effectiveStatus === 'error' || effectiveStatus === 'undetermined') {
+    endTime = tx.updatedAt
+  } else {
+    endTime = Date.now()
+  }
 
   return endTime - tx.createdAt
 }

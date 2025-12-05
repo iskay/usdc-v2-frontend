@@ -44,6 +44,26 @@ export interface TendermintBlockResults {
 }
 
 /**
+ * Tendermint block structure (from getBlock RPC call)
+ */
+export interface TendermintBlock {
+  block?: {
+    header?: {
+      height?: string
+      time?: string
+      [key: string]: unknown
+    }
+    [key: string]: unknown
+  }
+  header?: {
+    height?: string
+    time?: string
+    [key: string]: unknown
+  }
+  [key: string]: unknown
+}
+
+/**
  * Tendermint broadcast transaction response
  */
 export interface TendermintBroadcastTxResponse {
@@ -82,6 +102,18 @@ export interface TendermintRpcClient {
    * @returns Block results or null if not found
    */
   getBlockResults(height: number, abortSignal?: AbortSignal): Promise<TendermintBlockResults | null>
+
+  /**
+   * Get block for a specific height (includes timestamp)
+   * 
+   * Note: getBlockResults only contains height, not timestamp.
+   * Use this method to get the full block including timestamp.
+   * 
+   * @param height - Block height
+   * @param abortSignal - Optional abort signal
+   * @returns Block or null if not found
+   */
+  getBlock(height: number, abortSignal?: AbortSignal): Promise<TendermintBlock | null>
 
   /**
    * Get latest block height
@@ -317,6 +349,25 @@ export function createTendermintRpcClient(rpcUrl: string): TendermintRpcClient {
         return result
       } catch (error) {
         logger.warn('[TendermintRpcClient] getBlockResults failed', {
+          height,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        return null
+      }
+    },
+
+    async getBlock(height: number, abortSignal?: AbortSignal): Promise<TendermintBlock | null> {
+      try {
+        const result = await retryWithBackoff(
+          () => callRpc<TendermintBlock>('block', { height: height.toString() }, abortSignal),
+          3,
+          500,
+          5000,
+          abortSignal,
+        )
+        return result
+      } catch (error) {
+        logger.warn('[TendermintRpcClient] getBlock failed', {
           height,
           error: error instanceof Error ? error.message : String(error),
         })

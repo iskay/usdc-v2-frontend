@@ -1,8 +1,8 @@
 /**
- * Retry Polling Button Component
+ * Retry Status Tracking Button Component
  * 
- * Button to retry polling for a transaction that has errored or timed out.
- * Restarts the entire polling flow from the beginning.
+ * Button to retry status tracking for a transaction that has errored or timed out.
+ * Restarts the entire status tracking flow from the beginning.
  */
 
 import { useState } from 'react'
@@ -43,14 +43,14 @@ export function RetryPollingButton({
     try {
       await retryPolling(transaction.id)
       notify({
-        title: 'Polling Retried',
-        description: 'Transaction polling has been restarted from the beginning.',
+        title: 'Status Tracking Retried',
+        description: 'Transaction status tracking has been restarted from the beginning.',
         level: 'success',
       })
     } catch (error) {
       notify({
         title: 'Retry Failed',
-        description: error instanceof Error ? error.message : 'Failed to retry polling.',
+        description: error instanceof Error ? error.message : 'Failed to retry status tracking.',
         level: 'error',
       })
     } finally {
@@ -87,14 +87,14 @@ export function RetryPollingButton({
         variantClasses[variant],
         className,
       )}
-      aria-label="Retry polling"
+      aria-label="Retry status tracking"
     >
       <RotateCcw className={cn(
         'h-3 w-3',
         size === 'lg' && 'h-4 w-4',
         isLoading && 'animate-spin',
       )} />
-      <span>{isLoading ? 'Retrying...' : 'Retry Polling'}</span>
+      <span>{isLoading ? 'Retrying...' : 'Retry Tracking'}</span>
     </button>
   )
 }

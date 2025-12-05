@@ -1,7 +1,7 @@
 /**
- * Cancel Polling Button Component
+ * Cancel Status Tracking Button Component
  * 
- * Button to cancel active polling for a transaction.
+ * Button to cancel active status tracking for a transaction.
  */
 
 import { useState } from 'react'
@@ -42,14 +42,14 @@ export function CancelPollingButton({
     try {
       cancelPolling(transaction.id)
       notify({
-        title: 'Polling Cancelled',
-        description: 'Transaction polling has been cancelled. You can resume it later.',
+        title: 'Status Tracking Cancelled',
+        description: 'Transaction status tracking has been cancelled. You can resume it later.',
         level: 'info',
       })
     } catch (error) {
       notify({
         title: 'Cancel Failed',
-        description: error instanceof Error ? error.message : 'Failed to cancel polling.',
+        description: error instanceof Error ? error.message : 'Failed to cancel status tracking.',
         level: 'error',
       })
     } finally {
@@ -86,14 +86,14 @@ export function CancelPollingButton({
         variantClasses[variant],
         className,
       )}
-      aria-label="Cancel polling"
+      aria-label="Cancel status tracking"
     >
       <X className={cn(
         'h-3 w-3',
         size === 'lg' && 'h-4 w-4',
         isLoading && 'animate-spin',
       )} />
-      <span>{isLoading ? 'Cancelling...' : 'Cancel Polling'}</span>
+      <span>{isLoading ? 'Cancelling...' : 'Cancel Tracking'}</span>
     </button>
   )
 }

@@ -2,6 +2,7 @@ export interface ExplorerConfig {
   baseUrl: string
   txPath?: string
   addressPath?: string
+  blockPath?: string
 }
 
 export interface NativeCurrencyConfig {

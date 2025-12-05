@@ -32,6 +32,7 @@ import {
 import { DEPOSIT_STAGES, PAYMENT_STAGES } from '@/shared/flowStages'
 import { logger } from '@/utils/logger'
 import { fetchNobleForwardingAddress } from '@/services/deposit/nobleForwardingService'
+import { extractTendermintBlockMetadata } from './blockMetadataExtractor'
 
 
 /**
@@ -149,6 +150,25 @@ async function pollForDepositWithNonce(
               txHash: tx.hash,
             })
 
+            // Extract block metadata (height, timestamp, tx hash)
+            let blockMetadata: { blockHeight?: number | string; blockTimestamp?: number; eventTxHash?: string } = {}
+            try {
+              blockMetadata = await extractTendermintBlockMetadata(
+                rpcClient,
+                cctpBlockHeight,
+                tx.hash,
+                params.abortSignal,
+              )
+            } catch (error) {
+              // Log warning but continue - block metadata extraction failure shouldn't break polling
+              logger.warn('[NoblePoller] Failed to extract block metadata for deposit', {
+                flowId: params.flowId,
+                blockHeight: cctpBlockHeight,
+                txHash: tx.hash,
+                error: error instanceof Error ? error.message : String(error),
+              })
+            }
+
             // Update NOBLE_POLLING stage to confirmed
             stages[0] = {
               stage: DEPOSIT_STAGES.NOBLE_POLLING,
@@ -163,6 +183,8 @@ async function pollForDepositWithNonce(
               source: 'poller',
               txHash: tx.hash,
               occurredAt: new Date().toISOString(),
+              // Add block metadata to stage metadata
+              metadata: Object.keys(blockMetadata).length > 0 ? blockMetadata : undefined,
             })
 
             // After CCTP minted, add forwarding registration stage (pending - will be confirmed when registration completes)
@@ -519,16 +541,43 @@ async function pollForDepositWithNonce(
             forwardFound = true
             logger.info('[NoblePoller] IBC send_packet event found with matching packet_data', {
               flowId: params.flowId,
-              blockHeight: cctpBlockHeight,
+              blockHeight: blockHeightForPacketExtraction,
               packetSequence,
               packetData: expectedPacketData,
             })
+
+            // Extract block metadata (height, timestamp, tx hash)
+            // Note: IBC forwarded event may be in a different block than CCTP mint
+            let blockMetadata: { blockHeight?: number | string; blockTimestamp?: number; eventTxHash?: string } = {}
+            try {
+              // For IBC forwarded event, we may not have a specific tx hash (it's in finalize_block_events)
+              // But we can still extract block height and timestamp
+              blockMetadata = await extractTendermintBlockMetadata(
+                rpcClient,
+                blockHeightForPacketExtraction,
+                '', // No specific tx hash for IBC forwarded event in finalize_block_events
+                params.abortSignal,
+              )
+              // Remove empty tx hash if extraction didn't provide one
+              if (!blockMetadata.eventTxHash) {
+                delete blockMetadata.eventTxHash
+              }
+            } catch (error) {
+              // Log warning but continue - block metadata extraction failure shouldn't break polling
+              logger.warn('[NoblePoller] Failed to extract block metadata for IBC forwarded event (CCTP block)', {
+                flowId: params.flowId,
+                blockHeight: blockHeightForPacketExtraction,
+                error: error instanceof Error ? error.message : String(error),
+              })
+            }
 
             stages.push({
               stage: DEPOSIT_STAGES.NOBLE_IBC_FORWARDED,
               status: 'confirmed',
               source: 'poller',
               occurredAt: new Date().toISOString(),
+              // Add block metadata to stage metadata
+              metadata: Object.keys(blockMetadata).length > 0 ? blockMetadata : undefined,
             })
             break
           }
@@ -746,11 +795,34 @@ async function pollForDepositWithNonce(
                           packetData: expectedPacketData,
                         })
                         
+                        // Extract block metadata (height, timestamp, tx hash)
+                        // IBC forwarded event is in registration block (may be different from CCTP mint block)
+                        let blockMetadata: { blockHeight?: number | string; blockTimestamp?: number; eventTxHash?: string } = {}
+                        try {
+                          // We have the registration tx hash available
+                          blockMetadata = await extractTendermintBlockMetadata(
+                            rpcClient,
+                            registrationBlockHeight!,
+                            regTx!.hash,
+                            params.abortSignal,
+                          )
+                        } catch (error) {
+                          // Log warning but continue - block metadata extraction failure shouldn't break polling
+                          logger.warn('[NoblePoller] Failed to extract block metadata for IBC forwarded event (registration block)', {
+                            flowId: params.flowId,
+                            blockHeight: registrationBlockHeight,
+                            txHash: regTx!.hash,
+                            error: error instanceof Error ? error.message : String(error),
+                          })
+                        }
+                        
                         stages.push({
                           stage: DEPOSIT_STAGES.NOBLE_IBC_FORWARDED,
                           status: 'confirmed',
                           source: 'poller',
                           occurredAt: new Date().toISOString(),
+                          // Add block metadata to stage metadata
+                          metadata: Object.keys(blockMetadata).length > 0 ? blockMetadata : undefined,
                         })
                         break
                       }
@@ -976,6 +1048,25 @@ async function pollForPaymentWithPacketSequence(
               txHash: tx.hash,
             })
 
+            // Extract block metadata (height, timestamp, tx hash)
+            let blockMetadata: { blockHeight?: number | string; blockTimestamp?: number; eventTxHash?: string } = {}
+            try {
+              blockMetadata = await extractTendermintBlockMetadata(
+                rpcClient,
+                ackBlockHeight,
+                tx.hash,
+                params.abortSignal,
+              )
+            } catch (error) {
+              // Log warning but continue - block metadata extraction failure shouldn't break polling
+              logger.warn('[NoblePoller] Failed to extract block metadata for payment', {
+                flowId: params.flowId,
+                blockHeight: ackBlockHeight,
+                txHash: tx.hash,
+                error: error instanceof Error ? error.message : String(error),
+              })
+            }
+
             // Update NOBLE_POLLING stage to confirmed
             stages[0] = {
               stage: PAYMENT_STAGES.NOBLE_POLLING,
@@ -990,6 +1081,8 @@ async function pollForPaymentWithPacketSequence(
               source: 'poller',
               txHash: tx.hash,
               occurredAt: new Date().toISOString(),
+              // Add block metadata to stage metadata
+              metadata: Object.keys(blockMetadata).length > 0 ? blockMetadata : undefined,
             })
             break
           }

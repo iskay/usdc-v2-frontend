@@ -1,7 +1,7 @@
 /**
  * Chain Status Timeline Component
  * 
- * Displays per-chain polling status with visual timeline indicators.
+ * Displays per-chain tracking status with visual timeline indicators.
  * Shows success, error, timeout, pending, and cancelled states for each chain.
  */
 
@@ -144,11 +144,11 @@ export const ChainStatusTimeline = memo(function ChainStatusTimeline({
         })}
       </div>
 
-      {/* Overall polling status */}
+      {/* Overall tracking status */}
       {transaction.pollingState && (
         <div className="mt-4 pt-4 border-t border-border">
           <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">Polling Status:</span>
+            <span className="text-muted-foreground">Tracking Status:</span>
             <span className={cn(
               'font-medium',
               transaction.pollingState.flowStatus === 'success' ? 'text-green-600' :
@@ -160,7 +160,7 @@ export const ChainStatusTimeline = memo(function ChainStatusTimeline({
             )}>
               {transaction.pollingState.flowStatus === 'success' ? 'Success' :
                transaction.pollingState.flowStatus === 'tx_error' ? 'Transaction Error' :
-               transaction.pollingState.flowStatus === 'polling_error' ? 'Polling Error' :
+               transaction.pollingState.flowStatus === 'polling_error' ? 'Tracking Error' :
                transaction.pollingState.flowStatus === 'polling_timeout' ? 'Timeout' :
                transaction.pollingState.flowStatus === 'user_action_required' ? 'User Action Required' :
                transaction.pollingState.flowStatus === 'cancelled' ? 'Cancelled' :

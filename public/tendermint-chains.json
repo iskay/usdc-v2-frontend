@@ -11,7 +11,8 @@
       "explorer": {
         "baseUrl": "https://testnet.namada.world",
         "txPath": "transactions",
-        "addressPath": "account"
+        "addressPath": "account",
+        "blockPath": "blocks"
       },
       "pollingTimeout": {
         "depositTimeoutMs": 120000,
@@ -30,11 +31,14 @@
       "rpcUrls": ["https://noble-testnet-rpc.polkachu.com"],
       "lcdUrl": "https://noble-testnet-api.polkachu.com",
       "explorer": {
-        "baseUrl": "https://testnet.mintscan.io/noble"
+        "baseUrl": "https://mintscan.io/noble-testnet",
+        "txPath": "tx",
+        "addressPath": "address",
+        "blockPath": "block"
       },
       "pollingTimeout": {
-        "depositTimeoutMs": 1200000,
-        "paymentTimeoutMs": 1200000
+        "depositTimeoutMs": 120000,
+        "paymentTimeoutMs": 120000
       },
       "pollingConfig": {
         "blockWindowBackscan": 50

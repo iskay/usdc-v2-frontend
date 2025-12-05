@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { X, CheckCircle2, XCircle, Clock, AlertCircle, Copy, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react'
+import { X, CheckCircle2, XCircle, Clock, AlertCircle, Copy, ExternalLink, ChevronDown, ChevronRight, Ban } from 'lucide-react'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import {
   isSuccess,
@@ -19,7 +19,7 @@ import { RegisterNobleForwardingButton } from '@/components/polling/RegisterNobl
 import { getAllChainStatuses } from '@/services/polling/pollingStatusUtils'
 import { getChainOrder } from '@/shared/flowStages'
 import type { ChainKey } from '@/shared/flowStages'
-import { Info } from 'lucide-react'
+import { getAllStagesFromTransaction } from '@/services/polling/stageUtils'
 import { cn } from '@/lib/utils'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
@@ -44,7 +44,6 @@ export function TransactionDetailModal({
   const { notify } = useToast()
   const [evmChainsConfig, setEvmChainsConfig] = useState<EvmChainsFile | null>(null)
   const [tendermintChainsConfig, setTendermintChainsConfig] = useState<TendermintChainsFile | null>(null)
-  const [expandedChains, setExpandedChains] = useState<Set<ChainKey>>(new Set())
   const [isStageTimelineExpanded, setIsStageTimelineExpanded] = useState(false)
 
   // Load chain configs when modal opens
@@ -183,7 +182,7 @@ export function TransactionDetailModal({
   // Build explorer URL helper
   const buildExplorerUrl = useCallback((
     value: string,
-    type: 'address' | 'tx',
+    type: 'address' | 'tx' | 'block',
     chainType: 'evm' | 'namada' | 'noble',
     chainKey?: string
   ): string | undefined => {
@@ -230,6 +229,28 @@ export function TransactionDetailModal({
           return `${chain.explorer.baseUrl}/${txPath}/${lowercasedHash}`
         }
       }
+    } else if (type === 'block') {
+      // Block explorer URLs
+      if (chainType === 'evm') {
+        const chain = chainKey && evmChainsConfig ? findChainByKey(evmChainsConfig, chainKey) : null
+        if (chain?.explorer?.baseUrl) {
+          const blockPath = chain.explorer.blockPath ?? 'block'
+          return `${chain.explorer.baseUrl}/${blockPath}/${value}`
+        }
+      } else if (chainType === 'namada') {
+        const namadaChainKey = tendermintChainsConfig ? getDefaultNamadaChainKey(tendermintChainsConfig) : 'namada-testnet'
+        const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, namadaChainKey || 'namada-testnet') : null
+        if (chain?.explorer?.baseUrl) {
+          const blockPath = chain.explorer.blockPath ?? 'blocks'
+          return `${chain.explorer.baseUrl}/${blockPath}/${value}`
+        }
+      } else if (chainType === 'noble') {
+        const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, 'noble-testnet') : null
+        if (chain?.explorer?.baseUrl) {
+          const blockPath = chain.explorer.blockPath ?? 'blocks'
+          return `${chain.explorer.baseUrl}/${blockPath}/${value}`
+        }
+      }
     }
     return undefined
   }, [evmChainsConfig, tendermintChainsConfig])
@@ -244,6 +265,8 @@ export function TransactionDetailModal({
   const progress = getProgressPercentage(transaction, flowType)
   const stageTimings = getStageTimings(transaction, flowType)
   const currentStage = getCurrentStage(transaction, flowType)
+  // Get full stages with metadata for block information
+  const allStages = getAllStagesFromTransaction(transaction, flowType)
 
   // Format started at timestamp
   const startedAt = new Date(transaction.createdAt).toLocaleString()
@@ -543,11 +566,13 @@ export function TransactionDetailModal({
                 </div>
               )}
               <div>
-                <span className="text-muted-foreground">Source: </span>
+                <span className="text-muted-foreground">
+                  {transaction.direction === 'deposit' ? 'Source: ' : 'Destination: '}
+                </span>
                 <span className="font-medium">
                   {transaction.direction === 'deposit'
                     ? (transaction.depositDetails?.chainName || transaction.chain || 'EVM')
-                    : 'Namada'}
+                    : (transaction.paymentDetails?.chainName || transaction.chain || 'EVM')}
                 </span>
               </div>
               <div>
@@ -657,6 +682,21 @@ export function TransactionDetailModal({
             {/* Right Column: Chain Status */}
             <div className="space-y-4 border border-slate-200 p-6 rounded-md">
               <h3 className="text-sm font-semibold">Chain Status</h3>
+              {transaction.pollingState?.flowStatus === 'cancelled' && (
+                <div className="rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 p-3 text-xs text-muted-foreground">
+                  Tracking was cancelled before we could determine the outcome of this {transaction.direction === 'deposit' ? 'deposit' : 'payment'}.
+                </div>
+              )}
+              {transaction.pollingState?.flowStatus === 'polling_timeout' && (
+                <div className="rounded-md border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950/50 p-3 text-xs text-yellow-800 dark:text-yellow-200">
+                  Tracking timed out before we could determine the outcome of this {transaction.direction === 'deposit' ? 'deposit' : 'payment'}. It may have succeeded or failed; verify independently on-chain.
+                </div>
+              )}
+              {transaction.pollingState?.flowStatus === 'polling_error' && (
+                <div className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/50 p-3 text-xs text-red-800 dark:text-red-200">
+                  Tracking encountered an error and could not determine the outcome of this {transaction.direction === 'deposit' ? 'deposit' : 'payment'}. It may have succeeded or failed; verify independently on-chain.
+                </div>
+              )}
               {transaction.pollingState ? (() => {
                 const flowType = transaction.direction === 'deposit' ? 'deposit' : 'payment'
                 const chainOrder = getChainOrder(flowType)
@@ -671,91 +711,147 @@ export function TransactionDetailModal({
                   namada: 'Namada',
                 }
 
-                const toggleChainExpanded = (chain: ChainKey) => {
-                  setExpandedChains((prev) => {
-                    const next = new Set(prev)
-                    if (next.has(chain)) {
-                      next.delete(chain)
-                    } else {
-                      next.add(chain)
-                    }
-                    return next
-                  })
-                }
-
                 return (
-                  <div className="space-y-4">
+                  <div className="space-y-0">
                     {chainOrder.map((chain, index) => {
                       const chainStatus = chainStatuses[chain]
                       const isSuccess = chainStatus?.status === 'success'
-                      const completedStages = chainStatus?.completedStages || []
                       const isLast = index === chainOrder.length - 1
-                      const isExpanded = expandedChains.has(chain)
+                      const isCurrentChain = transaction.pollingState?.currentChain === chain
+
+                      // Get confirmed stages with metadata, filtering out _polling stages
+                      const confirmedStages = (chainStatus?.stages || [])
+                        .filter((stage) => {
+                          // Only show confirmed stages
+                          if (stage.status !== 'confirmed') return false
+                          // Omit _polling stages
+                          if (stage.stage.endsWith('_polling')) return false
+                          return true
+                        })
+                        .map((stage) => {
+                          // Format stage name: title case and replace underscores
+                          const formattedName = stage.stage
+                            .split('_')
+                            .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                            .join(' ')
+
+                          // Calculate duration if blockTimestamp is available
+                          let durationSeconds: number | undefined
+                          const blockMetadata = stage.metadata as {
+                            blockTimestamp?: number
+                            eventTxHash?: string
+                          } | undefined
+                          if (blockMetadata?.blockTimestamp) {
+                            // blockTimestamp is in seconds (Unix timestamp)
+                            // transaction.createdAt is in milliseconds
+                            const blockTimestampMs = blockMetadata.blockTimestamp * 1000
+                            durationSeconds = Math.floor((blockTimestampMs - transaction.createdAt) / 1000)
+                          }
+
+                          // Get chain key for explorer URLs
+                          const chainKey = chain === 'evm' 
+                            ? (transaction.direction === 'deposit' 
+                                ? transaction.depositDetails?.chainName?.toLowerCase().replace(/\s+/g, '-') || transaction.chain
+                                : transaction.pollingState?.metadata?.chainKey as string | undefined || transaction.chain)
+                            : undefined
+
+                          // Build explorer URL for transaction hash
+                          const txExplorerUrl = blockMetadata?.eventTxHash
+                            ? buildExplorerUrl(blockMetadata.eventTxHash, 'tx', chain, chainKey)
+                            : undefined
+
+                          return {
+                            name: formattedName,
+                            durationSeconds,
+                            txHash: blockMetadata?.eventTxHash,
+                            txExplorerUrl,
+                          }
+                        })
 
                       return (
-                        <div key={chain} className="relative space-y-1">
-                          {/* Vertical line connecting chains */}
-                          {!isLast && (
-                            <div className="absolute left-[9px] top-[24px] bottom-[-12px] w-[2px] bg-border min-h-[36px]" />
-                          )}
+                        <div key={chain} className={isLast ? "flex min-h-[48px]" : "flex min-h-[90px]"}>
+                          {/* Icon and vertical line column */}
+                          <div className="flex flex-col items-center mr-3 pt-0.5">
+                            {/* Status icon */}
+                            <div className="flex items-center justify-center w-5 h-5 flex-shrink-0">
+                              {isSuccess ? (
+                                <CheckCircle2 className="h-5 w-5 text-green-600" />
+                              ) : chainStatus?.status === 'cancelled' ? (
+                                <Ban className="h-5 w-5 text-gray-500" />
+                              ) : chainStatus?.status === 'tx_error' || chainStatus?.status === 'polling_error' ? (
+                                <XCircle className={cn(
+                                  "h-5 w-5 text-red-600",
+                                  isCurrentChain && "animate-pulse"
+                                )} />
+                              ) : chainStatus?.status === 'polling_timeout' ? (
+                                <Clock className={cn(
+                                  "h-5 w-5 text-yellow-600",
+                                  isCurrentChain && "animate-pulse"
+                                )} />
+                              ) : (
+                                <Clock className={cn(
+                                  "h-5 w-5 text-muted-foreground",
+                                  isCurrentChain && "animate-spin"
+                                )} />
+                              )}
+                            </div>
+                            {/* Vertical line connecting to next chain */}
+                            {!isLast && (
+                              <div className="w-[2px] flex-1 bg-border my-2" />
+                            )}
+                          </div>
 
-                          <div className="flex justify-between items-center gap-2 pl-6">
-                            <div className="flex gap-2 items-center">
-                              <div className="absolute left-0 flex items-center justify-center">
-                                {isSuccess ? (
-                                  <CheckCircle2 className="h-5 w-5 text-green-600" />
-                                ) : chainStatus?.status === 'tx_error' || chainStatus?.status === 'polling_error' ? (
-                                  <XCircle className="h-5 w-5 text-red-600" />
-                                ) : chainStatus?.status === 'polling_timeout' ? (
-                                  <Clock className="h-5 w-5 text-yellow-600" />
-                                ) : (
-                                  <Clock className="h-5 w-5 text-muted-foreground" />
-                                )}
-                              </div>
+                          {/* Content column */}
+                          <div className="flex-1 flex flex-col justify-start py-0">
+                            {/* Chain name */}
+                            <div className="mb-0.5">
                               <span className="text-sm font-medium">{chainNames[chain]}</span>
                             </div>
-                            <div className="flex gap-2 items-center">
-                              {isSuccess && (
-                                <span className="inline-flex items-center rounded-full border border-green-200 dark:border-green-800 bg-green-100 dark:bg-green-900/30 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-400">
-                                  Success
-                                </span>
-                              )}
-                              {completedStages.length > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() => toggleChainExpanded(chain)}
-                                  className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-                                  aria-label={isExpanded ? 'Hide completed stages' : 'Show completed stages'}
-                                  title={isExpanded ? 'Hide completed stages' : 'Show completed stages'}
-                                >
-                                  <Info className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-                            </div>
+                            
+                            {/* Completed stages */}
+                            {confirmedStages.length > 0 && (
+                              <div className="text-xs text-muted-foreground space-y-0.5">
+                                {confirmedStages.map((stage, stageIndex) => (
+                                  <div 
+                                    key={stageIndex} 
+                                    className="flex items-center gap-1 flex-wrap animate-in fade-in duration-300"
+                                    style={{ animationDelay: `${stageIndex * 50}ms` }}
+                                  >
+                                    <span>{stage.name}</span>
+                                    {stage.durationSeconds !== undefined && (
+                                      <span className="text-muted-foreground/70">
+                                        (at {stage.durationSeconds}s)
+                                      </span>
+                                    )}
+                                    {stage.txHash && stage.txExplorerUrl && (
+                                      <a
+                                        href={stage.txExplorerUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline flex items-center gap-1"
+                                        onClick={(e) => e.stopPropagation()}
+                                        title="View transaction on explorer"
+                                      >
+                                        <ExternalLink className="h-3 w-3" />
+                                      </a>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                          {completedStages.length > 0 && (
-                            <>
-                              {isExpanded ? (
-                                <div className="text-xs text-muted-foreground pl-10">
-                                  Completed: {completedStages.join(', ')}
-                                </div>
-                              ) : (
-                                <div className="h-5" /> // Spacer when stages are hidden
-                              )}
-                            </>
-                          )}
                         </div>
                       )
                     })}
                   </div>
                 )
               })() : (
-                <div className="text-sm text-muted-foreground">No polling state available</div>
+                <div className="text-sm text-muted-foreground">No tracking state available</div>
               )}
             </div>
           </div>
 
-          {/* Polling Control Buttons and Noble Forwarding Registration */}
+          {/* Tracking Control Buttons and Noble Forwarding Registration */}
           {transaction.pollingState && (
             <div className="space-y-4 -mt-2">
               {/* Noble Forwarding Registration Status */}
@@ -784,14 +880,14 @@ export function TransactionDetailModal({
                 <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
-                    Client-Side Polling Stopped
+                    Client-Side Tracking Stopped
                   </p>
                   <p className="mt-1 text-sm text-yellow-800 dark:text-yellow-200">
-                    Client-side polling stopped at{' '}
+                    Client-side tracking stopped at{' '}
                     {transaction.clientTimeoutAt
                       ? new Date(transaction.clientTimeoutAt).toLocaleString()
                       : 'unknown time'}
-                    . The backend is still tracking this transaction. Polling will resume automatically
+                    . The backend is still tracking this transaction. Tracking will resume automatically
                     when you refresh the page.
                   </p>
                 </div>
@@ -799,31 +895,15 @@ export function TransactionDetailModal({
             </div>
           )}
 
-          {/* Undetermined Status Notice */}
-          {effectiveStatus === 'undetermined' && (
-            <div className="border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-950">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
-                    Status Unknown
-                  </p>
-                  <p className="mt-1 text-sm text-yellow-800 dark:text-yellow-200">
-                    The transaction status could not be determined within the timeout period. The transaction may have succeeded or failed, but we were unable to confirm its final state.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
 
-          {/* Bottom Section: Current Stage, Polling Status, and Retry Button */}
+          {/* Bottom Section: Current Stage, Tracking Status, and Retry Button */}
           {transaction.pollingState && (
             <div className="space-y-3 -mt-4">
 
-              {/* Polling Status */}
+              {/* Tracking Status */}
               <div className="flex items-center justify-between">
                 <div className="flex flex-col text-xs">
-                  <span className="text-muted-foreground font-semibold">Polling Status</span>
+                  <span className="text-muted-foreground font-semibold">Tracking Status</span>
                   {transaction.pollingState.lastUpdatedAt && (
                     <span className="text-muted-foreground">
                       Last updated: {new Date(transaction.pollingState.lastUpdatedAt).toLocaleString()}
@@ -836,8 +916,13 @@ export function TransactionDetailModal({
                     Success
                   </span>
                 )}
+                {transaction.pollingState.flowStatus === 'cancelled' && (
+                  <span className="inline-flex items-center rounded-full border border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-gray-900/30 px-4 py-2 text-xs font-medium text-gray-700 dark:text-gray-400">
+                    Tracking Cancelled
+                  </span>
+                )}
               </div>
-              {/* Polling Control Buttons */}
+              {/* Tracking Control Buttons */}
               <div className="flex items-center gap-2">
                 <RetryPollingButton transaction={transaction} size="sm" variant="default" />
                 <ResumePollingButton transaction={transaction} size="sm" variant="default" />
@@ -859,7 +944,7 @@ export function TransactionDetailModal({
                 ) : (
                   <ChevronRight className="h-4 w-4" />
                 )}
-                <span>Status Polling Details</span>
+                <span>Status Tracking Details</span>
               </button>
               {isStageTimelineExpanded && (
                 <div className="space-y-3">
@@ -873,6 +958,43 @@ export function TransactionDetailModal({
                       ) : (
                         <Clock className="h-4 w-4 text-muted-foreground" />
                       )
+
+                    // Find matching stage with metadata
+                    // Match by stage name, occurredAt timestamp, and chain
+                    const stageWithMetadata = allStages.find(
+                      (s) => {
+                        const stageOccurredAt = s.occurredAt ? new Date(s.occurredAt).getTime() : null
+                        const stageChain = (s.metadata?.chain as ChainKey) || timing.chain
+                        return s.stage === timing.stage && 
+                          stageOccurredAt === timing.occurredAt &&
+                          stageChain === timing.chain
+                      }
+                    )
+                    const blockMetadata = stageWithMetadata?.metadata as {
+                      blockHeight?: number | string
+                      blockTimestamp?: number
+                      eventTxHash?: string
+                    } | undefined
+
+                    // Get chain key for explorer URLs
+                    const chainKey = timing.chain === 'evm' 
+                      ? (transaction.direction === 'deposit' 
+                          ? transaction.depositDetails?.chainName?.toLowerCase().replace(/\s+/g, '-') || transaction.chain
+                          : transaction.pollingState?.metadata?.chainKey as string | undefined || transaction.chain)
+                      : undefined
+
+                    // Build explorer URLs
+                    const txExplorerUrl = blockMetadata?.eventTxHash
+                      ? buildExplorerUrl(blockMetadata.eventTxHash, 'tx', timing.chain, chainKey)
+                      : undefined
+                    const blockExplorerUrl = blockMetadata?.blockHeight
+                      ? buildExplorerUrl(String(blockMetadata.blockHeight), 'block', timing.chain, chainKey)
+                      : undefined
+
+                    // Format block timestamp if available
+                    const blockTimestampStr = blockMetadata?.blockTimestamp
+                      ? new Date(blockMetadata.blockTimestamp * 1000).toLocaleString()
+                      : undefined
 
                     return (
                       <div key={`${timing.chain}-${timing.stage}-${index}`} className="relative pl-8">
@@ -902,8 +1024,58 @@ export function TransactionDetailModal({
                             )}
                             {timing.occurredAt && (
                               <p className="text-xs text-muted-foreground">
-                                {new Date(timing.occurredAt).toLocaleString()}
+                                Detected: {new Date(timing.occurredAt).toLocaleString()}
                               </p>
+                            )}
+                            {/* Block metadata */}
+                            {blockMetadata && (
+                              <div className="space-y-1 text-xs text-muted-foreground">
+                                {blockTimestampStr && (
+                                  <p>
+                                    Block time: {blockTimestampStr}
+                                  </p>
+                                )}
+                                {blockMetadata.blockHeight && (
+                                  <p className="flex items-center gap-1">
+                                    Block height:{' '}
+                                    {blockExplorerUrl ? (
+                                      <a
+                                        href={blockExplorerUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline flex items-center gap-1"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        {blockMetadata.blockHeight}
+                                        <ExternalLink className="h-3 w-3" />
+                                      </a>
+                                    ) : (
+                                      <span>{blockMetadata.blockHeight}</span>
+                                    )}
+                                  </p>
+                                )}
+                                {blockMetadata.eventTxHash && (
+                                  <p className="flex items-center gap-1">
+                                    Transaction:{' '}
+                                    {txExplorerUrl ? (
+                                      <a
+                                        href={txExplorerUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline flex items-center gap-1"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        {blockMetadata.eventTxHash.slice(0, 10)}...{blockMetadata.eventTxHash.slice(-8)}
+                                        <ExternalLink className="h-3 w-3" />
+                                      </a>
+                                    ) : (
+                                      <span className="font-mono">
+                                        {blockMetadata.eventTxHash.slice(0, 10)}...{blockMetadata.eventTxHash.slice(-8)}
+                                      </span>
+                                    )}
+                                  </p>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
