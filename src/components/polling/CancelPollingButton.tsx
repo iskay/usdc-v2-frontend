@@ -79,7 +79,7 @@ export function CancelPollingButton({
       onClick={handleCancel}
       disabled={isLoading}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-md font-medium transition-colors',
+        'inline-flex items-center gap-1.5 font-medium transition-colors rounded-md',
         'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
         'disabled:opacity-50 disabled:cursor-not-allowed',
         sizeClasses[size],
