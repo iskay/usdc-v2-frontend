@@ -69,11 +69,21 @@ export function useDepositFeeEstimate(
         if (namadaAddress) {
           try {
             const registrationStatus = await checkNobleForwardingRegistration(namadaAddress)
-            nobleRegistered = registrationStatus.exists
-            logger.debug('[useDepositFeeEstimate] Noble registration status', {
-              namadaAddress: namadaAddress.slice(0, 12) + '...',
-              exists: nobleRegistered,
-            })
+            
+            // If there's an error determining status, log it and assume not registered (include fee)
+            if (registrationStatus.error) {
+              logger.warn('[useDepositFeeEstimate] Could not determine Noble registration status, assuming not registered', {
+                namadaAddress: namadaAddress.slice(0, 12) + '...',
+                error: registrationStatus.error,
+              })
+              nobleRegistered = false
+            } else {
+              nobleRegistered = registrationStatus.exists
+              logger.debug('[useDepositFeeEstimate] Noble registration status', {
+                namadaAddress: namadaAddress.slice(0, 12) + '...',
+                exists: nobleRegistered,
+              })
+            }
           } catch (error) {
             logger.warn('[useDepositFeeEstimate] Noble registration check failed, assuming not registered', {
               error: error instanceof Error ? error.message : String(error),

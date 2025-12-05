@@ -155,6 +155,15 @@ export async function executeRegistrationJob(
 
     const registrationStatus = await checkNobleForwardingRegistration(recipientAddress, channel)
 
+    // Log error if registration status could not be determined
+    if (registrationStatus.error) {
+      logger.warn('[NobleForwardingRegistration] Could not determine registration status', {
+        recipientAddress: recipientAddress.slice(0, 16) + '...',
+        error: registrationStatus.error,
+      })
+      // Continue with registration process since we can't determine if already registered
+    }
+
     if (registrationStatus.exists) {
       logger.info('[NobleForwardingRegistration] Address already registered', {
         forwardingAddress: forwardingAddress.slice(0, 16) + '...',
@@ -460,7 +469,17 @@ export async function isNobleForwardingRegistered(
 
   try {
     const status = await checkNobleForwardingRegistration(recipientAddress, channelId)
-    return status.exists
+    
+    // Log error if registration status could not be determined
+    if (status.error) {
+      logger.warn('[NobleForwardingRegistration] Could not determine registration status', {
+        forwardingAddress: forwardingAddress.slice(0, 16) + '...',
+        error: status.error,
+      })
+    }
+    
+    // Return false if error (can't determine status) or if not registered
+    return status.error ? false : status.exists
   } catch (error) {
     logger.error('[NobleForwardingRegistration] Failed to check registration status', {
       forwardingAddress: forwardingAddress.slice(0, 16) + '...',

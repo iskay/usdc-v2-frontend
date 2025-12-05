@@ -755,15 +755,18 @@ export function TransactionDetailModal({
                                 : transaction.pollingState?.metadata?.chainKey as string | undefined || transaction.chain)
                             : undefined
 
+                          // Get transaction hash from stage.txHash (direct) or metadata.eventTxHash (from block metadata)
+                          const txHash = stage.txHash || blockMetadata?.eventTxHash
+
                           // Build explorer URL for transaction hash
-                          const txExplorerUrl = blockMetadata?.eventTxHash
-                            ? buildExplorerUrl(blockMetadata.eventTxHash, 'tx', chain, chainKey)
+                          const txExplorerUrl = txHash
+                            ? buildExplorerUrl(txHash, 'tx', chain, chainKey)
                             : undefined
 
                           return {
                             name: formattedName,
                             durationSeconds,
-                            txHash: blockMetadata?.eventTxHash,
+                            txHash,
                             txExplorerUrl,
                           }
                         })
@@ -983,9 +986,12 @@ export function TransactionDetailModal({
                           : transaction.pollingState?.metadata?.chainKey as string | undefined || transaction.chain)
                       : undefined
 
+                    // Get transaction hash from stage.txHash (direct) or metadata.eventTxHash (from block metadata)
+                    const txHash = stageWithMetadata?.txHash || blockMetadata?.eventTxHash
+
                     // Build explorer URLs
-                    const txExplorerUrl = blockMetadata?.eventTxHash
-                      ? buildExplorerUrl(blockMetadata.eventTxHash, 'tx', timing.chain, chainKey)
+                    const txExplorerUrl = txHash
+                      ? buildExplorerUrl(txHash, 'tx', timing.chain, chainKey)
                       : undefined
                     const blockExplorerUrl = blockMetadata?.blockHeight
                       ? buildExplorerUrl(String(blockMetadata.blockHeight), 'block', timing.chain, chainKey)
@@ -1027,6 +1033,28 @@ export function TransactionDetailModal({
                                 Detected: {new Date(timing.occurredAt).toLocaleString()}
                               </p>
                             )}
+                            {/* Transaction hash (show even if no block metadata) */}
+                            {txHash && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                Transaction:{' '}
+                                {txExplorerUrl ? (
+                                  <a
+                                    href={txExplorerUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline flex items-center gap-1"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {txHash.slice(0, 10)}...{txHash.slice(-8)}
+                                    <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                ) : (
+                                  <span className="font-mono">
+                                    {txHash.slice(0, 10)}...{txHash.slice(-8)}
+                                  </span>
+                                )}
+                              </p>
+                            )}
                             {/* Block metadata */}
                             {blockMetadata && (
                               <div className="space-y-1 text-xs text-muted-foreground">
@@ -1051,27 +1079,6 @@ export function TransactionDetailModal({
                                       </a>
                                     ) : (
                                       <span>{blockMetadata.blockHeight}</span>
-                                    )}
-                                  </p>
-                                )}
-                                {blockMetadata.eventTxHash && (
-                                  <p className="flex items-center gap-1">
-                                    Transaction:{' '}
-                                    {txExplorerUrl ? (
-                                      <a
-                                        href={txExplorerUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline flex items-center gap-1"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        {blockMetadata.eventTxHash.slice(0, 10)}...{blockMetadata.eventTxHash.slice(-8)}
-                                        <ExternalLink className="h-3 w-3" />
-                                      </a>
-                                    ) : (
-                                      <span className="font-mono">
-                                        {blockMetadata.eventTxHash.slice(0, 10)}...{blockMetadata.eventTxHash.slice(-8)}
-                                      </span>
                                     )}
                                   </p>
                                 )}

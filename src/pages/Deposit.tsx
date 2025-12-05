@@ -133,9 +133,9 @@ export function Deposit() {
         if (checkingAddressRef.current === addressToCheck) {
           setRegistrationStatus({
             isLoading: false,
-            isRegistered: status.exists,
+            isRegistered: status.error ? null : status.exists,
             forwardingAddress: status.address || null,
-            error: null,
+            error: status.error || null,
           })
         }
       } catch (error) {
@@ -889,10 +889,15 @@ export function Deposit() {
                         </div>
                       )}
                       {!registrationStatus.isLoading && registrationStatus.error && (
-                        <div className="rounded-lg border border-blue-200/50 bg-blue-50/30 dark:bg-blue-950/20 dark:border-blue-800/50 p-4 shadow-sm">
+                        <div className="rounded-lg border border-orange-200/50 bg-orange-50/30 dark:bg-orange-950/20 dark:border-orange-800/50 p-4 shadow-sm">
                           <div className="flex items-start gap-3">
-                            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-destructive" />
-                            <span className="flex-1 text-sm text-destructive">Unable to check registration status: {registrationStatus.error}</span>
+                            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-orange-600 dark:text-orange-400" />
+                            <div className="flex-1 space-y-1">
+                              <p className="text-sm font-medium text-foreground">Could not determine forwarding address registration status</p>
+                              <p className="text-sm text-muted-foreground">
+                                If the forwarding address is not registered, your funds may become stuck and require further action on Noble chain for retrieval. Proceed at your own risk.
+                              </p>
+                            </div>
                           </div>
                         </div>
                       )}

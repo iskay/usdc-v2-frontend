@@ -16,6 +16,7 @@ export interface NobleForwardingResponse {
 export interface NobleRegistrationStatus {
   exists: boolean
   address?: string
+  error?: string // Error message if registration status could not be determined
 }
 
 /**
@@ -113,9 +114,12 @@ export async function checkNobleForwardingRegistration(
   }
   
   if (!lcdUrl) {
-    // If LCD URL is not configured, assume not registered (include fee)
-    console.warn('[NobleForwardingService] LCD URL not configured, assuming not registered')
-    return { exists: false }
+    // If LCD URL is not configured, return error instead of assuming
+    console.warn('[NobleForwardingService] LCD URL not configured')
+    return { 
+      exists: false,
+      error: 'Noble LCD URL not configured. Cannot determine registration status.'
+    }
   }
 
   const channel = channelId || env.nobleToNamadaChannel()
@@ -131,12 +135,26 @@ export async function checkNobleForwardingRegistration(
     const response = await fetch(url)
 
     if (!response.ok) {
-      // If response is not OK, assume not registered (include fee)
-      console.debug('[NobleForwardingService] LCD response not OK, assuming not registered', {
+      // 404 might mean not registered, but other errors are actual problems
+      if (response.status === 404) {
+        console.debug('[NobleForwardingService] LCD returned 404, address not registered', {
+          status: response.status,
+          statusText: response.statusText,
+        })
+        return { exists: false }
+      }
+      
+      // For other HTTP errors, return error status
+      const errorText = await response.text().catch(() => response.statusText)
+      console.error('[NobleForwardingService] LCD response error', {
         status: response.status,
         statusText: response.statusText,
+        errorText,
       })
-      return { exists: false }
+      return {
+        exists: false,
+        error: `Failed to check registration status: ${response.status} ${response.statusText}`
+      }
     }
 
     const data = (await response.json()) as NobleForwardingResponse
@@ -155,13 +173,35 @@ export async function checkNobleForwardingRegistration(
       address,
     }
   } catch (error) {
-    // On error, assume not registered (include fee)
-    console.warn('[NobleForwardingService] Failed to check Noble forwarding registration, assuming not registered', {
+    // Network errors (ERR_NAME_NOT_RESOLVED, ERR_CONNECTION_REFUSED, etc.) should return error
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    console.error('[NobleForwardingService] Failed to check Noble forwarding registration', {
       namadaAddress,
       channel,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
     })
-    return { exists: false }
+    
+    // Check if it's a network error
+    const isNetworkError = 
+      errorMessage.includes('ERR_NAME_NOT_RESOLVED') ||
+      errorMessage.includes('ERR_CONNECTION_REFUSED') ||
+      errorMessage.includes('ERR_NETWORK') ||
+      errorMessage.includes('Failed to fetch') ||
+      errorMessage.includes('NetworkError') ||
+      errorMessage.includes('network')
+    
+    if (isNetworkError) {
+      return {
+        exists: false,
+        error: 'Network error: Could not connect to Noble LCD endpoint'
+      }
+    }
+    
+    // For other errors, still return error status
+    return {
+      exists: false,
+      error: `Failed to check registration status: ${errorMessage}`
+    }
   }
 }
 
