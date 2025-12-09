@@ -16,7 +16,7 @@ export const ValidationErrors = {
     `Amount exceeds maximum. Maximum: ${maxAmount}`,
   AMOUNT_INSUFFICIENT_BALANCE: 'Insufficient balance to cover fees',
   AMOUNT_EXCEEDS_BALANCE: (availableAfterFee: string) =>
-    `Amount exceeds available balance. Maximum: ${availableAfterFee}`,
+    `Amount + fees exceeds available balance. Maximum send amount after fees: ${availableAfterFee}`,
   AMOUNT_LESS_THAN_FEE: (feeAmount: string, feeToken: string) =>
     `Amount must be greater than the transaction fee (${feeAmount} ${feeToken})`,
   AMOUNT_SCIENTIFIC_NOTATION: 'Scientific notation is not allowed. Please enter a decimal number',
