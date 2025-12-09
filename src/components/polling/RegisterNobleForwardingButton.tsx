@@ -84,11 +84,12 @@ export function RegisterNobleForwardingButton({
             level: 'info',
           })
         } else {
+          const txHashText = result.registrationTx.txHash
+            ? `Registration transaction submitted: ${result.registrationTx.txHash.slice(0, 16)}...`
+            : 'Noble forwarding registration completed.'
           notify({
             title: 'Registration Successful',
-            description: result.registrationTx.txHash
-              ? `Registration transaction submitted: ${result.registrationTx.txHash.slice(0, 16)}...`
-              : 'Noble forwarding registration completed.',
+            description: `${txHashText} Any account balance will be forwarded to its destination within a few minutes.`,
             level: 'success',
           })
         }

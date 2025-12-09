@@ -95,3 +95,27 @@ export async function getEvmTxExplorerUrl(chainKey: string, txHash: string): Pro
   return `${chain.explorer.baseUrl}/${txPath}/${lowercasedHash}`
 }
 
+/**
+ * Get Noble transaction explorer URL for a given transaction hash.
+ * 
+ * @param txHash - The transaction hash (will be lowercased)
+ * @returns The explorer URL, or undefined if chain config is not available
+ */
+export async function getNobleTxExplorerUrl(txHash: string): Promise<string | undefined> {
+  const lowercasedHash = txHash.toLowerCase()
+  const tendermintConfig = await getTendermintChainsConfig()
+  
+  if (!tendermintConfig) {
+    return undefined
+  }
+
+  const chain = findTendermintChainByKey(tendermintConfig, 'noble-testnet')
+  
+  if (!chain?.explorer?.baseUrl) {
+    return undefined
+  }
+
+  const txPath = chain.explorer.txPath ?? 'tx'
+  return `${chain.explorer.baseUrl}/${txPath}/${lowercasedHash}`
+}
+

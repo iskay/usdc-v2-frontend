@@ -34,7 +34,7 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
   const txUiState = useAtomValue(txUiAtom)
   const isAnyTxActive = useAtomValue(isAnyTransactionActiveAtom)
   const [amount, setAmount] = useState('')
-  const [isConfirming, setIsConfirming] = useState(false)
+  const [_isConfirming, setIsConfirming] = useState(false)
   
   // Use global state for txHash and explorerUrl
   const txHash = txUiState.txHash

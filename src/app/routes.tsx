@@ -15,6 +15,9 @@ const DepositPage = lazy(async () => ({
 const HistoryPage = lazy(async () => ({
   default: (await import('@/pages/History')).History,
 }))
+const ForwardingAddressesPage = lazy(async () => ({
+  default: (await import('@/pages/ForwardingAddresses')).ForwardingAddresses,
+}))
 
 const routes: RouteObject[] = [
   {
@@ -26,6 +29,7 @@ const routes: RouteObject[] = [
       { path: 'send', element: <SendPaymentPage /> },
       { path: 'deposit', element: <DepositPage /> },
       { path: 'history', element: <HistoryPage /> },
+      { path: 'forwarding-addresses', element: <ForwardingAddressesPage /> },
     ],
   },
 ]

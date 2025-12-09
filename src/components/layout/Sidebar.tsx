@@ -10,6 +10,7 @@ const links = [
   { to: '/deposit', label: 'Deposit' },
   { to: '/send', label: 'Send Payment' },
   { to: '/history', label: 'Transaction History' },
+  { to: '/forwarding-addresses', label: 'Forwarding Addresses' },
 ]
 
 interface SidebarProps {
