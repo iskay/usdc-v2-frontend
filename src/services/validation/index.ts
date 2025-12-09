@@ -140,7 +140,7 @@ export function validatePaymentForm(
  *
  * @param amount - The amount to validate
  * @param availableBalance - The available transparent balance
- * @param options - Optional amount validation options
+ * @param options - Optional amount validation options (can include feeAmount, feeToken, amountToken)
  * @returns Validation result
  */
 export function validateShieldAmount(
@@ -151,6 +151,7 @@ export function validateShieldAmount(
   const amountOptions: AmountValidationOptions = {
     maxDecimals: 6,
     maxAmount: availableBalance,
+    amountToken: 'USDC', // Shield amount is always USDC
     ...options,
   }
 

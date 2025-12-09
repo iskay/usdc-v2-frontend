@@ -31,6 +31,9 @@ export function validateAmount(
     minAmount,
     maxAmount,
     estimatedFee,
+    feeAmount,
+    feeToken,
+    amountToken,
     allowScientificNotation = false,
     errorMessages = {},
   } = options
@@ -122,6 +125,24 @@ export function validateAmount(
             typeof minAmount === 'string' ? minAmount : minAmount.toFixed(maxDecimals)
           ),
           errorMessages.belowMinimum
+        ),
+      }
+    }
+  }
+
+  // Check if amount is less than or equal to fee (only when fee is in the same token as amount)
+  // This ensures the user can shield a meaningful amount after fees are deducted
+  if (feeAmount !== undefined && feeToken && amountToken && feeToken === amountToken) {
+    const feeNum = typeof feeAmount === 'string' ? parseFloat(feeAmount) : feeAmount
+    if (!isNaN(feeNum) && feeNum > 0 && numAmount <= feeNum) {
+      return {
+        isValid: false,
+        error: getErrorMessage(
+          ValidationErrors.AMOUNT_LESS_THAN_FEE(
+            feeNum.toFixed(maxDecimals),
+            feeToken
+          ),
+          errorMessages.lessThanFee
         ),
       }
     }

@@ -17,6 +17,8 @@ export const ValidationErrors = {
   AMOUNT_INSUFFICIENT_BALANCE: 'Insufficient balance to cover fees',
   AMOUNT_EXCEEDS_BALANCE: (availableAfterFee: string) =>
     `Amount exceeds available balance. Maximum: ${availableAfterFee}`,
+  AMOUNT_LESS_THAN_FEE: (feeAmount: string, feeToken: string) =>
+    `Amount must be greater than the transaction fee (${feeAmount} ${feeToken})`,
   AMOUNT_SCIENTIFIC_NOTATION: 'Scientific notation is not allowed. Please enter a decimal number',
 
   // Bech32 address validation errors

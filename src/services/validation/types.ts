@@ -28,6 +28,12 @@ export interface AmountValidationOptions {
   maxAmount?: number | string
   /** Estimated fee to add to amount when checking against maxAmount */
   estimatedFee?: number | string
+  /** Fee amount for checking if amount is less than fee (when fee is in same token) */
+  feeAmount?: number | string
+  /** Fee token symbol (e.g., 'USDC', 'NAM') - used to determine if fee check applies */
+  feeToken?: string
+  /** Amount token symbol (e.g., 'USDC') - used to compare with feeToken */
+  amountToken?: string
   /** Whether to allow scientific notation (default: false) */
   allowScientificNotation?: boolean
   /** Custom error messages */
@@ -39,6 +45,7 @@ export interface AmountValidationOptions {
     belowMinimum?: string
     exceedsMaximum?: string
     insufficientBalance?: string
+    lessThanFee?: string
   }
 }
 

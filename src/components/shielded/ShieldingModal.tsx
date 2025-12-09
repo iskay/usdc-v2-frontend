@@ -2,8 +2,8 @@
  * Shielding modal component for initiating shielding transactions.
  */
 
-import { useState, useEffect, type FormEvent } from 'react'
-import { X, Loader2, AlertCircle, CheckCircle2, Lock, ExternalLink } from 'lucide-react'
+import { useState, useEffect, useMemo, type FormEvent } from 'react'
+import { X, Loader2, AlertCircle, CheckCircle2, Lock, ExternalLink, XCircle } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { useShielding } from '@/hooks/useShielding'
 import { useBalance } from '@/hooks/useBalance'
@@ -19,6 +19,13 @@ export interface ShieldingModalProps {
   open: boolean
   onClose: () => void
 }
+
+type ModalState = 
+  | 'idle'           // Form ready for input
+  | 'validating'     // User typing, validation running
+  | 'submitting'     // Transaction in progress (building/signing/submitting)
+  | 'success'         // Transaction completed successfully
+  | 'error'           // Transaction failed
 
 export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
   const { state: balanceState } = useBalance()
@@ -39,6 +46,32 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
     walletState.namada.account,
   )
 
+  // Derive unified modal state from existing atoms (must be before useEffects that use it)
+  const modalState = useMemo<ModalState>(() => {
+    // Error state: transaction failed and not currently active
+    if (shieldingState.error && !isAnyTxActive) {
+      return 'error'
+    }
+    
+    // Success state: transaction completed successfully
+    if (txUiState.showSuccessState && txUiState.txHash) {
+      return 'success'
+    }
+    
+    // Submitting state: transaction in progress
+    if (isAnyTxActive && !txUiState.showSuccessState) {
+      return 'submitting'
+    }
+    
+    // Validating state: user has entered amount
+    if (amount.length > 0) {
+      return 'validating'
+    }
+    
+    // Idle state: form ready for input
+    return 'idle'
+  }, [isAnyTxActive, txUiState.showSuccessState, txUiState.txHash, shieldingState.error, amount.length])
+
   // Reset form when modal closes (only if transaction is not active)
   useEffect(() => {
     if (!open && !isAnyTxActive) {
@@ -48,12 +81,12 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
     }
   }, [open, reset, isAnyTxActive])
 
-  // Handle Escape key to close modal (prevent if any transaction is active)
+  // Handle Escape key to close modal (prevent if transaction is submitting)
   useEffect(() => {
     if (!open) return
 
     function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape' && !isConfirming && !isAnyTxActive) {
+      if (event.key === 'Escape' && modalState !== 'submitting') {
         onClose()
       }
     }
@@ -62,7 +95,7 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
     return () => {
       document.removeEventListener('keydown', handleEscape)
     }
-  }, [open, onClose, isConfirming, isAnyTxActive])
+  }, [open, onClose, modalState])
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -88,7 +121,11 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
   const isEstimatingFee = feeEstimateState.isLoading
 
   // Validate amount using new validation service
-  const amountValidation = validateShieldAmount(amount, transparentBalance)
+  // Include fee information to check if amount is less than fees
+  const amountValidation = validateShieldAmount(amount, transparentBalance, {
+    feeAmount: feeInfo?.feeToken === 'USDC' ? feeInfo.feeAmount : undefined,
+    feeToken: feeInfo?.feeToken,
+  })
   const isAmountValid = amountValidation.isValid
   const amountError = amountValidation.error
 
@@ -118,18 +155,25 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
   }
 
   const handleRetry = () => {
-    reset()
+    setAmount('')
     setIsConfirming(false)
+    reset()
+  }
+
+  const handleNewTransaction = () => {
+    setAmount('')
+    setIsConfirming(false)
+    reset()
   }
 
   const handleMaxClick = () => {
     setAmount(transparentBalance)
   }
 
-  const isDisabled = isAnyTxActive || isConfirming || !isAmountValid
-
-  const isTransactionActive = isAnyTxActive || isConfirming
-  const shouldShowDetails = amount && (isAmountValid || isTransactionActive)
+  // Determine which parts of the form should be visible
+  const showFormInputs = modalState === 'idle' || modalState === 'validating'
+  const showValidationError = showFormInputs && amountError && amount.trim() !== ''
+  const showTransactionDetails = showFormInputs && amount && (isAmountValid || amount.length > 0)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -137,91 +181,92 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
       <div
         className={cn(
           "absolute inset-0 backdrop-blur-sm transition-all",
-          isTransactionActive ? "bg-black/70 backdrop-blur-md" : "bg-black/60 backdrop-blur-sm"
+          modalState === 'submitting' ? "bg-black/70 backdrop-blur-md" : "bg-black/60 backdrop-blur-sm"
         )}
-        onClick={!isConfirming && !isAnyTxActive ? onClose : undefined}
+        onClick={modalState !== 'submitting' ? onClose : undefined}
         aria-hidden="true"
       />
 
       {/* Modal Content */}
       <div className={cn(
         "relative z-50 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg transition-all",
-        isTransactionActive && "border-primary/50"
+        modalState === 'submitting' && "border-primary/50"
       )}>
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-semibold">Shield USDC</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isConfirming || shieldingState.isShielding}
-            className="rounded-md p-1 text-muted-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
-            aria-label={isTransactionActive ? "Modal locked during transaction" : "Close modal"}
-          >
-            {isTransactionActive ? (
-              <Lock className="h-5 w-5" />
-            ) : (
+          {modalState !== 'submitting' && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md p-1 text-muted-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
+              aria-label="Close modal"
+            >
               <X className="h-5 w-5" />
-            )}
-          </button>
+            </button>
+          )}
+          {modalState === 'submitting' && (
+            <div className="rounded-md p-1 text-muted-foreground" aria-label="Modal locked during transaction">
+              <Lock className="h-5 w-5" />
+            </div>
+          )}
         </div>
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Amount Input */}
-          <div className="space-y-2">
-            <label htmlFor="amount" className="text-sm font-medium">
-              Amount (USDC)
-            </label>
-            <div className="relative flex items-center gap-2">
-              <input
-                id="amount"
-                type="text"
-                value={amount}
-                onChange={(e) => handleAmountInputChange(e, setAmount, 6)}
-                disabled={shieldingState.isShielding || isConfirming}
-                placeholder="0.00"
-                inputMode="decimal"
-                className={cn(
-                  "flex-1 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 transition-colors disabled:opacity-50",
-                  isEstimatingFee && "pr-8",
-                  amountError && amount.trim() !== ''
-                    ? 'border-destructive focus:ring-destructive/20 focus:border-destructive'
-                    : 'border-border focus:ring-ring'
+          {/* Amount Input - Only show during idle/validating states */}
+          {showFormInputs && (
+            <div className="space-y-2">
+              <label htmlFor="amount" className="text-sm font-medium">
+                Amount (USDC)
+              </label>
+              <div className="relative flex items-center gap-2">
+                <input
+                  id="amount"
+                  type="text"
+                  value={amount}
+                  onChange={(e) => handleAmountInputChange(e, setAmount, 6)}
+                  disabled={modalState !== 'idle' && modalState !== 'validating'}
+                  placeholder="0.00"
+                  inputMode="decimal"
+                  className={cn(
+                    "flex-1 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 transition-colors disabled:opacity-50",
+                    isEstimatingFee && "pr-8",
+                    amountError && amount.trim() !== ''
+                      ? 'border-destructive focus:ring-destructive/20 focus:border-destructive'
+                      : 'border-border focus:ring-ring'
+                  )}
+                />
+                {isEstimatingFee && (
+                  <Loader2 className="absolute right-3 h-3 w-3 animate-spin text-muted-foreground pointer-events-none" />
                 )}
-              />
-              {isEstimatingFee && (
-                <Loader2 className="absolute right-3 h-3 w-3 animate-spin text-muted-foreground pointer-events-none" />
-              )}
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={handleMaxClick}
-                disabled={shieldingState.isShielding || isConfirming}
-                className="text-xs"
-              >
-                MAX
-              </Button>
-            </div>
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Available: {transparentBalance} USDC</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={handleMaxClick}
+                  disabled={modalState !== 'idle' && modalState !== 'validating'}
+                  className="text-xs"
+                >
+                  MAX
+                </Button>
               </div>
-              {amountError && amount.trim() !== '' && (
-                <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                  <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                  <span className="flex-1">{amountError}</span>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Available: {transparentBalance} USDC</span>
                 </div>
-              )}
+                {showValidationError && (
+                  <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span className="flex-1">{amountError}</span>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Transaction Details */}
-          {shouldShowDetails && (
-            <div className={cn(
-              "rounded-lg border bg-muted/40 p-4 transition-all",
-              isTransactionActive ? "border-primary/50 opacity-60" : "border-border"
-            )}>
+          {/* Transaction Details - Only show during idle/validating states */}
+          {showTransactionDetails && (
+            <div className="rounded-lg border bg-muted/40 p-4 transition-all border-border">
               <div className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">From</span>
@@ -263,8 +308,8 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
             </div>
           )}
 
-          {/* Progress Stepper */}
-          {shieldingState.isShielding && (
+          {/* Progress Stepper - Only show during submitting state */}
+          {modalState === 'submitting' && (
             <div className="flex items-center justify-between px-2 py-4">
               {(['building', 'signing', 'submitting'] as const).map((phase, idx) => {
                 const isActive = txUiState.phase === phase
@@ -303,31 +348,35 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
             </div>
           )}
 
-          {/* Status Messages */}
-          {shieldingState.phase && (
+          {/* Status Messages - Only show during submitting state */}
+          {modalState === 'submitting' && txUiState.phase && (
             <div className="rounded-lg border border-border bg-muted/40 p-3 animate-in fade-in slide-in-from-top-2 duration-300">
               <div className="flex items-center gap-2 text-sm">
-                {shieldingState.isShielding && <Loader2 className="h-4 w-4 animate-spin" />}
+                <Loader2 className="h-4 w-4 animate-spin" />
                 <span>
-                  {shieldingState.phase === 'building' && 'Building transaction...'}
-                  {shieldingState.phase === 'signing' && 'Waiting for approval...'}
-                  {shieldingState.phase === 'submitting' && 'Submitting transaction...'}
-                  {txUiState.showSuccessState && 'Transaction submitted successfully!'}
+                  {txUiState.phase === 'building' && 'Building transaction...'}
+                  {txUiState.phase === 'signing' && 'Waiting for approval...'}
+                  {txUiState.phase === 'submitting' && 'Submitting transaction...'}
                 </span>
               </div>
             </div>
           )}
 
           {/* Enhanced Success State */}
-          {txUiState.showSuccessState && txHash && (
-            <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="flex items-start gap-3">
-                <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-green-700 dark:text-green-400 mb-1">
+          {modalState === 'success' && txHash && (
+            <div className="space-y-4">
+              {/* Success Checkmark */}
+              <div className="flex justify-center animate-in zoom-in-95 duration-500">
+                <CheckCircle2 className="h-16 w-16 text-green-500" />
+              </div>
+              
+              {/* Success Message */}
+              <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex flex-col gap-4">
+                  <p className="text-sm font-medium text-green-700 dark:text-green-400 text-center">
                     Transaction submitted successfully!
                   </p>
-                  <div className="flex items-center gap-2 mt-2">
+                  <div className="flex items-center justify-center gap-2">
                     <code className="text-xs font-mono text-green-600 dark:text-green-300">
                       {formatTxHash(txHash)}
                     </code>
@@ -343,74 +392,87 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
                       </Button>
                     )}
                   </div>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      type="button"
+                      variant="primary"
+                      onClick={handleNewTransaction}
+                      className="flex-1"
+                    >
+                      New Transaction
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={onClose}
+                      className="flex-1"
+                    >
+                      Close
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {shieldingState.error && (
-            <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-3 animate-in fade-in slide-in-from-top-2 duration-300">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <p className="text-sm text-red-500 mb-2">{shieldingState.error}</p>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={handleRetry}
-                    className="h-7 text-xs"
-                  >
-                    Try Again
-                  </Button>
+          {/* Error State */}
+          {modalState === 'error' && shieldingState.error && (
+            <div className="space-y-4">
+              {/* Error X Icon */}
+              <div className="flex justify-center animate-in zoom-in-95 duration-500">
+                <XCircle className="h-16 w-16 text-red-500" />
+              </div>
+              
+              {/* Error Message */}
+              <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="flex flex-col gap-4">
+                  <p className="text-sm text-red-500 text-center">{shieldingState.error}</p>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      type="button"
+                      variant="primary"
+                      onClick={handleRetry}
+                      className="flex-1"
+                    >
+                      Try Again
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={onClose}
+                      className="flex-1"
+                    >
+                      Close
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Footer Actions */}
-          <div className="mt-6 flex items-center justify-end gap-3">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={onClose}
-              disabled={isConfirming || shieldingState.isShielding}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={isDisabled}
-              className={cn(
-                isDisabled && "cursor-not-allowed opacity-60",
-                shieldingState.isShielding && "animate-pulse"
-              )}
-            >
-              {shieldingState.isShielding ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  <span className="transition-opacity duration-200">
-                    {txUiState.phase === 'building' && 'Building...'}
-                    {txUiState.phase === 'signing' && 'Signing...'}
-                    {txUiState.phase === 'submitting' && 'Submitting...'}
-                    {!txUiState.phase && 'Processing...'}
-                  </span>
-                </>
-              ) : (
-                'Shield'
-              )}
-            </Button>
-          </div>
+          {/* Footer Actions - Only show during idle/validating states */}
+          {showFormInputs && (
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={onClose}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={modalState === 'idle' || (modalState === 'validating' && !isAmountValid)}
+                className={cn(
+                  (modalState === 'idle' || (modalState === 'validating' && !isAmountValid)) && "cursor-not-allowed opacity-60"
+                )}
+              >
+                Shield
+              </Button>
+            </div>
+          )}
         </form>
-
-        {/* Success Celebration Animation */}
-        {txUiState.showSuccessState && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="animate-in zoom-in-95 duration-500 fade-out duration-300 delay-[800ms]">
-              <CheckCircle2 className="h-16 w-16 text-green-500" />
-            </div>
-          </div>
-        )}
 
         {/* ARIA Live Region for Screen Readers */}
         <div aria-live="polite" aria-atomic="true" className="sr-only">
