@@ -26,9 +26,9 @@ import {
 } from './basePoller'
 import {
   createTendermintRpcClient,
-  getTendermintRpcUrl,
   type TendermintTx,
 } from './tendermintRpcClient'
+import { getEffectiveRpcUrl } from '@/services/config/customUrlResolver'
 import { DEPOSIT_STAGES, PAYMENT_STAGES } from '@/shared/flowStages'
 import { logger } from '@/utils/logger'
 import { fetchNobleForwardingAddress } from '@/services/deposit/nobleForwardingService'
@@ -1258,7 +1258,7 @@ export class NoblePoller implements ChainPoller {
     const chainKey = params.metadata.chainKey || 'noble-testnet'
     let rpcUrl: string
     try {
-      rpcUrl = await getTendermintRpcUrl(chainKey)
+      rpcUrl = await getEffectiveRpcUrl(chainKey, 'tendermint')
     } catch (error) {
       logger.error('[NoblePoller] Failed to get Tendermint RPC URL', {
         chainKey,

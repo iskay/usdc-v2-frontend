@@ -1,0 +1,149 @@
+/**
+ * Unified transaction display component that replaces form content during transactions.
+ * Handles progress (building/signing/submitting) and success states.
+ * Returns null when idle to allow form to render normally.
+ */
+
+import { useEffect, useState } from 'react'
+import { Lock, CheckCircle2, ExternalLink } from 'lucide-react'
+import { Button } from '@/components/common/Button'
+import { ProgressStepper, type TransactionPhase } from './ProgressStepper'
+import { formatTxHash } from '@/utils/toastHelpers'
+import { cn } from '@/lib/utils'
+
+export interface TransactionDisplayProps {
+  phase: TransactionPhase
+  showSuccessState: boolean
+  txHash: string | null
+  explorerUrl?: string
+  onNavigate: () => void
+  countdownSeconds?: number
+  className?: string
+}
+
+export function TransactionDisplay({
+  phase,
+  showSuccessState,
+  txHash,
+  explorerUrl,
+  onNavigate,
+  countdownSeconds = 3,
+  className,
+}: TransactionDisplayProps) {
+  const [countdown, setCountdown] = useState(countdownSeconds)
+  const [isFadingOut, setIsFadingOut] = useState(false)
+
+  // Reset countdown when success state becomes active
+  useEffect(() => {
+    if (showSuccessState) {
+      setCountdown(countdownSeconds)
+      setIsFadingOut(false)
+    }
+  }, [showSuccessState, countdownSeconds])
+
+  // Handle countdown timer for success state
+  useEffect(() => {
+    if (!showSuccessState || !txHash) {
+      return
+    }
+
+    if (countdown <= 0) {
+      // Start fade-out animation before navigation
+      setIsFadingOut(true)
+      // Wait for fade-out to complete (500ms) before navigating
+      const navigateTimer = setTimeout(() => {
+        onNavigate()
+      }, 500)
+      return () => clearTimeout(navigateTimer)
+    }
+
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer)
+          // Start fade-out animation before navigation
+          setIsFadingOut(true)
+          // Wait for fade-out to complete (500ms) before navigating
+          setTimeout(() => {
+            onNavigate()
+          }, 500)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [showSuccessState, txHash, countdown, onNavigate])
+
+  // Return null when idle (no transaction active)
+  if (!phase && !showSuccessState) {
+    return null
+  }
+
+  // Show success state
+  if (showSuccessState && txHash) {
+    return (
+      <div
+        className={cn(
+          "flex items-center justify-center min-h-[400px] w-full animate-in fade-in duration-300",
+          isFadingOut && "animate-out fade-out duration-500",
+          className
+        )}
+      >
+        <div className="text-center space-y-6 px-6 max-w-md">
+          <div className="animate-in zoom-in-95 duration-500">
+            <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-semibold">Transaction Submitted!</h2>
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center justify-center gap-2">
+                <code className="text-sm font-mono text-muted-foreground bg-muted px-3 py-1.5 rounded">
+                  {formatTxHash(txHash)}
+                </code>
+              </div>
+              {explorerUrl && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => window.open(explorerUrl, '_blank', 'noopener,noreferrer')}
+                  className="gap-2"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View on Explorer
+                </Button>
+              )}
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Returning to dashboard in {countdown}...
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // Show progress state (building/signing/submitting)
+  if (phase) {
+    return (
+      <div
+        className={cn(
+          "flex items-center justify-center min-h-[400px] w-full animate-in fade-in duration-300",
+          className
+        )}
+      >
+        <div className="text-center space-y-4 w-full max-w-md px-4">
+          <Lock className="h-8 w-8 text-muted-foreground mx-auto animate-pulse" />
+          <p className="text-sm text-muted-foreground">Transaction in progress...</p>
+          <div className="flex justify-center">
+            <ProgressStepper currentPhase={phase} />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Fallback (should not reach here)
+  return null
+}

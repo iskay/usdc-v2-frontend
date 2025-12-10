@@ -10,7 +10,7 @@ import { logger } from '@/utils/logger'
 import { retryWithBackoff } from './basePoller'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
-import { getTendermintIndexerUrl } from './tendermintRpcClient'
+import { getEffectiveIndexerUrl } from '@/services/config/customUrlResolver'
 import { getDefaultNamadaChainKey } from '@/config/chains'
 
 /**
@@ -88,7 +88,10 @@ async function getNamadaStartHeight(
   // Get indexer URL from config (with fallback to env)
   const tendermintConfig = await fetchTendermintChainsConfig()
   const namadaChainKey = getDefaultNamadaChainKey(tendermintConfig) || 'namada-testnet'
-  const baseIndexerUrl = await getTendermintIndexerUrl(namadaChainKey)
+  const baseIndexerUrl = await getEffectiveIndexerUrl(namadaChainKey)
+  if (!baseIndexerUrl) {
+    throw new Error(`Indexer URL not found for chain: ${namadaChainKey}`)
+  }
   const indexerUrl = `${baseIndexerUrl}/api/v1/block/timestamp`
   const url = `${indexerUrl}/${timestampSeconds}`
 

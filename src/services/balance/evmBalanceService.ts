@@ -2,6 +2,7 @@ import { ethers } from 'ethers'
 import { jotaiStore } from '@/store/jotaiStore'
 import { chainConfigAtom } from '@/atoms/appAtom'
 import { findChainByKey } from '@/config/chains'
+import { getEffectiveRpcUrl } from '@/services/config/customUrlResolver'
 
 /**
  * Get USDC contract address for a given chain key from chain config.
@@ -26,6 +27,7 @@ export function getUsdcContractAddress(chainKey: string): string | undefined {
 
 /**
  * Get primary RPC URL for a given chain key from chain config.
+ * @deprecated Use getEffectiveRpcUrl from customUrlResolver instead
  * @param chainKey - The chain key (e.g., 'sepolia', 'base-sepolia')
  * @returns Primary RPC URL, or undefined if chain not found or config not loaded
  */
@@ -98,7 +100,7 @@ export async function fetchEvmUsdcBalance(
 
     // Get chain configuration
     const usdcAddress = getUsdcContractAddress(chainKey)
-    const rpcUrl = getPrimaryRpcUrl(chainKey)
+    const rpcUrl = await getEffectiveRpcUrl(chainKey, 'evm')
 
     if (!usdcAddress || !rpcUrl) {
       console.warn('[EvmBalanceService] Missing chain configuration', {

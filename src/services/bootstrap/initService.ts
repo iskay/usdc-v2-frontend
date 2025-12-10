@@ -7,12 +7,26 @@ import {
   attemptNamadaReconnection,
   registerNamadaAccountChangeListener,
 } from '@/services/wallet/walletService'
+import { loadCustomChainUrls } from '@/services/storage/customChainUrlsStorage'
+import { jotaiStore } from '@/store/jotaiStore'
+import { customEvmChainUrlsAtom, customTendermintChainUrlsAtom } from '@/atoms/customChainUrlsAtom'
 
 export interface BootstrapResult {
   chains: EvmChainsFile
 }
 
 export async function initializeApplication(): Promise<BootstrapResult> {
+  // Load custom chain URLs from localStorage before loading chain configs
+  const storedUrls = loadCustomChainUrls()
+  if (storedUrls) {
+    if (storedUrls.evm && Object.keys(storedUrls.evm).length > 0) {
+      jotaiStore.set(customEvmChainUrlsAtom, storedUrls.evm)
+    }
+    if (storedUrls.tendermint && Object.keys(storedUrls.tendermint).length > 0) {
+      jotaiStore.set(customTendermintChainUrlsAtom, storedUrls.tendermint)
+    }
+  }
+
   const chains = await fetchEvmChainsConfig()
 
   // Initialize Namada SDK early in the bootstrap process

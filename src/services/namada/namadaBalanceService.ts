@@ -1,5 +1,5 @@
 import { env } from '@/config/env'
-import { getTendermintIndexerUrl } from '@/services/polling/tendermintRpcClient'
+import { getEffectiveIndexerUrl } from '@/services/config/customUrlResolver'
 import { getDefaultNamadaChainKey } from '@/config/chains'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 
@@ -21,7 +21,11 @@ export interface NamadaUSDCBalance {
 async function getNamadaIndexerUrl(): Promise<string> {
   const tendermintConfig = await fetchTendermintChainsConfig()
   const namadaChainKey = getDefaultNamadaChainKey(tendermintConfig) || 'namada-testnet'
-  return await getTendermintIndexerUrl(namadaChainKey)
+  const indexerUrl = await getEffectiveIndexerUrl(namadaChainKey)
+  if (!indexerUrl) {
+    throw new Error(`Indexer URL not found for chain: ${namadaChainKey}`)
+  }
+  return indexerUrl
 }
 
 /**

@@ -10,8 +10,7 @@ import { ChainSelect } from '@/components/common/ChainSelect'
 import { DepositConfirmationModal } from '@/components/deposit/DepositConfirmationModal'
 import { DepositFlowSteps } from '@/components/deposit/DepositFlowSteps'
 import { DepositSummaryCard } from '@/components/deposit/DepositSummaryCard'
-import { TransactionSuccessOverlay } from '@/components/tx/TransactionSuccessOverlay'
-import { FormLockOverlay } from '@/components/tx/FormLockOverlay'
+import { TransactionDisplay } from '@/components/tx/TransactionDisplay'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useToast } from '@/hooks/useToast'
@@ -41,7 +40,6 @@ import { findChainByChainId, getDefaultChainKey } from '@/config/chains'
 import { getEvmTxExplorerUrl } from '@/utils/explorerUtils'
 import { sanitizeError } from '@/utils/errorSanitizer'
 import { txUiAtom, isAnyTransactionActiveAtom, resetTxUiState } from '@/atoms/txUiAtom'
-import { cn } from '@/lib/utils'
 
 export function Deposit() {
   const navigate = useNavigate()
@@ -639,23 +637,6 @@ export function Deposit() {
   return (
     <RequireMetaMaskConnection message="Please connect your MetaMask wallet to deposit USDC. EVM deposits require a connected wallet.">
       <div className="relative min-h-full min-w-full">
-        {/* Success Overlay */}
-        {showSuccessState && txHash && (
-          <TransactionSuccessOverlay
-            txHash={txHash}
-            explorerUrl={explorerUrl}
-            onNavigate={() => {
-              // Navigate first, then reset state after route transition completes
-              navigate('/dashboard')
-              // Delay state reset to allow overlay fade-out and route transition (500ms fade + 350ms route transition)
-              setTimeout(() => {
-                resetTxUiState(setTxUiState)
-              }, 600)
-            }}
-            countdownSeconds={3}
-          />
-        )}
-
         <div className="flex flex-col gap-6 p-12 mx-auto w-full">
         <BackToHome />
 
@@ -690,25 +671,40 @@ export function Deposit() {
           </div>
         )}
 
-        <div className={cn("flex flex-col gap-6 relative", isAnyTxActive && "opacity-60")}>
-          {/* Form Lock Overlay */}
-          <FormLockOverlay isLocked={isAnyTxActive} currentPhase={currentPhase} />
-          
-          {/* Two-column layout: Flow Steps Sidebar + Main Content */}
-          <div className="flex flex-col lg:flex-row gap-8">
-            {/* Left Sidebar - Flow Steps */}
-            <div className="w-full lg:w-64 shrink-0">
-              <DepositFlowSteps
-                amountComplete={amountComplete}
-                recipientComplete={recipientComplete}
-                sourceChainComplete={sourceChainComplete}
-                activeStep={activeStep}
-              />
-            </div>
+        {/* Transaction Display (replaces form when transaction is active) */}
+        {isAnyTxActive ? (
+          <TransactionDisplay
+            phase={currentPhase}
+            showSuccessState={showSuccessState}
+            txHash={txHash}
+            explorerUrl={explorerUrl}
+            onNavigate={() => {
+              // Navigate first, then reset state after route transition completes
+              navigate('/dashboard')
+              // Delay state reset to allow fade-out and route transition (500ms fade + 350ms route transition)
+              setTimeout(() => {
+                resetTxUiState(setTxUiState)
+              }, 600)
+            }}
+            countdownSeconds={3}
+          />
+        ) : (
+          <div className="flex flex-col gap-6">
+            {/* Two-column layout: Flow Steps Sidebar + Main Content */}
+            <div className="flex flex-col lg:flex-row gap-8">
+              {/* Left Sidebar - Flow Steps */}
+              <div className="w-full lg:w-64 shrink-0">
+                <DepositFlowSteps
+                  amountComplete={amountComplete}
+                  recipientComplete={recipientComplete}
+                  sourceChainComplete={sourceChainComplete}
+                  activeStep={activeStep}
+                />
+              </div>
 
-            {/* Right Column - Main Content */}
-            <div className="flex-1">
-              <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
+              {/* Right Column - Main Content */}
+              <div className="flex-1">
+                <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
             
                 {/* Step 1: Amount Section */}
                 <div className="rounded-lg border border-blue-200/50 bg-blue-50/50 dark:bg-blue-950/10 p-6 shadow-sm">
@@ -743,7 +739,7 @@ export function Deposit() {
                             setAmount(maxAmount.toFixed(6).replace(/\.?0+$/, ''))
                           }
                         }}
-                        disabled={isAnyTxActive || availableBalance === '--'}
+                        disabled={availableBalance === '--'}
                         className="text-sm font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Use Max
@@ -759,7 +755,7 @@ export function Deposit() {
                       className="flex-1 border-none bg-transparent p-0 text-3xl font-bold focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30"
                       placeholder="0.00"
                       inputMode="decimal"
-                      disabled={isAnyTxActive}
+                      disabled={false}
                     />
                     <span className="text-sm text-muted-foreground">USDC</span>
                   </div>
@@ -786,9 +782,9 @@ export function Deposit() {
                     <button
                       type="button"
                       onClick={handleAutoFill}
-                      disabled={!walletState.namada.isConnected || isAnyTxActive}
+                      disabled={!walletState.namada.isConnected}
                       className={`text-sm font-medium text-primary hover:text-primary/80 transition-colors ${
-                        !walletState.namada.isConnected || isAnyTxActive
+                        !walletState.namada.isConnected
                           ? 'opacity-50 cursor-not-allowed'
                           : ''
                       }`}
@@ -956,7 +952,7 @@ export function Deposit() {
                   chainName={chainName}
                   isValid={validation.isValid}
                   validationError={
-                    !validation.isValid && !isAnyTxActive
+                    !validation.isValid
                       ? validation.amountError || validation.addressError || 'Please fill in all required fields'
                       : null
                   }
@@ -972,14 +968,15 @@ export function Deposit() {
                       }
                     }
                   }}
-                  isSubmitting={isAnyTxActive}
-                  currentPhase={currentPhase}
+                  isSubmitting={false}
+                  currentPhase={null}
                 />
-              </form>
-              <div className='min-h-12' />
+                </form>
+                <div className='min-h-12' />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Confirmation Modal */}
         <DepositConfirmationModal

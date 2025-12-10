@@ -7,8 +7,7 @@ import { BackToHome } from '@/components/common/BackToHome'
 import { RequireNamadaConnection } from '@/components/wallet/RequireNamadaConnection'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { PaymentConfirmationModal } from '@/components/payment/PaymentConfirmationModal'
-import { TransactionSuccessOverlay } from '@/components/tx/TransactionSuccessOverlay'
-import { FormLockOverlay } from '@/components/tx/FormLockOverlay'
+import { TransactionDisplay } from '@/components/tx/TransactionDisplay'
 import { SendFlowSteps } from '@/components/payment/SendFlowSteps'
 import { SendSummaryCard } from '@/components/payment/SendSummaryCard'
 import { useBalance } from '@/hooks/useBalance'
@@ -41,7 +40,6 @@ import { NAMADA_CHAIN_ID } from '@/config/constants'
 import { getNamadaTxExplorerUrl } from '@/utils/explorerUtils'
 import { sanitizeError } from '@/utils/errorSanitizer'
 import { txUiAtom, isAnyTransactionActiveAtom, resetTxUiState } from '@/atoms/txUiAtom'
-import { cn } from '@/lib/utils'
 
 export function SendPayment() {
   const navigate = useNavigate()
@@ -467,23 +465,6 @@ export function SendPayment() {
   return (
     <RequireNamadaConnection message="Please connect your Namada Keychain to send payments. Shielded payments require a connected wallet.">
       <div className="relative min-h-full min-w-full">
-        {/* Success Overlay */}
-        {showSuccessState && txHash && (
-          <TransactionSuccessOverlay
-            txHash={txHash}
-            explorerUrl={explorerUrl}
-            onNavigate={() => {
-              // Navigate first, then reset state after route transition completes
-              navigate('/dashboard')
-              // Delay state reset to allow overlay fade-out and route transition (500ms fade + 350ms route transition)
-              setTimeout(() => {
-                resetTxUiState(setTxUiState)
-              }, 600)
-            }}
-            countdownSeconds={3}
-          />
-        )}
-
         <div className="flex flex-col gap-6 p-12 mx-auto w-full">
         <BackToHome />
 
@@ -518,25 +499,40 @@ export function SendPayment() {
           </div>
         )}
 
-        <div className={cn("flex flex-col gap-6 relative", isAnyTxActive && "opacity-60")}>
-          {/* Form Lock Overlay */}
-          <FormLockOverlay isLocked={isAnyTxActive} currentPhase={currentPhase} />
-          
-          {/* Two-column layout: Flow Steps Sidebar + Main Content */}
-          <div className="flex flex-col lg:flex-row gap-8">
-            {/* Left Sidebar - Flow Steps */}
-            <div className="w-full lg:w-64 shrink-0">
-              <SendFlowSteps
-                amountComplete={amountComplete}
-                recipientComplete={recipientComplete}
-                destinationChainComplete={destinationChainComplete}
-                activeStep={activeStep}
-              />
-            </div>
+        {/* Transaction Display (replaces form when transaction is active) */}
+        {isAnyTxActive ? (
+          <TransactionDisplay
+            phase={currentPhase}
+            showSuccessState={showSuccessState}
+            txHash={txHash}
+            explorerUrl={explorerUrl}
+            onNavigate={() => {
+              // Navigate first, then reset state after route transition completes
+              navigate('/dashboard')
+              // Delay state reset to allow fade-out and route transition (500ms fade + 350ms route transition)
+              setTimeout(() => {
+                resetTxUiState(setTxUiState)
+              }, 600)
+            }}
+            countdownSeconds={3}
+          />
+        ) : (
+          <div className="flex flex-col gap-6">
+            {/* Two-column layout: Flow Steps Sidebar + Main Content */}
+            <div className="flex flex-col lg:flex-row gap-8">
+              {/* Left Sidebar - Flow Steps */}
+              <div className="w-full lg:w-64 shrink-0">
+                <SendFlowSteps
+                  amountComplete={amountComplete}
+                  recipientComplete={recipientComplete}
+                  destinationChainComplete={destinationChainComplete}
+                  activeStep={activeStep}
+                />
+              </div>
 
-            {/* Right Column - Main Content */}
-            <div className="flex-1">
-              <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
+              {/* Right Column - Main Content */}
+              <div className="flex-1">
+                <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
             
                 {/* Step 1: Amount Section */}
                 <div className="rounded-lg border border-blue-200/50 bg-blue-50/50 dark:bg-blue-950/10 p-6 shadow-sm">
@@ -572,7 +568,7 @@ export function SendPayment() {
                             setAmount(maxAmount.toFixed(6).replace(/\.?0+$/, ''))
                           }
                         }}
-                        disabled={isAnyTxActive || shieldedBalance === '--' || shieldedBalance === '0.00'}
+                        disabled={shieldedBalance === '--' || shieldedBalance === '0.00'}
                         className="text-sm font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Use Max
@@ -588,7 +584,7 @@ export function SendPayment() {
                       className="flex-1 border-none bg-transparent p-0 text-3xl font-bold focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30"
                       placeholder="0.00"
                       inputMode="decimal"
-                      disabled={isAnyTxActive}
+                      disabled={false}
                     />
                     <span className="text-sm text-muted-foreground">USDC</span>
                   </div>
@@ -615,9 +611,9 @@ export function SendPayment() {
                       <button
                         type="button"
                         onClick={handleAutoFill}
-                        disabled={!walletState.metaMask.isConnected || isAnyTxActive}
+                        disabled={!walletState.metaMask.isConnected}
                         className={`text-sm font-medium text-primary hover:text-primary/80 transition-colors ${
-                          !walletState.metaMask.isConnected || isAnyTxActive
+                          !walletState.metaMask.isConnected
                             ? 'opacity-50 cursor-not-allowed'
                             : ''
                         }`}
@@ -638,7 +634,7 @@ export function SendPayment() {
                           : 'border-input focus-visible:ring-ring focus-visible:border-ring'
                       }`}
                       placeholder="0x..."
-                      disabled={isAnyTxActive}
+                      disabled={false}
                     />
                     <p className="text-xs text-muted-foreground mt-2">
                       Tip: Can be your address or someone else's
@@ -666,7 +662,7 @@ export function SendPayment() {
                     <ChainSelect
                       value={selectedChain}
                       onChange={setSelectedChain}
-                      disabled={isAnyTxActive}
+                      disabled={false}
                       showEstimatedTime={true}
                       timeType="send"
                     />
@@ -725,14 +721,15 @@ export function SendPayment() {
                       }
                     }
                   }}
-                  isSubmitting={isAnyTxActive}
-                  currentPhase={currentPhase}
+                  isSubmitting={false}
+                  currentPhase={null}
                 />
-              </form>
-              <div className='min-h-12' />
+                </form>
+                <div className='min-h-12' />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Confirmation Modal */}
         <PaymentConfirmationModal

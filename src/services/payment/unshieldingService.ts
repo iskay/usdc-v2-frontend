@@ -18,7 +18,8 @@ import type {
 import { env } from '@/config/env'
 import { logger } from '@/utils/logger'
 import { getNamadaSdk } from '@/services/namada/namadaSdkService'
-import { getTendermintMaspIndexerUrl, getTendermintRpcUrl, getTendermintChainId } from '@/services/polling/tendermintRpcClient'
+import { getTendermintChainId } from '@/services/polling/tendermintRpcClient'
+import { getEffectiveRpcUrl, getEffectiveMaspIndexerUrl } from '@/services/config/customUrlResolver'
 import { getDefaultNamadaChainKey } from '@/config/chains'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 import { estimateGasForToken } from '@/services/namada/namadaFeeEstimatorService'
@@ -108,8 +109,8 @@ export async function buildUnshieldingTransaction(
   // Get values from chain config (with fallback to env)
   const tendermintConfig = await fetchTendermintChainsConfig()
   const namadaChainKey = getDefaultNamadaChainKey(tendermintConfig) || 'namada-testnet'
-  const rpcUrl = await getTendermintRpcUrl(namadaChainKey)
-  const maspIndexerUrl = await getTendermintMaspIndexerUrl(namadaChainKey)
+  const rpcUrl = await getEffectiveRpcUrl(namadaChainKey, 'tendermint')
+  const maspIndexerUrl = await getEffectiveMaspIndexerUrl(namadaChainKey)
 
   // Initialize worker
   const initPayload: ShieldedWorkerInitPayload = {

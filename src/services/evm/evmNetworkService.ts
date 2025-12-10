@@ -8,6 +8,7 @@ import { jotaiStore } from '@/store/jotaiStore'
 import { chainConfigAtom } from '@/atoms/appAtom'
 import { findChainByKey } from '@/config/chains'
 import { logger } from '@/utils/logger'
+import { getEffectiveRpcUrl } from '@/services/config/customUrlResolver'
 
 /**
  * Get the expected chain ID for a given chain key.
@@ -217,18 +218,21 @@ export async function getEvmProvider(
   }
 
   const chain = findChainByKey(chainConfig, chainKey)
-  if (!chain || !chain.rpcUrls[0]) {
-    throw new Error(`Chain RPC URL not found for: ${chainKey}`)
+  if (!chain) {
+    throw new Error(`Chain not found: ${chainKey}`)
   }
 
+  // Get effective RPC URL (custom or default)
+  const rpcUrl = await getEffectiveRpcUrl(chainKey, 'evm')
+
   // Verify RPC is reachable before creating provider (prevents retry loop)
-  const isReachable = await verifyRpcReachable(chain.rpcUrls[0], 5000)
+  const isReachable = await verifyRpcReachable(rpcUrl, 5000)
   if (!isReachable) {
     throw new Error('RPC unreachable')
   }
 
   // Create provider with static network to prevent retry loop on bad RPCs
   const staticNetwork = ethers.Network.from(chain.chainId)
-  return new ethers.JsonRpcProvider(chain.rpcUrls[0], staticNetwork)
+  return new ethers.JsonRpcProvider(rpcUrl, staticNetwork)
 }
 

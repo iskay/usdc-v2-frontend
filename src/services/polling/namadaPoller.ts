@@ -23,10 +23,8 @@ import {
   createErrorResult,
   indexAttributes,
 } from './basePoller'
-import {
-  createTendermintRpcClient,
-  getTendermintRpcUrl,
-} from './tendermintRpcClient'
+import { createTendermintRpcClient } from './tendermintRpcClient'
+import { getEffectiveRpcUrl } from '@/services/config/customUrlResolver'
 import { DEPOSIT_STAGES, PAYMENT_STAGES } from '@/shared/flowStages'
 import { logger } from '@/utils/logger'
 import { extractTendermintBlockMetadata } from './blockMetadataExtractor'
@@ -538,7 +536,7 @@ export class NamadaPoller implements ChainPoller {
     const chainKey = params.metadata.chainKey || 'namada-testnet'
     let rpcUrl: string
     try {
-      rpcUrl = await getTendermintRpcUrl(chainKey)
+      rpcUrl = await getEffectiveRpcUrl(chainKey, 'tendermint')
     } catch (error) {
       logger.error('[NamadaPoller] Failed to get Tendermint RPC URL', {
         chainKey,

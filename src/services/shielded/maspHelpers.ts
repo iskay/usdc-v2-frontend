@@ -1,7 +1,7 @@
 import type { Sdk } from '@namada/sdk-multicore'
 import type { NamadaKeychainAccount } from '@/services/wallet/namadaKeychain'
 import type { ShieldedViewingKey } from '@/types/shielded'
-import { getTendermintIndexerUrl } from '@/services/polling/tendermintRpcClient'
+import { getEffectiveIndexerUrl } from '@/services/config/customUrlResolver'
 import { getDefaultNamadaChainKey } from '@/config/chains'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 
@@ -13,7 +13,10 @@ export async function fetchBlockHeightByTimestamp(timestamp: number): Promise<nu
   try {
     const tendermintConfig = await fetchTendermintChainsConfig()
     const namadaChainKey = getDefaultNamadaChainKey(tendermintConfig) || 'namada-testnet'
-    const indexerUrl = await getTendermintIndexerUrl(namadaChainKey)
+    const indexerUrl = await getEffectiveIndexerUrl(namadaChainKey)
+    if (!indexerUrl) {
+      throw new Error(`Indexer URL not found for chain: ${namadaChainKey}`)
+    }
 
     // Convert timestamp to seconds (if it's in milliseconds)
     const timestampSeconds = timestamp > 1000000000000 ? Math.floor(timestamp / 1000) : timestamp

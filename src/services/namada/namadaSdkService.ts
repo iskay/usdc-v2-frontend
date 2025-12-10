@@ -2,9 +2,9 @@
 import { initSdk } from '@namada/sdk-multicore/inline'
 import type { Sdk } from '@namada/sdk-multicore'
 import { env } from '@/config/env'
-import { getTendermintMaspIndexerUrl, getTendermintRpcUrl } from '@/services/polling/tendermintRpcClient'
 import { getDefaultNamadaChainKey } from '@/config/chains'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
+import { getEffectiveRpcUrl, getEffectiveMaspIndexerUrl } from '@/services/config/customUrlResolver'
 
 // Guard against double initialization
 let sdkInitPromise: Promise<Sdk> | null = null
@@ -58,13 +58,13 @@ export async function initializeNamadaSdk(config?: Partial<NamadaSdkConfig>): Pr
   const tendermintConfig = await fetchTendermintChainsConfig()
   const namadaChainKey = getDefaultNamadaChainKey(tendermintConfig) || 'namada-testnet'
   
-  const effectiveRpcUrl = config?.rpcUrl ?? await getTendermintRpcUrl(namadaChainKey)
+  const effectiveRpcUrl = config?.rpcUrl ?? await getEffectiveRpcUrl(namadaChainKey, 'tendermint')
   const effectiveToken = config?.token ?? env.namadaToken()
   
   // Get masp indexer URL from config (with fallback to env)
   let effectiveMaspIndexerUrl = config?.maspIndexerUrl
   if (!effectiveMaspIndexerUrl) {
-    effectiveMaspIndexerUrl = await getTendermintMaspIndexerUrl(namadaChainKey)
+    effectiveMaspIndexerUrl = await getEffectiveMaspIndexerUrl(namadaChainKey)
   }
   
   const effectiveDbName = config?.dbName ?? env.namadaDbName()

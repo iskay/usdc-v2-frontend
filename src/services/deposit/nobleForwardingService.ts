@@ -6,7 +6,7 @@
 import { env } from '@/config/env'
 import { jotaiStore } from '@/store/jotaiStore'
 import { depositRecipientAddressAtom } from '@/atoms/appAtom'
-import { getTendermintLcdUrl } from '@/services/polling/tendermintRpcClient'
+import { getEffectiveLcdUrl } from '@/services/config/customUrlResolver'
 
 export interface NobleForwardingResponse {
   address: string
@@ -33,17 +33,18 @@ export async function fetchNobleForwardingAddress(
   channelId?: string
 ): Promise<string> {
   // Get LCD URL from config (with env fallback for backward compatibility)
-  let lcdUrl: string
+  let lcdUrl: string | undefined
   try {
-    lcdUrl = await getTendermintLcdUrl('noble-testnet')
+    lcdUrl = await getEffectiveLcdUrl('noble-testnet')
   } catch (error) {
     // Fallback to env variable
-    lcdUrl = env.nobleLcdUrl() || ''
-    if (!lcdUrl) {
-      throw new Error(
-        'Noble LCD URL not configured. Please set lcdUrl in tendermint-chains.json or VITE_NOBLE_LCD_URL environment variable.'
-      )
-    }
+    lcdUrl = env.nobleLcdUrl() || undefined
+  }
+  
+  if (!lcdUrl) {
+    throw new Error(
+      'Noble LCD URL not configured. Please set lcdUrl in tendermint-chains.json or VITE_NOBLE_LCD_URL environment variable.'
+    )
   }
 
   const channel = channelId || env.nobleToNamadaChannel()
@@ -107,10 +108,10 @@ export async function checkNobleForwardingRegistration(
   // Get LCD URL from config (with env fallback for backward compatibility)
   let lcdUrl: string | undefined
   try {
-    lcdUrl = await getTendermintLcdUrl('noble-testnet')
+    lcdUrl = await getEffectiveLcdUrl('noble-testnet')
   } catch (error) {
     // Fallback to env variable
-    lcdUrl = env.nobleLcdUrl()
+    lcdUrl = env.nobleLcdUrl() || undefined
   }
   
   if (!lcdUrl) {

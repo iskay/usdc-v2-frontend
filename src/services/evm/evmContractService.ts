@@ -4,7 +4,7 @@
  */
 
 import { ethers } from 'ethers'
-import { getUsdcContractAddress, getPrimaryRpcUrl } from '@/services/balance/evmBalanceService'
+import { getUsdcContractAddress } from '@/services/balance/evmBalanceService'
 import { jotaiStore } from '@/store/jotaiStore'
 import { chainConfigAtom } from '@/atoms/appAtom'
 import { findChainByKey } from '@/config/chains'
@@ -75,9 +75,8 @@ export async function checkUsdcBalance(
   address: string
 ): Promise<bigint> {
   const usdcAddress = getUsdcContractAddress(chainKey)
-  const rpcUrl = getPrimaryRpcUrl(chainKey)
 
-  if (!usdcAddress || !rpcUrl) {
+  if (!usdcAddress) {
     throw new Error(`Chain configuration not found for: ${chainKey}`)
   }
 
@@ -100,9 +99,8 @@ export async function checkUsdcAllowance(
   spender: string
 ): Promise<bigint> {
   const usdcAddress = getUsdcContractAddress(chainKey)
-  const rpcUrl = getPrimaryRpcUrl(chainKey)
 
-  if (!usdcAddress || !rpcUrl) {
+  if (!usdcAddress) {
     throw new Error(`Chain configuration not found for: ${chainKey}`)
   }
 

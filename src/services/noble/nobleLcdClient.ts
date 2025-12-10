@@ -10,7 +10,8 @@
 import { logger } from '@/utils/logger'
 import { env } from '@/config/env'
 import { retryWithBackoff } from '@/services/polling/basePoller'
-import { createTendermintRpcClient, getTendermintRpcUrl, getTendermintLcdUrl } from '@/services/polling/tendermintRpcClient'
+import { createTendermintRpcClient } from '@/services/polling/tendermintRpcClient'
+import { getEffectiveRpcUrl } from '@/services/config/customUrlResolver'
 
 /**
  * Response from Noble forwarding address check endpoint
@@ -204,7 +205,7 @@ class NobleLcdClient {
       // Use RPC endpoint instead of LCD to avoid CORS issues
       // RPC uses JSON-RPC which may have better CORS support
       const chainKey = 'noble-testnet' // Default to testnet, could be made configurable
-      const rpcUrl = await getTendermintRpcUrl(chainKey)
+      const rpcUrl = await getEffectiveRpcUrl(chainKey, 'tendermint')
       const rpcClient = createTendermintRpcClient(rpcUrl)
       
       const response = await retryWithBackoff(
@@ -321,8 +322,12 @@ export async function createNobleLcdClient(baseUrl?: string): Promise<NobleLcdCl
   
   if (!url) {
     try {
-      // Try to get LCD URL from tendermint-chains.json config
-      url = await getTendermintLcdUrl('noble-testnet')
+      // Try to get LCD URL from custom resolver (custom -> config -> env)
+      const { getEffectiveLcdUrl } = await import('@/services/config/customUrlResolver')
+      url = await getEffectiveLcdUrl('noble-testnet')
+      if (!url) {
+        throw new Error('LCD URL not found')
+      }
     } catch (error) {
       // Fallback to env variable for backward compatibility
       url = env.nobleLcdUrl()
