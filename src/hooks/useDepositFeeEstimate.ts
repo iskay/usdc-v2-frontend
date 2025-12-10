@@ -3,12 +3,14 @@
  */
 
 import { useState, useEffect } from 'react'
+import { useAtomValue } from 'jotai'
 import { logger } from '@/utils/logger'
 import {
   estimateDepositFeeForDisplay,
   type DepositFeeInfo,
 } from '@/services/deposit/evmFeeEstimatorService'
 import { checkNobleForwardingRegistration } from '@/services/deposit/nobleForwardingService'
+import { nobleFallbackAddressAtom } from '@/atoms/appAtom'
 
 export interface UseDepositFeeEstimateState {
   feeInfo: DepositFeeInfo | null
@@ -36,6 +38,7 @@ export function useDepositFeeEstimate(
   namadaAddress: string | undefined,
   evmAddress: string | undefined,
 ): UseDepositFeeEstimateReturn {
+  const nobleFallbackAddress = useAtomValue(nobleFallbackAddressAtom)
   const [state, setState] = useState<UseDepositFeeEstimateState>({
     feeInfo: null,
     isLoading: false,
@@ -68,7 +71,8 @@ export function useDepositFeeEstimate(
         let nobleRegistered = false
         if (namadaAddress) {
           try {
-            const registrationStatus = await checkNobleForwardingRegistration(namadaAddress)
+            const fallback = nobleFallbackAddress || ''
+            const registrationStatus = await checkNobleForwardingRegistration(namadaAddress, undefined, fallback)
             
             // If there's an error determining status, log it and assume not registered (include fee)
             if (registrationStatus.error) {
@@ -139,7 +143,7 @@ export function useDepositFeeEstimate(
     }
 
     void estimateFee()
-  }, [chainKey, amount, namadaAddress, evmAddress])
+  }, [chainKey, amount, namadaAddress, evmAddress, nobleFallbackAddress])
 
   return { state }
 }

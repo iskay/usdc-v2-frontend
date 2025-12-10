@@ -195,6 +195,8 @@ export interface ChainPollMetadata {
   messageTransmitterAddress?: string
   /** USDC contract address (for EVM) */
   usdcAddress?: string
+  /** Optional fallback address for Noble forwarding */
+  fallback?: string
   /** Additional chain-specific metadata */
   [key: string]: unknown
 }

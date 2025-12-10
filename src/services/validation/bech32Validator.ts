@@ -4,7 +4,7 @@
  * with checksum verification and HRP validation.
  */
 
-import { bech32m } from 'bech32'
+import { bech32, bech32m } from 'bech32'
 import type { Bech32ValidationOptions, ValidationResult } from './types'
 import { ValidationErrors, getErrorMessage } from './errors'
 
@@ -53,17 +53,23 @@ export function validateBech32Address(
   }
 
   // Attempt to decode the bech32 address
+  // Try standard bech32 first (used by Noble), then bech32m (used by Namada)
   let decoded
   try {
+    decoded = bech32.decode(trimmedAddress)
+  } catch (bech32Error) {
+    // If standard bech32 fails, try bech32m
+  try {
     decoded = bech32m.decode(trimmedAddress)
-  } catch (error) {
-    // Decode failure means invalid bech32 encoding or checksum
+    } catch (bech32mError) {
+      // Both decodings failed - invalid bech32 encoding or checksum
     return {
       isValid: false,
       error: getErrorMessage(
         ValidationErrors.ADDRESS_BECH32_DECODE_ERROR,
         errorMessages.invalidFormat || errorMessages.invalidChecksum
       ),
+      }
     }
   }
 

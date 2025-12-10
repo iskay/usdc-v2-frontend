@@ -15,6 +15,7 @@ export interface BuildTxParams {
   sourceChain: string
   destinationChain: string
   recipient: string
+  fallback?: string
 }
 
 export interface DepositTxData {
@@ -24,6 +25,8 @@ export interface DepositTxData {
   nobleForwardingAddress: string
   forwardingAddressBytes32: string
   destinationDomain: number
+  /** Optional fallback address used when generating Noble forwarding address */
+  fallback?: string
   /** Optional: USDC contract address (can be loaded from chain config if missing) */
   usdcAddress?: string
   /** Optional: Message Transmitter contract address (can be loaded from chain config if missing) */
@@ -44,10 +47,12 @@ export async function buildDepositTx(params: BuildTxParams): Promise<TrackedTran
 
   try {
     // Fetch Noble forwarding address for the Namada destination address
+    const fallback = params.fallback || ''
     logger.info('[TxBuilder] 🔍 Fetching Noble forwarding address...', {
       namadaAddress: params.recipient,
+      fallback: fallback || 'none',
     })
-    const nobleForwardingAddress = await fetchNobleForwardingAddress(params.recipient)
+    const nobleForwardingAddress = await fetchNobleForwardingAddress(params.recipient, undefined, fallback)
     logger.info('[TxBuilder] ✅ Noble forwarding address fetched', {
       nobleForwardingAddress,
     })
@@ -73,6 +78,7 @@ export async function buildDepositTx(params: BuildTxParams): Promise<TrackedTran
       nobleForwardingAddress,
       forwardingAddressBytes32,
       destinationDomain,
+      ...(params.fallback ? { fallback: params.fallback } : {}),
     }
 
     const txId = crypto.randomUUID()
@@ -85,6 +91,7 @@ export async function buildDepositTx(params: BuildTxParams): Promise<TrackedTran
         nobleForwardingAddress: depositData.nobleForwardingAddress,
         forwardingAddressBytes32: depositData.forwardingAddressBytes32,
         destinationDomain: depositData.destinationDomain,
+        fallback: depositData.fallback || 'none',
       },
     })
 

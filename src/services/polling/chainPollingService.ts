@@ -51,15 +51,23 @@ export async function startDepositPolling(
     const amountInBaseUnits = Math.round(parseFloat(details.amount) * 1_000_000).toString()
     const expectedAmountUusdc = `${amountInBaseUnits}uusdc`
 
+    // Get fallback address from depositData if available
+    const fallback = tx.depositData?.fallback
+
     // Get forwarding address - fetch on-demand if missing from depositData
     let forwardingAddress = tx.depositData?.nobleForwardingAddress
     if (!forwardingAddress && details.destinationAddress) {
       logger.info('[ChainPollingService] Forwarding address missing from depositData, fetching on-demand', {
         txId,
         destinationAddress: details.destinationAddress.slice(0, 16) + '...',
+        fallback: fallback || 'none',
       })
       try {
-        forwardingAddress = await fetchNobleForwardingAddress(details.destinationAddress)
+        forwardingAddress = await fetchNobleForwardingAddress(
+          details.destinationAddress,
+          undefined,
+          fallback || ''
+        )
         logger.info('[ChainPollingService] Successfully fetched forwarding address', {
           txId,
           forwardingAddress: forwardingAddress.slice(0, 16) + '...',
@@ -85,6 +93,8 @@ export async function startDepositPolling(
       namadaReceiver: details.destinationAddress,
       expectedAmountUusdc,
       forwardingAddress: forwardingAddress || undefined, // Only include if we have it
+      // Include fallback address if present
+      ...(fallback ? { fallback } : {}),
       // For deposit flow, we'll extract CCTP nonce from EVM burn event
       // and pass it to Noble poller
     }

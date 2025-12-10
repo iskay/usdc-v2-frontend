@@ -35,11 +35,12 @@ import {
 import { useTxTracker } from '@/hooks/useTxTracker'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
-import { preferredChainKeyAtom, depositRecipientAddressAtom } from '@/atoms/appAtom'
+import { preferredChainKeyAtom, depositRecipientAddressAtom, nobleFallbackAddressAtom } from '@/atoms/appAtom'
 import { findChainByChainId, getDefaultChainKey } from '@/config/chains'
 import { getEvmTxExplorerUrl } from '@/utils/explorerUtils'
 import { sanitizeError } from '@/utils/errorSanitizer'
 import { txUiAtom, isAnyTransactionActiveAtom, resetTxUiState } from '@/atoms/txUiAtom'
+import { loadNobleFallbackAddress } from '@/services/storage/nobleFallbackStorage'
 
 export function Deposit() {
   const navigate = useNavigate()
@@ -52,6 +53,8 @@ export function Deposit() {
   const preferredChainKey = useAtomValue(preferredChainKeyAtom)
   const setPreferredChainKey = useSetAtom(preferredChainKeyAtom)
   const setDepositRecipientAddress = useSetAtom(depositRecipientAddressAtom)
+  const nobleFallbackAddress = useAtomValue(nobleFallbackAddressAtom)
+  const setNobleFallbackAddress = useSetAtom(nobleFallbackAddressAtom)
 
   // Form state
   const [amount, setAmount] = useState('')
@@ -82,6 +85,17 @@ export function Deposit() {
     forwardingAddress: null,
     error: null,
   })
+
+  // Load Noble fallback address from storage on mount
+  useEffect(() => {
+    // Only load if not already set (e.g., if Settings page already loaded it)
+    if (!nobleFallbackAddress) {
+      const storedFallback = loadNobleFallbackAddress()
+      if (storedFallback) {
+        setNobleFallbackAddress(storedFallback)
+      }
+    }
+  }, [nobleFallbackAddress, setNobleFallbackAddress])
 
   // Sync toAddress to global atom so it can be accessed from anywhere
   useEffect(() => {
@@ -125,7 +139,8 @@ export function Deposit() {
       })
 
       try {
-        const status = await checkCurrentDepositRecipientRegistration(addressToCheck)
+        const fallback = nobleFallbackAddress || ''
+        const status = await checkCurrentDepositRecipientRegistration(addressToCheck, undefined, fallback)
         
         // Only update if we're still checking the same address
         if (checkingAddressRef.current === addressToCheck) {
@@ -169,7 +184,7 @@ export function Deposit() {
         checkingAddressRef.current = null
       }
     }
-  }, [toAddress])
+  }, [toAddress, nobleFallbackAddress])
 
   // Get EVM address from wallet state
   const evmAddress = walletState.metaMask.account

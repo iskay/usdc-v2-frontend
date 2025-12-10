@@ -279,6 +279,7 @@ export class FlowOrchestrator {
             namadaReceiver: details.destinationAddress,
             expectedAmountUusdc,
             forwardingAddress: tx.depositData?.nobleForwardingAddress,
+            fallback: tx.depositData?.fallback,
             flowType: this.flowType,
           }
           
@@ -1027,6 +1028,7 @@ export class FlowOrchestrator {
           namadaReceiver: details.destinationAddress,
           expectedAmountUusdc,
           forwardingAddress: tx.depositData?.nobleForwardingAddress,
+          fallback: tx.depositData?.fallback,
           flowType: this.flowType,
         }
         
@@ -1129,20 +1131,56 @@ export class FlowOrchestrator {
     if (chain === 'namada' && this.flowType === 'deposit') {
       const namadaParams = metadata as ChainPollMetadata
       if (!namadaParams.startHeight || namadaParams.startHeight === 0) {
-        // Fetch start height from transaction creation timestamp
-        const tx = transactionStorageService.getTransaction(this.txId)
-        if (tx?.createdAt) {
+        // Try to get timestamp from Noble IBC forward event (more accurate than tx creation time)
+        let timestampMs: number | undefined
+        
+        // Read fresh state to get Noble chain stages
+        const currentState = getPollingState(this.txId)
+        const nobleStages = currentState?.chainStatus.noble?.stages || []
+        const nobleIbcForwardedStage = nobleStages.find(
+          (s) => s.stage === DEPOSIT_STAGES.NOBLE_IBC_FORWARDED,
+        )
+        
+        if (nobleIbcForwardedStage?.metadata) {
+          const blockMetadata = nobleIbcForwardedStage.metadata as {
+            blockTimestamp?: number
+          }
+          if (blockMetadata?.blockTimestamp) {
+            // blockTimestamp is in seconds (Unix timestamp), convert to milliseconds
+            timestampMs = blockMetadata.blockTimestamp * 1000
+            logger.info('[FlowOrchestrator] Using Noble IBC forward event timestamp for Namada start height', {
+              txId: this.txId,
+              blockTimestamp: blockMetadata.blockTimestamp,
+              timestampMs,
+            })
+          }
+        }
+        
+        // Fallback to transaction creation timestamp if Noble IBC forward event not available yet
+        if (!timestampMs) {
+          const tx = transactionStorageService.getTransaction(this.txId)
+          if (tx?.createdAt) {
+            timestampMs = tx.createdAt
+            logger.info('[FlowOrchestrator] Noble IBC forward event not found, using transaction creation timestamp', {
+              txId: this.txId,
+              createdAt: tx.createdAt,
+            })
+          }
+        }
+        
+        if (timestampMs) {
           try {
             const chainKey = await this.getChainKey('namada')
             const startHeight = await getStartHeightFromTimestamp(
               chainKey,
-              tx.createdAt,
+              timestampMs,
             )
             
             logger.info('[FlowOrchestrator] Calculated Namada start height from timestamp', {
               txId: this.txId,
               chainKey,
-              createdAt: tx.createdAt,
+              timestampMs,
+              source: nobleIbcForwardedStage ? 'noble_ibc_forwarded' : 'tx_createdAt',
               startHeight,
             })
 
@@ -1167,8 +1205,10 @@ export class FlowOrchestrator {
             // Fallback: will use 0, which means poller will use latest block minus backscan
           }
         } else {
-          logger.warn('[FlowOrchestrator] Transaction createdAt not found, cannot calculate start height', {
+          logger.warn('[FlowOrchestrator] No timestamp available for start height calculation (neither Noble IBC forward event nor transaction createdAt)', {
             txId: this.txId,
+            hasNobleStages: nobleStages.length > 0,
+            hasNobleIbcForwardedStage: !!nobleIbcForwardedStage,
           })
         }
       }

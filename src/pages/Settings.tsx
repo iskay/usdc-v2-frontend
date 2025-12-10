@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAtom } from 'jotai'
 import { Link } from 'react-router-dom'
-import { Settings as SettingsIcon, List, Trash2, RefreshCw } from 'lucide-react'
+import { Settings as SettingsIcon, List, Trash2, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
 import { BackToHome } from '@/components/common/BackToHome'
 import { Spinner } from '@/components/common/Spinner'
 import { Button } from '@/components/common/Button'
@@ -11,7 +11,10 @@ import { ClearTransactionHistoryDialog } from '@/components/settings/ClearTransa
 import { InvalidateShieldedContextDialog } from '@/components/settings/InvalidateShieldedContextDialog'
 import { customEvmChainUrlsAtom, customTendermintChainUrlsAtom, type CustomChainUrls } from '@/atoms/customChainUrlsAtom'
 import { txAtom } from '@/atoms/txAtom'
+import { nobleFallbackAddressAtom } from '@/atoms/appAtom'
 import { saveCustomChainUrls, loadCustomChainUrls } from '@/services/storage/customChainUrlsStorage'
+import { loadNobleFallbackAddress, saveNobleFallbackAddress } from '@/services/storage/nobleFallbackStorage'
+import { validateBech32Address } from '@/services/validation'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 import { transactionStorageService } from '@/services/tx/transactionStorageService'
@@ -25,11 +28,15 @@ export function Settings() {
   const [evmCustomUrls, setEvmCustomUrls] = useAtom(customEvmChainUrlsAtom)
   const [tendermintCustomUrls, setTendermintCustomUrls] = useAtom(customTendermintChainUrlsAtom)
   const [, setTxState] = useAtom(txAtom)
+  const [nobleFallbackAddress, setNobleFallbackAddress] = useAtom(nobleFallbackAddressAtom)
   const [isLoading, setIsLoading] = useState(true)
   const [evmChains, setEvmChains] = useState<Awaited<ReturnType<typeof fetchEvmChainsConfig>> | null>(null)
   const [tendermintChains, setTendermintChains] = useState<Awaited<ReturnType<typeof fetchTendermintChainsConfig>> | null>(null)
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false)
   const [isInvalidateDialogOpen, setIsInvalidateDialogOpen] = useState(false)
+  const [isNobleFallbackOpen, setIsNobleFallbackOpen] = useState(false)
+  const [fallbackInput, setFallbackInput] = useState('')
+  const [fallbackError, setFallbackError] = useState<string | null>(null)
   const { notify } = useToast()
 
   // Load chain configs and custom URLs on mount
@@ -54,6 +61,13 @@ export function Settings() {
           if (storedUrls.tendermint && Object.keys(storedUrls.tendermint).length > 0) {
             setTendermintCustomUrls(storedUrls.tendermint)
           }
+        }
+
+        // Load Noble fallback address from storage
+        const storedFallback = loadNobleFallbackAddress()
+        if (storedFallback) {
+          setNobleFallbackAddress(storedFallback)
+          setFallbackInput(storedFallback)
         }
       } catch (error) {
         logger.error('[Settings] Failed to load chain configs', { error })
@@ -166,6 +180,68 @@ export function Settings() {
     }
   }
 
+  const handleFallbackAddressChange = (value: string) => {
+    setFallbackInput(value)
+    // Clear error when user starts typing
+    if (fallbackError) {
+      setFallbackError(null)
+    }
+  }
+
+  const handleSaveFallbackAddress = () => {
+    const trimmed = fallbackInput.trim()
+    
+    // If empty, clear the fallback address
+    if (trimmed === '') {
+      setNobleFallbackAddress(undefined)
+      saveNobleFallbackAddress(undefined)
+      setFallbackInput('')
+      setFallbackError(null)
+      notify({
+        level: 'success',
+        title: 'Fallback address cleared',
+        description: 'Noble forwarding will use empty fallback address.',
+      })
+      return
+    }
+
+    // Validate the address (must be a Noble bech32 address)
+    const validation = validateBech32Address(trimmed, { expectedHrp: 'noble' })
+    if (!validation.isValid) {
+      setFallbackError(validation.error || 'Invalid Noble address')
+      return
+    }
+
+    // Save the validated address
+    const validatedAddress = validation.value!
+    setNobleFallbackAddress(validatedAddress)
+    saveNobleFallbackAddress(validatedAddress)
+    setFallbackInput(validatedAddress)
+    setFallbackError(null)
+    
+    logger.info('[Settings] Noble fallback address saved', {
+      address: validatedAddress.slice(0, 16) + '...',
+    })
+    
+    notify({
+      level: 'success',
+      title: 'Fallback address saved',
+      description: 'Noble forwarding will use this fallback address for future deposits.',
+    })
+  }
+
+  const handleClearFallbackAddress = () => {
+    setNobleFallbackAddress(undefined)
+    saveNobleFallbackAddress(undefined)
+    setFallbackInput('')
+    setFallbackError(null)
+    notify({
+      level: 'success',
+      title: 'Fallback address cleared',
+      description: 'Noble forwarding will use empty fallback address.',
+    })
+  }
+
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -261,6 +337,79 @@ export function Settings() {
           </div>
         </section>
 
+        {/* Noble Forwarding Settings Section */}
+        <section>
+          <h2 className="mb-4 text-2xl font-semibold">Noble Forwarding Settings</h2>
+          <div className="rounded-lg border border-border bg-card">
+            <button
+              type="button"
+              onClick={() => setIsNobleFallbackOpen(!isNobleFallbackOpen)}
+              className="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-muted/50"
+            >
+              <div className="flex items-center gap-3">
+                {isNobleFallbackOpen ? (
+                  <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                )}
+                <h3 className="text-md font-semibold">Configure Fallback Address</h3>
+              </div>
+            </button>
+            
+            {isNobleFallbackOpen && (
+              <div className="border-t border-border p-4">
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      An optional Noble address to include when generating Noble forwarding addresses for deposits. If included, in case of a timeout 
+                      or other issue during the auto-forward IBC transfer from Noble to Namada your funds will be refunded here. 
+                      This should be an address on Noble which you control. If not set, no fallback address will be included.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        id="fallback-address"
+                        type="text"
+                        value={fallbackInput}
+                        onChange={(e) => handleFallbackAddressChange(e.target.value)}
+                        placeholder="noble123abc..."
+                        className={`flex-1 rounded-md border px-3 py-2 text-sm ${
+                          fallbackError
+                            ? 'border-destructive focus:border-destructive focus:ring-destructive'
+                            : 'border-border focus:border-ring focus:ring-ring'
+                        } bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2`}
+                      />
+                      <Button
+                        variant="primary"
+                        onClick={handleSaveFallbackAddress}
+                        className="px-4"
+                      >
+                        Save
+                      </Button>
+                      {nobleFallbackAddress && (
+                      <Button
+                        variant="secondary"
+                        onClick={handleClearFallbackAddress}
+                        className="px-4"
+                      >
+                        Clear
+                      </Button>
+                      )}
+                    </div>
+                    {fallbackError && (
+                      <p className="mt-2 text-sm text-destructive">{fallbackError}</p>
+                    )}
+                    {nobleFallbackAddress && !fallbackError && (
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Current fallback: <span className="font-mono text-xs">{nobleFallbackAddress}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
         {/* App Data Section */}
         <section>
           <h2 className="mb-4 text-2xl font-semibold">App Data</h2>
@@ -295,6 +444,7 @@ export function Settings() {
             </div>
           </div>
         </section>
+        <div className="min-h-12" />
       </div>
 
       {/* Clear Transaction History Dialog */}

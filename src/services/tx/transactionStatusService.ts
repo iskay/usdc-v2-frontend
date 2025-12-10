@@ -26,13 +26,10 @@ export function getEffectiveStatus(tx: StoredTransaction): StoredTransaction['st
       return 'finalized'
     } else if (flowStatus === 'tx_error') {
       return 'error' // Transaction actually failed
-    } else if (flowStatus === 'polling_error' || flowStatus === 'polling_timeout') {
+    } else if (flowStatus === 'polling_error' || flowStatus === 'polling_timeout' || flowStatus === 'cancelled') {
       return 'undetermined' // Couldn't verify status - tx may have succeeded
     } else if (flowStatus === 'user_action_required') {
       return 'user_action_required' // User action required to continue
-    } else if (flowStatus === 'cancelled') {
-      // Cancelled - can be resumed, still in progress
-      return 'broadcasted'
     }
     // flowStatus === 'pending' - fall through to check top-level status
   }

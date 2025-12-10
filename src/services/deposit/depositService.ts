@@ -10,12 +10,15 @@ import { logger } from '@/utils/logger'
 import { getDefaultNamadaChainKey } from '@/config/chains'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
+import { jotaiStore } from '@/store/jotaiStore'
+import { nobleFallbackAddressAtom } from '@/atoms/appAtom'
 import type { TrackedTransaction } from '@/types/tx'
 
 export interface DepositParams {
   amount: string
   destinationAddress: string
   sourceChain: string
+  fallback?: string // Optional fallback address (if not provided, will be read from atom)
 }
 
 export interface DepositTransactionDetails {
@@ -76,12 +79,16 @@ export async function buildDepositTransaction(
     destinationChain = 'namada-testnet'
   }
 
+  // Read fallback address from atom (if not provided in params)
+  const fallback = params.fallback ?? jotaiStore.get(nobleFallbackAddressAtom) ?? undefined
+
   // Use existing txBuilder service
   const tx = await buildDepositTx({
     amount: params.amount,
     sourceChain: params.sourceChain, // Deposits originate from EVM chain
     destinationChain, // Deposits go to Namada (from config)
     recipient: params.destinationAddress,
+    ...(fallback ? { fallback } : {}),
   })
 
   logger.info('[DepositService] ✅ Deposit transaction built', {

@@ -151,9 +151,10 @@ export async function executeRegistrationJob(
     logger.debug('[NobleForwardingRegistration] Checking if registration is needed', {
       recipientAddress,
       channel,
+      fallback: fallback || 'none',
     })
 
-    const registrationStatus = await checkNobleForwardingRegistration(recipientAddress, channel)
+    const registrationStatus = await checkNobleForwardingRegistration(recipientAddress, channel, fallback)
 
     // Log error if registration status could not be determined
     if (registrationStatus.error) {
@@ -451,6 +452,7 @@ export async function isNobleForwardingRegistered(
   forwardingAddress: string,
   channelId?: string,
   recipientAddress?: string,
+  fallback: string = '',
 ): Promise<boolean> {
   // If recipientAddress is provided, use it for the check
   // Otherwise, we can't check without the recipient
@@ -465,10 +467,11 @@ export async function isNobleForwardingRegistered(
     forwardingAddress: forwardingAddress.slice(0, 16) + '...',
     recipientAddress: recipientAddress.slice(0, 16) + '...',
     channelId,
+    fallback: fallback || 'none',
   })
 
   try {
-    const status = await checkNobleForwardingRegistration(recipientAddress, channelId)
+    const status = await checkNobleForwardingRegistration(recipientAddress, channelId, fallback)
     
     // Log error if registration status could not be determined
     if (status.error) {

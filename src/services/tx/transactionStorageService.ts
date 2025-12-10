@@ -32,12 +32,10 @@ function getEffectiveStatusForFilter(tx: StoredTransaction): StoredTransaction['
       return 'finalized'
     } else if (flowStatus === 'tx_error') {
       return 'error'
-    } else if (flowStatus === 'polling_error' || flowStatus === 'polling_timeout') {
+    } else if (flowStatus === 'polling_error' || flowStatus === 'polling_timeout' || flowStatus === 'cancelled') {
       return 'undetermined'
     } else if (flowStatus === 'user_action_required') {
       return 'user_action_required'
-    } else if (flowStatus === 'cancelled') {
-      return 'broadcasted'
     }
   }
   // Fallback to top-level status

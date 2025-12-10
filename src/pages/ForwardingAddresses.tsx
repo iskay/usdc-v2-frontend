@@ -55,7 +55,7 @@ export function ForwardingAddresses() {
             tx.pollingState?.metadata?.channelId as string | undefined ||
             env.nobleToNamadaChannel()
           
-          const fallback = tx.pollingState?.metadata?.fallback as string | undefined
+          const fallback = tx.depositData?.fallback as string | undefined
           
           // Get transaction timestamp
           const txTimestamp = tx.updatedAt || tx.createdAt

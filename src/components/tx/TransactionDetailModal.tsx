@@ -474,10 +474,10 @@ export function TransactionDetailModal({
     const showButton = forwardingAddress && recipientAddress && !reg.registrationTx?.txHash && !reg.alreadyRegistered
 
     return (
-      <div className="border border-border bg-muted/50 p-4">
+      <div className="border border-border rounded-md bg-muted/50 p-4">
         <div className="flex items-center justify-between">
           <div>
-            <h4 className="text-sm font-semibold">Noble Forwarding Registration</h4>
+            <h4 className="text-sm font-semibold text-foreground">Noble Forwarding Registration</h4>
             {statusMessage}
           </div>
           {showButton && (

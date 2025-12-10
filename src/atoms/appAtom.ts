@@ -23,3 +23,8 @@ export const autoShieldedSyncEnabledAtom = atom<boolean>(false)
 // This allows any part of the app to access the current recipient address
 // Updated by the Deposit component when the user enters/changes the recipient address
 export const depositRecipientAddressAtom = atom<string | undefined>(undefined)
+
+// Store the Noble forwarding fallback address preference
+// This is an optional address that will be used when generating Noble forwarding addresses
+// Defaults to undefined (empty string when used)
+export const nobleFallbackAddressAtom = atom<string | undefined>(undefined)

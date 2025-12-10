@@ -25,12 +25,14 @@ export interface NobleRegistrationStatus {
  *
  * @param namadaAddress - The Namada destination address (bech32 format)
  * @param channelId - Optional IBC channel ID (defaults to env config)
+ * @param fallback - Optional fallback address (defaults to empty string for backward compatibility)
  * @returns The Noble forwarding address (bech32 format)
  * @throws Error if LCD URL is not configured or if the fetch fails
  */
 export async function fetchNobleForwardingAddress(
   namadaAddress: string,
-  channelId?: string
+  channelId?: string,
+  fallback: string = ''
 ): Promise<string> {
   // Get LCD URL from config (with env fallback for backward compatibility)
   let lcdUrl: string | undefined
@@ -48,11 +50,14 @@ export async function fetchNobleForwardingAddress(
   }
 
   const channel = channelId || env.nobleToNamadaChannel()
-  const url = `${lcdUrl}/noble/forwarding/v1/address/${channel}/${namadaAddress}/`
+  const url = fallback
+    ? `${lcdUrl}/noble/forwarding/v1/address/${channel}/${namadaAddress}/${fallback}`
+    : `${lcdUrl}/noble/forwarding/v1/address/${channel}/${namadaAddress}/`
 
   console.debug('[NobleForwardingService] Fetching forwarding address', {
     namadaAddress,
     channel,
+    fallback: fallback || 'none',
     url,
   })
 
@@ -99,11 +104,13 @@ export async function fetchNobleForwardingAddress(
  *
  * @param namadaAddress - The Namada destination address (bech32 format)
  * @param channelId - Optional IBC channel ID (defaults to env config)
+ * @param fallback - Optional fallback address (defaults to empty string for backward compatibility)
  * @returns Registration status with exists flag and forwarding address (if available)
  */
 export async function checkNobleForwardingRegistration(
   namadaAddress: string,
-  channelId?: string
+  channelId?: string,
+  fallback: string = ''
 ): Promise<NobleRegistrationStatus> {
   // Get LCD URL from config (with env fallback for backward compatibility)
   let lcdUrl: string | undefined
@@ -124,11 +131,14 @@ export async function checkNobleForwardingRegistration(
   }
 
   const channel = channelId || env.nobleToNamadaChannel()
-  const url = `${lcdUrl}/noble/forwarding/v1/address/${channel}/${namadaAddress}/`
+  const url = fallback
+    ? `${lcdUrl}/noble/forwarding/v1/address/${channel}/${namadaAddress}/${fallback}`
+    : `${lcdUrl}/noble/forwarding/v1/address/${channel}/${namadaAddress}/`
 
   console.debug('[NobleForwardingService] Checking Noble forwarding registration', {
     namadaAddress,
     channel,
+    fallback: fallback || 'none',
     url,
   })
 
@@ -215,12 +225,14 @@ export async function checkNobleForwardingRegistration(
  *
  * @param namadaAddress - Optional Namada destination address (bech32 format). If not provided, uses the current deposit recipient address from global state.
  * @param channelId - Optional IBC channel ID (defaults to env config)
+ * @param fallback - Optional fallback address (defaults to empty string for backward compatibility)
  * @returns Registration status with exists flag and forwarding address (if available)
  * @throws Error if no address is provided and no current deposit recipient address is available in global state
  */
 export async function checkCurrentDepositRecipientRegistration(
   namadaAddress?: string,
-  channelId?: string
+  channelId?: string,
+  fallback: string = ''
 ): Promise<NobleRegistrationStatus> {
   // Use provided address or get from global state
   const addressToCheck = namadaAddress || jotaiStore.get(depositRecipientAddressAtom)
@@ -234,8 +246,9 @@ export async function checkCurrentDepositRecipientRegistration(
   console.debug('[NobleForwardingService] Checking registration for current deposit recipient', {
     namadaAddress: addressToCheck,
     source: namadaAddress ? 'provided' : 'global-state',
+    fallback: fallback || 'none',
   })
 
-  return checkNobleForwardingRegistration(addressToCheck, channelId)
+  return checkNobleForwardingRegistration(addressToCheck, channelId, fallback)
 }
 

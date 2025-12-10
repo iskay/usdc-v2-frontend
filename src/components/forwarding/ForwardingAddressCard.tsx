@@ -117,7 +117,7 @@ export function ForwardingAddressCard({ addressInfo }: ForwardingAddressCardProp
       setRegistrationError(null)
       try {
         const channel = channelId || env.nobleToNamadaChannel()
-        const status = await checkNobleForwardingRegistration(recipientAddress, channel)
+        const status = await checkNobleForwardingRegistration(recipientAddress, channel, fallback || '')
 
         if (cancelled) return
 
@@ -165,6 +165,7 @@ export function ForwardingAddressCard({ addressInfo }: ForwardingAddressCardProp
             forwardingAddress,
             channel,
             recipientAddress,
+            fallback || ''
           )
           setIsRegistered(registered)
         } catch (error) {

@@ -80,7 +80,8 @@ export function useNobleForwardingRegistration(
       }
       
       const channelId = transaction.pollingState.chainStatus.noble?.metadata?.channelId as string | undefined
-      const registered = await isNobleForwardingRegistered(forwardingAddress, channelId, recipientAddress)
+      const fallback = transaction.pollingState.metadata?.fallback as string | undefined || ''
+      const registered = await isNobleForwardingRegistered(forwardingAddress, channelId, recipientAddress, fallback)
       return registered
     } catch (error) {
       logger.error('[useNobleForwardingRegistration] Failed to check registration status', {
