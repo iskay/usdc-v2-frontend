@@ -28,11 +28,11 @@ export const txUiAtom = atom<TransactionUIState>({
 
 /**
  * Derived atom that returns true if any transaction is currently active.
- * Includes success state to prevent flash between progress stepper and success overlay.
+ * Success state is excluded since the transaction is no longer in flight once it succeeds.
  */
 export const isAnyTransactionActiveAtom = atom((get) => {
   const state = get(txUiAtom)
-  return state.isSubmitting || state.phase !== null || state.showSuccessState
+  return state.isSubmitting || state.phase !== null
 })
 
 /**

@@ -671,8 +671,8 @@ export function Deposit() {
           </div>
         )}
 
-        {/* Transaction Display (replaces form when transaction is active) */}
-        {isAnyTxActive ? (
+        {/* Transaction Display (replaces form when transaction is active or success state is shown) */}
+        {isAnyTxActive || showSuccessState ? (
           <TransactionDisplay
             phase={currentPhase}
             showSuccessState={showSuccessState}
