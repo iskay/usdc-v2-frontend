@@ -27,4 +27,17 @@ export const depositRecipientAddressAtom = atom<string | undefined>(undefined)
 // Store the Noble forwarding fallback address preference
 // This is an optional address that will be used when generating Noble forwarding addresses
 // Defaults to undefined (empty string when used)
+// Note: This atom is used by Settings page only. Deposit page uses depositFallbackSelectionAtom.
 export const nobleFallbackAddressAtom = atom<string | undefined>(undefined)
+
+// Store the deposit page fallback address selection
+// Tracks whether to use custom address (from Settings) or derived address (from MetaMask)
+export interface DepositFallbackSelection {
+  source: 'custom' | 'derived' | 'none'
+  address: string | undefined
+}
+
+export const depositFallbackSelectionAtom = atom<DepositFallbackSelection>({
+  source: 'none',
+  address: undefined,
+})

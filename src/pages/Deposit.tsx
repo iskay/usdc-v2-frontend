@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useSetAtom, useAtomValue, useAtom } from 'jotai'
+import { jotaiStore } from '@/store/jotaiStore'
 import { Loader2, AlertCircle, CheckCircle2, Info, Copy } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { Tooltip } from '@/components/common/Tooltip'
@@ -35,12 +36,14 @@ import {
 import { useTxTracker } from '@/hooks/useTxTracker'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
-import { preferredChainKeyAtom, depositRecipientAddressAtom, nobleFallbackAddressAtom } from '@/atoms/appAtom'
+import { preferredChainKeyAtom, depositRecipientAddressAtom, depositFallbackSelectionAtom, type DepositFallbackSelection } from '@/atoms/appAtom'
 import { findChainByChainId, getDefaultChainKey } from '@/config/chains'
 import { getEvmTxExplorerUrl } from '@/utils/explorerUtils'
 import { sanitizeError } from '@/utils/errorSanitizer'
 import { txUiAtom, isAnyTransactionActiveAtom, resetTxUiState } from '@/atoms/txUiAtom'
 import { loadNobleFallbackAddress } from '@/services/storage/nobleFallbackStorage'
+import { loadDerivedFallbackAddress } from '@/services/storage/nobleFallbackDerivedStorage'
+import { deriveNobleFallbackFromMetaMask, saveDerivedFallbackToStorage } from '@/services/fallback/nobleFallbackDerivationService'
 
 export function Deposit() {
   const navigate = useNavigate()
@@ -53,8 +56,8 @@ export function Deposit() {
   const preferredChainKey = useAtomValue(preferredChainKeyAtom)
   const setPreferredChainKey = useSetAtom(preferredChainKeyAtom)
   const setDepositRecipientAddress = useSetAtom(depositRecipientAddressAtom)
-  const nobleFallbackAddress = useAtomValue(nobleFallbackAddressAtom)
-  const setNobleFallbackAddress = useSetAtom(nobleFallbackAddressAtom)
+  const depositFallbackSelection = useAtomValue(depositFallbackSelectionAtom)
+  const setDepositFallbackSelection = useSetAtom(depositFallbackSelectionAtom)
 
   // Form state
   const [amount, setAmount] = useState('')
@@ -86,16 +89,50 @@ export function Deposit() {
     error: null,
   })
 
-  // Load Noble fallback address from storage on mount
+  // Noble fallback derivation state
+  const [derivationState, setDerivationState] = useState<{
+    isLoading: boolean
+    stage: 'idle' | 'signing' | 'extracting' | 'deriving' | 'success' | 'error'
+    error: string | null
+  }>({
+    isLoading: false,
+    stage: 'idle',
+    error: null,
+  })
+
+  // Auto-load fallback addresses on mount and when account changes
   useEffect(() => {
-    // Only load if not already set (e.g., if Settings page already loaded it)
-    if (!nobleFallbackAddress) {
-      const storedFallback = loadNobleFallbackAddress()
-      if (storedFallback) {
-        setNobleFallbackAddress(storedFallback)
-      }
+    const currentEvmAddress = walletState.metaMask.account
+    
+    // Load custom address from settings
+    const customAddress = loadNobleFallbackAddress()
+    
+    // Load derived address for current account (if connected)
+    const derivedAddress = currentEvmAddress ? loadDerivedFallbackAddress(currentEvmAddress) : undefined
+    
+    // Auto-select priority: derived > custom > none
+    let newSelection: DepositFallbackSelection
+    if (derivedAddress) {
+      newSelection = { source: 'derived', address: derivedAddress }
+    } else if (customAddress) {
+      newSelection = { source: 'custom', address: customAddress }
+    } else {
+      newSelection = { source: 'none', address: undefined }
     }
-  }, [nobleFallbackAddress, setNobleFallbackAddress])
+    
+    // Only update if selection actually changed to avoid unnecessary re-renders
+    const currentSelection = jotaiStore.get(depositFallbackSelectionAtom)
+    
+    if (
+      newSelection.source !== currentSelection.source ||
+      newSelection.address !== currentSelection.address
+    ) {
+      setDepositFallbackSelection(newSelection)
+    }
+  }, [
+    walletState.metaMask.account,
+    setDepositFallbackSelection,
+  ])
 
   // Sync toAddress to global atom so it can be accessed from anywhere
   useEffect(() => {
@@ -139,7 +176,7 @@ export function Deposit() {
       })
 
       try {
-        const fallback = nobleFallbackAddress || ''
+        const fallback = depositFallbackSelection.address || ''
         const status = await checkCurrentDepositRecipientRegistration(addressToCheck, undefined, fallback)
         
         // Only update if we're still checking the same address
@@ -184,7 +221,7 @@ export function Deposit() {
         checkingAddressRef.current = null
       }
     }
-  }, [toAddress, nobleFallbackAddress])
+  }, [toAddress, depositFallbackSelection.address])
 
   // Get EVM address from wallet state
   const evmAddress = walletState.metaMask.account
@@ -600,6 +637,98 @@ export function Deposit() {
   }
 
   // Handle Auto Fill for Namada address
+  // Handle Noble fallback address derivation from MetaMask
+  async function handleDeriveFallbackFromMetaMask(): Promise<void> {
+    if (!walletState.metaMask.isConnected || !walletState.metaMask.account) {
+      notify({
+        title: 'MetaMask Not Connected',
+        description: 'Please connect your MetaMask wallet to derive a fallback address.',
+        level: 'error',
+      })
+      return
+    }
+
+    setDerivationState({
+      isLoading: true,
+      stage: 'signing',
+      error: null,
+    })
+
+    try {
+      // Stage 1: Request signature
+      notify({
+        title: 'Requesting Signature',
+        description: 'Please sign the message in MetaMask to derive your Noble fallback address.',
+        level: 'info',
+      })
+
+      setDerivationState({
+        isLoading: true,
+        stage: 'extracting',
+        error: null,
+      })
+
+      // Stage 2: Extract public key
+      notify({
+        title: 'Extracting Public Key',
+        description: 'Recovering your public key from the signature...',
+        level: 'info',
+      })
+
+      setDerivationState({
+        isLoading: true,
+        stage: 'deriving',
+        error: null,
+      })
+
+      // Stage 3: Derive Noble address
+      notify({
+        title: 'Deriving Noble Address',
+        description: 'Converting your public key to a Noble address...',
+        level: 'info',
+      })
+
+      const result = await deriveNobleFallbackFromMetaMask({
+        evmAddress: walletState.metaMask.account,
+      })
+
+      // Save to derived storage (keyed by EVM address)
+      await saveDerivedFallbackToStorage(result)
+
+      // Update selection atom to use derived address
+      setDepositFallbackSelection({
+        source: 'derived',
+        address: result.nobleAddress,
+      })
+
+      setDerivationState({
+        isLoading: false,
+        stage: 'success',
+        error: null,
+      })
+
+      notify({
+        title: 'Address Derived Successfully',
+        description: `Noble fallback address: ${result.nobleAddress.slice(0, 16)}...`,
+        level: 'success',
+      })
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to derive Noble fallback address'
+      
+      setDerivationState({
+        isLoading: false,
+        stage: 'error',
+        error: errorMessage,
+      })
+
+      notify({
+        title: 'Derivation Failed',
+        description: errorMessage,
+        level: 'error',
+      })
+    }
+  }
+
   function handleAutoFill() {
     // Get Namada address from wallet state
     const namadaAddress = walletState.namada.account
@@ -827,38 +956,159 @@ export function Deposit() {
                   </p>
                   <div className="mt-3 rounded-md border border-muted/60 bg-muted/10 px-3 py-2">
                     <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1">
+                      <div className="space-y-2 flex-1">
                         <p className="text-xs font-semibold text-foreground">Noble fallback address</p>
                         <p className="text-xs text-muted-foreground">
-                          Used if the auto-forward from Noble to Namada needs to refund. Configure in Settings.
+                          Used if the auto-forward from Noble to Namada needs to refund.
                         </p>
-                        <div className="text-xs font-mono break-all text-foreground/90">
-                          {nobleFallbackAddress || 'None set'}
+
+                        {/* Display selected address */}
+                        {depositFallbackSelection.address && (
+                          <div className="text-xs break-all text-foreground/90 mt-2">
+                            <span>Current: </span>
+                            <span className="font-mono">{depositFallbackSelection.address}</span>
+                          </div>
+                        )}
+                        
+                        {/* Radio button selection */}
+                        <div className="flex flex-col gap-2 mt-2">
+                          <label className="flex items-center gap-2 text-xs cursor-pointer">
+                            <input
+                              type="radio"
+                              name="fallback-source"
+                              value="custom"
+                              checked={depositFallbackSelection.source === 'custom'}
+                              onChange={() => {
+                                const customAddress = loadNobleFallbackAddress()
+                                if (customAddress) {
+                                  setDepositFallbackSelection({ source: 'custom', address: customAddress })
+                                }
+                              }}
+                              disabled={!loadNobleFallbackAddress()}
+                              className="w-3.5 h-3.5 text-primary focus:ring-primary"
+                            />
+                            <span className={!loadNobleFallbackAddress() ? 'text-muted-foreground' : ''}>
+                              Use custom address from Settings {!loadNobleFallbackAddress() && '(not set)'}
+                            </span>
+                          </label>
+                          <label className="flex items-center gap-2 text-xs cursor-pointer">
+                            <input
+                              type="radio"
+                              name="fallback-source"
+                              value="derived"
+                              checked={depositFallbackSelection.source === 'derived'}
+                              onChange={() => {
+                                const currentEvmAddress = walletState.metaMask.account
+                                if (currentEvmAddress) {
+                                  const derivedAddress = loadDerivedFallbackAddress(currentEvmAddress)
+                                  if (derivedAddress) {
+                                    setDepositFallbackSelection({ source: 'derived', address: derivedAddress })
+                                  }
+                                }
+                              }}
+                              disabled={!walletState.metaMask.account || !loadDerivedFallbackAddress(walletState.metaMask.account || '')}
+                              className="w-3.5 h-3.5 text-primary focus:ring-primary"
+                            />
+                            <span className={!walletState.metaMask.account || !loadDerivedFallbackAddress(walletState.metaMask.account || '') ? 'text-muted-foreground' : ''}>
+                              Use an address derived from my MetaMask account private key
+                            </span>
+                          </label>
                         </div>
-                        {!nobleFallbackAddress && (
-                          <Link
-                            to="/settings"
-                            className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+
+                        {/* Derivation status messages */}
+                        {derivationState.stage === 'signing' && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <span>Requesting signature...</span>
+                          </div>
+                        )}
+                        {derivationState.stage === 'extracting' && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <span>Extracting public key...</span>
+                          </div>
+                        )}
+                        {derivationState.stage === 'deriving' && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <span>Deriving Noble address...</span>
+                          </div>
+                        )}
+                        {derivationState.stage === 'success' && (
+                          <div className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400 mt-1">
+                            <CheckCircle2 className="h-3 w-3" />
+                            <span>Address derived successfully</span>
+                          </div>
+                        )}
+                        {derivationState.stage === 'error' && derivationState.error && (
+                          <div className="flex flex-col gap-2 mt-1">
+                            <div className="flex items-start gap-2 text-xs text-destructive">
+                              <AlertCircle className="h-3 w-3 shrink-0 mt-0.5" />
+                              <span className="flex-1">{derivationState.error}</span>
+                            </div>
+                            {walletState.metaMask.isConnected && walletState.metaMask.account && (
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={handleDeriveFallbackFromMetaMask}
+                                disabled={derivationState.isLoading || isAnyTxActive}
+                                className="text-xs h-7 px-2 w-fit"
+                              >
+                                Try again
+                              </Button>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Derive button - show when no derived address available */}
+                        {walletState.metaMask.isConnected && walletState.metaMask.account && !loadDerivedFallbackAddress(walletState.metaMask.account) && derivationState.stage === 'idle' && (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={handleDeriveFallbackFromMetaMask}
+                            disabled={derivationState.isLoading || isAnyTxActive}
+                            className="text-xs h-7 px-3 mt-2"
                           >
-                            Set fallback in Settings
-                          </Link>
+                            {derivationState.isLoading ? (
+                              <>
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                Deriving...
+                              </>
+                            ) : (
+                              'Derive now'
+                            )}
+                          </Button>
                         )}
                       </div>
-                      {nobleFallbackAddress && (
+                      {depositFallbackSelection.address && (
                         <button
                           type="button"
                           onClick={() => {
-                            navigator.clipboard.writeText(nobleFallbackAddress)
+                            navigator.clipboard.writeText(depositFallbackSelection.address!)
                             notify(buildCopySuccessToast('Fallback address'))
                           }}
                           className="rounded p-1 text-muted-foreground hover:bg-muted/60 transition-colors shrink-0"
                           aria-label="Copy fallback address"
                           title="Copy fallback address"
+                          disabled={derivationState.isLoading}
                         >
                           <Copy className="h-3.5 w-3.5" />
                         </button>
                       )}
                     </div>
+                    {/* Warning when no fallback */}
+                    {depositFallbackSelection.source === 'none' && (
+                          <div className="flex items-start gap-2 text-xs text-amber-600 dark:text-amber-400 mt-2 p-2 rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20">
+                            <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                            <span className="flex-1">
+                              No fallback address configured. Set one in{' '}
+                              <Link to="/settings" className="font-medium underline hover:text-amber-700 dark:hover:text-amber-300">
+                                Settings
+                              </Link>
+                              {' '}or derive from your MetaMask account. Proceeding without a fallback address may result in lost funds.
+                            </span>
+                          </div>
+                        )}
                   </div>
                   {/* Validation error for address */}
                   {validation.addressError && toAddress.trim() !== '' && (

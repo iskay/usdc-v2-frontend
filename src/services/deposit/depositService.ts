@@ -11,7 +11,7 @@ import { getDefaultNamadaChainKey } from '@/config/chains'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
 import { jotaiStore } from '@/store/jotaiStore'
-import { nobleFallbackAddressAtom } from '@/atoms/appAtom'
+import { depositFallbackSelectionAtom } from '@/atoms/appAtom'
 import type { TrackedTransaction } from '@/types/tx'
 
 export interface DepositParams {
@@ -79,8 +79,9 @@ export async function buildDepositTransaction(
     destinationChain = 'namada-testnet'
   }
 
-  // Read fallback address from atom (if not provided in params)
-  const fallback = params.fallback ?? jotaiStore.get(nobleFallbackAddressAtom) ?? undefined
+  // Read fallback address from deposit selection atom (if not provided in params)
+  const depositFallbackSelection = jotaiStore.get(depositFallbackSelectionAtom)
+  const fallback = params.fallback ?? depositFallbackSelection.address ?? undefined
 
   // Use existing txBuilder service
   const tx = await buildDepositTx({
