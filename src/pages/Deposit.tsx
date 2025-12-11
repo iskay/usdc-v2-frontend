@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useSetAtom, useAtomValue, useAtom } from 'jotai'
 import { Loader2, AlertCircle, CheckCircle2, Info, Copy } from 'lucide-react'
 import { Button } from '@/components/common/Button'
@@ -825,6 +825,41 @@ export function Deposit() {
                   <p className="text-xs text-muted-foreground mt-2">
                     Tip: Use your Namada transparent address that controls this deposit
                   </p>
+                  <div className="mt-3 rounded-md border border-muted/60 bg-muted/10 px-3 py-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-foreground">Noble fallback address</p>
+                        <p className="text-xs text-muted-foreground">
+                          Used if the auto-forward from Noble to Namada needs to refund. Configure in Settings.
+                        </p>
+                        <div className="text-xs font-mono break-all text-foreground/90">
+                          {nobleFallbackAddress || 'None set'}
+                        </div>
+                        {!nobleFallbackAddress && (
+                          <Link
+                            to="/settings"
+                            className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                          >
+                            Set fallback in Settings
+                          </Link>
+                        )}
+                      </div>
+                      {nobleFallbackAddress && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(nobleFallbackAddress)
+                            notify(buildCopySuccessToast('Fallback address'))
+                          }}
+                          className="rounded p-1 text-muted-foreground hover:bg-muted/60 transition-colors shrink-0"
+                          aria-label="Copy fallback address"
+                          title="Copy fallback address"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   {/* Validation error for address */}
                   {validation.addressError && toAddress.trim() !== '' && (
                     <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
