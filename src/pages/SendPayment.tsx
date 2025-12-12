@@ -477,7 +477,7 @@ export function SendPayment() {
 
         {/* Enhanced Error State */}
         {errorState && (
-          <div className="rounded-lg border border-error/30 bg-error/10 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="card card-error animate-in fade-in slide-in-from-top-2 duration-300">
             <div className="flex items-start gap-3">
               <AlertCircle className="h-5 w-5 text-error shrink-0 mt-0.5" />
               <div className="flex-1">
@@ -535,7 +535,7 @@ export function SendPayment() {
                 <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
             
                 {/* Step 1: Amount Section */}
-                <div className="rounded-lg border border-info/20 bg-info/10 p-6 shadow-sm">
+                <div className="card card-xl">
                   <div className="mb-4">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
@@ -600,7 +600,7 @@ export function SendPayment() {
                 {/* Step 2 & 3: Recipient Address and Destination Chain Sections */}
                 <div className="flex flex-col lg:flex-row gap-6">
                   {/* Step 2: Recipient Address Section */}
-                  <div className="flex-1 rounded-lg border border-info/20 bg-info/10 p-6 shadow-sm">
+                  <div className="flex-1 card card-xl">
                     <div className="flex items-baseline justify-between mb-3">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
@@ -649,7 +649,7 @@ export function SendPayment() {
                   </div>
 
                   {/* Step 3: Destination Chain Section */}
-                  <div className="flex-1 rounded-lg border border-info/20 bg-info/10 p-6 shadow-sm">
+                  <div className="flex-1 card card-xl">
                     <div className="flex items-center gap-2 mb-3">
                       <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
                         Step 3

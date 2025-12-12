@@ -199,7 +199,7 @@ export function Dashboard() {
         {/* Balance and Actions Section + Recent Activity Side by Side */}
         <div className="flex flex-col lg:flex-row gap-6 mb-12 items-start">
           {/* Balance and Actions Section */}
-          <div className="flex flex-col gap-8 flex-2 rounded-lg border border-border bg-card p-4 shadow-sm">
+          <div className="flex flex-col gap-8 flex-2 card">
           {/* Section Header */}
           <div className="flex flex-col gap-2">
             <h2 className="text-md font-semibold">Cross-chain shielded USDC</h2>
@@ -209,7 +209,7 @@ export function Dashboard() {
           </div>
 
           {/* Unified Balance Card */}
-          <div className="rounded-lg border border-border bg-muted/50 p-6 shadow-xs">
+          <div className="card bg-muted/50 card-xl card-shadow-xs">
             <div className="flex items-start justify-between gap-6">
               {/* Left side: Transparent Balance */}
               <div className="flex-1">
@@ -441,7 +441,7 @@ export function Dashboard() {
           </div>
 
           {/* Transaction Activity Box */}
-          <div className="flex-1 rounded-lg border border-border bg-card p-4 shadow-sm">
+          <div className="flex-1 card">
           {/* Section Header */}
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-md font-semibold">Recent activity</h2>

@@ -28,17 +28,17 @@ export function DepositSummaryCard({
     : '0 USDC'
 
   return (
-    <div className="rounded-full border border-slate-200/50 bg-slate-50/50 dark:bg-slate-950/20 dark:border-slate-800/50 p-6 mx-12 shadow-sm">
+    <div className="card card-rounded-full card-xl mx-12">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <ArrowRight className="h-4 w-4 text-slate-600 dark:text-slate-400" />
-            <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-semibold text-foreground">
               Deposit now
             </span>
           </div>
           {validationError && (
-            <p className="text-xs text-orange-600 dark:text-orange-400 ml-6">
+            <p className="text-xs text-warning ml-6">
               {validationError}
             </p>
           )}

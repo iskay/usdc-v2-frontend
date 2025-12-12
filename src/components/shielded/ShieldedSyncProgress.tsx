@@ -23,7 +23,7 @@ export function ShieldedSyncProgress({ compact = false }: ShieldedSyncProgressPr
       return null
     }
     return (
-      <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+      <div className="card">
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
           <Shield className="h-5 w-5" />
           <span>Connect your Namada wallet to sync shielded balance</span>
@@ -150,7 +150,7 @@ export function ShieldedSyncProgress({ compact = false }: ShieldedSyncProgressPr
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+    <div className="card">
       <div className="flex items-center justify-between gap-4">
         {content}
       </div>

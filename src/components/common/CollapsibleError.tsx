@@ -48,7 +48,7 @@ export function CollapsibleError({
   return (
     <div
       className={cn(
-        'rounded-md border border-error/20 bg-error/10 p-4',
+        'card card-error rounded-md',
         className
       )}
     >

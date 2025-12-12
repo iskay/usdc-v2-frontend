@@ -120,13 +120,13 @@ export function History() {
 
       {/* Transaction List */}
       {isLoading ? (
-        <div className="rounded-lg border border-border bg-card p-12 shadow-sm">
+        <div className="card card-3xl">
           <div className="flex items-center justify-center">
             <Spinner label="Loading transaction history..." />
           </div>
         </div>
       ) : error ? (
-        <div className="rounded-lg border border-error/20 bg-error/10 p-8 text-center shadow-sm">
+        <div className="card card-error card-2xl text-center">
           <p className="text-base font-semibold text-error">Error loading transactions</p>
           <p className="mt-2 text-sm text-error/90">{error}</p>
           <Button
@@ -144,7 +144,7 @@ export function History() {
           </Button>
         </div>
       ) : filteredTransactions.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card p-12 text-center shadow-sm">
+        <div className="card card-3xl text-center">
           <p className="text-base text-muted-foreground">
             {activeFilter === 'all'
               ? 'No transactions found. Your transaction history will appear here.'
@@ -154,7 +154,7 @@ export function History() {
           </p>
         </div>
       ) : (
-        <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+        <div className="card card-xl">
           {/* Column Headers */}
           <div className="grid grid-cols-[1fr_1fr_auto] items-center gap-4 pb-4 mb-4 border-b border-border">
             <div className="text-sm font-semibold text-muted-foreground">Transaction<span className="text-xs font-normal ml-1">(click for details)</span></div>

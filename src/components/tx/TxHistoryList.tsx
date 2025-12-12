@@ -71,7 +71,7 @@ export function TxHistoryList({ openModalTxId, onModalOpenChange, reloadTrigger,
 
   if (error) {
     return (
-      <div className="rounded-md border border-error/20 bg-error/10 p-3 text-sm text-error">
+      <div className="card card-error card-sm rounded-md text-sm text-error">
         <p className="font-medium">Error loading history</p>
         <p className="mt-1 text-xs">{error}</p>
       </div>

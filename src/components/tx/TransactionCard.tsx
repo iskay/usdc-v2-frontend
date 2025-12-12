@@ -119,13 +119,13 @@ export const TransactionCard = memo(function TransactionCard({
     <>
       <div
         className={cn(
-          'bg-card transition-all',
-          // Conditional border, shadow, and padding: only for in-progress transactions
+          'card',
+          // Conditional styling based on state
           inProgress 
-            ? 'rounded-lg border border-border shadow-sm hover:shadow-md p-4 bg-info/20' 
+            ? 'card-info card-hover' 
             : variant === 'compact' 
-              ? 'p-3' 
-              : 'rounded-lg border-0 shadow-none p-4',
+              ? 'card-sm card-no-border' 
+              : 'card-no-border',
           onClick || showExpandButton ? 'cursor-pointer' : '',
         )}
         onClick={handleClick}

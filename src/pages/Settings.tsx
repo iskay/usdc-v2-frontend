@@ -322,7 +322,7 @@ export function Settings() {
         {/* Recovery Center Section */}
         <section>
           <h2 className="mb-4 text-2xl font-semibold">Recovery Center</h2>
-          <div className="rounded-lg border border-border bg-card p-4">
+          <div className="card">
             <div className="flex justify-between items-baseline">
               <p className="mb-4 text-sm text-muted-foreground">
                 Manage and register Noble forwarding addresses for deposit recovery.
@@ -340,7 +340,7 @@ export function Settings() {
         {/* Noble Forwarding Settings Section */}
         <section>
           <h2 className="mb-4 text-2xl font-semibold">Noble Forwarding Settings</h2>
-          <div className="rounded-lg border border-border bg-card">
+          <div className="card card-no-padding card-shadow-none">
             <button
               type="button"
               onClick={() => setIsNobleFallbackOpen(!isNobleFallbackOpen)}
@@ -413,7 +413,7 @@ export function Settings() {
         {/* App Data Section */}
         <section>
           <h2 className="mb-4 text-2xl font-semibold">App Data</h2>
-          <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+          <div className="card space-y-3">
             <div className="flex flex-col gap-3">
               <div className="flex justify-between items-baseline">
                 <p className="text-sm text-muted-foreground">

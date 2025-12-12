@@ -104,7 +104,7 @@ body {
 }
 
 .dark {
-  --background: oklch(0.2091 0 129.63);
+  --background: oklch(0.209 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.2221 0 0);
   --card-foreground: oklch(0.985 0 0);
@@ -204,6 +204,46 @@ body {
   .btn-wallet-connection-disconnected {
     @apply bg-transparent text-foreground hover:bg-muted dark:hover:bg-primary/90 focus-visible:ring-ring/50;
   }
+  
+  /* Card utility classes */
+  .card {
+    @apply rounded-lg border bg-card border-border/20 p-4 shadow-sm;
+  }
+  
+  /* Padding variants */
+  .card-sm { @apply p-3; }
+  .card-md { @apply p-4; }  /* default, can be combined with .card */
+  .card-lg { @apply p-5; }
+  .card-xl { @apply p-6; }
+  .card-2xl { @apply p-8; }
+  .card-3xl { @apply p-12; }
+  
+  /* Shadow variants */
+  .card-shadow-none { @apply shadow-none; }
+  .card-shadow-xs { @apply shadow-xs; }
+  .card-shadow-sm { @apply shadow-sm; }  /* default */
+  .card-shadow-lg { @apply shadow-lg; }
+  
+  /* Hover effects */
+  .card-hover { @apply transition-all hover:shadow-md; }
+  
+  /* Border variants */
+  .card-no-border { @apply border-0; }
+  
+  /* Padding variants */
+  .card-no-padding { @apply p-0; }
+  
+  /* Border radius variants */
+  .card-rounded-full { @apply rounded-full; }
+  
+  /* Semantic color variants */
+  .card-info { @apply border-info/20 bg-info/10; }
+  .card-warning { @apply border-warning/20 bg-warning/10; }
+  .card-error { @apply border-error/20 bg-error/10; }
+  .card-success { @apply border-success/20 bg-success/10; }
+  
+  /* Opacity variant */
+  .card-opacity { @apply bg-card/80; }
 }
 
 @keyframes shield-blink {

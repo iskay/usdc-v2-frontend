@@ -17,7 +17,7 @@ export function CollapsibleChainSection({
   const [isOpen, setIsOpen] = useState(defaultOpen)
 
   return (
-    <section className="rounded-lg border border-border bg-card">
+    <section className="card card-no-padding card-shadow-none">
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}

@@ -63,7 +63,7 @@ export function WalletSelector() {
         automatically.
       </AlertBox>
       <div className="grid gap-4 md:grid-cols-2">
-        <section className="space-y-3 rounded-lg border border-border bg-card/80 p-4 shadow-sm">
+        <section className="space-y-3 card card-opacity">
           <header className="space-y-1">
             <h3 className="text-base font-semibold">MetaMask</h3>
             <p className="text-sm text-muted-foreground">
@@ -99,7 +99,7 @@ export function WalletSelector() {
             </div>
           ) : null}
         </section>
-        <section className="space-y-3 rounded-lg border border-border bg-card/80 p-4 shadow-sm">
+        <section className="space-y-3 card card-opacity">
           <header className="space-y-1">
             <h3 className="text-base font-semibold">Namada Keychain</h3>
             <p className="text-sm text-muted-foreground">

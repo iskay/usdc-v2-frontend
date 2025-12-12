@@ -152,7 +152,7 @@ export function ForwardingAddressCard({ addressInfo }: ForwardingAddressCardProp
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card p-5 shadow-sm">
+    <div className="card card-lg">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         {/* Forwarding Address */}
         <div className="space-y-1">

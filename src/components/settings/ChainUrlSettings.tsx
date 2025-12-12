@@ -116,7 +116,7 @@ export function ChainUrlSettings({
   const hasCustomUrls = Object.values(localUrls).some((url) => url !== undefined && url !== '')
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
+    <div className="card card-shadow-none">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-md font-semibold">{chainName}</h3>
         <div className="flex items-center gap-2">

@@ -852,7 +852,7 @@ export function Deposit() {
                 <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
             
                 {/* Step 1: Amount Section */}
-                <div className="rounded-lg border border-info/20 bg-info/10 p-6 shadow-sm">
+                <div className="card card-xl">
                   <div className="mb-4">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
@@ -916,7 +916,7 @@ export function Deposit() {
                 {/* Step 2 & 3: Recipient Address and Source Chain Sections */}
                 <div className="flex flex-col lg:flex-row gap-6">
                   {/* Step 2: Recipient Address Section */}
-                  <div className="flex-1 rounded-lg border border-info/20 bg-info/10 p-6 shadow-sm">
+                  <div className="flex-1 card card-xl">
                   <div className="flex items-baseline justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
@@ -1121,7 +1121,7 @@ export function Deposit() {
                         </div>
                       )}
                       {!registrationStatus.isLoading && registrationStatus.isRegistered === true && (
-                        <div className="rounded-lg border border-info/20 bg-info/10 p-4 shadow-sm">
+                        <div className="card">
                           <div className="flex items-start gap-3">
                             <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-info" />
                             <div className="flex-1 space-y-2">
@@ -1144,7 +1144,7 @@ export function Deposit() {
                         </div>
                       )}
                       {!registrationStatus.isLoading && registrationStatus.isRegistered === false && (
-                        <div className="rounded-lg border border-warning/20 bg-warning/10 p-4 shadow-sm">
+                        <div className="card card-warning">
                           <div className="flex items-start gap-3">
                             <Info className="h-4 w-4 shrink-0 mt-0.5 text-warning" />
                             <div className="flex-1 space-y-2">
@@ -1167,7 +1167,7 @@ export function Deposit() {
                         </div>
                       )}
                       {!registrationStatus.isLoading && registrationStatus.error && (
-                        <div className="rounded-lg border border-warning/20 bg-warning/10 p-4 shadow-sm">
+                        <div className="card card-warning">
                           <div className="flex items-start gap-3">
                             <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-warning" />
                             <div className="flex-1 space-y-1">
@@ -1184,7 +1184,7 @@ export function Deposit() {
                   </div>
 
                   {/* Step 3: Source Chain Section */}
-                  <div className="flex-1 rounded-lg border border-info/20 bg-info/10 p-6 shadow-sm">
+                  <div className="flex-1 card card-xl">
                   <div className="flex items-center gap-2 mb-3">
                     <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
                       Step 3
