@@ -1,5 +1,4 @@
 import React from 'react'
-import { Wallet } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
 import { Button } from '@/components/common/Button'
 
@@ -27,7 +26,7 @@ export function RequireMetaMaskConnection({ children, message }: RequireMetaMask
       <div className="absolute inset-0 flex items-start justify-center pt-20 bg-background/80 backdrop-blur-sm">
         <div className="flex max-w-md flex-col items-center gap-6 rounded-lg border border-border bg-card p-8 shadow-lg">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-            <Wallet className="h-8 w-8 text-muted-foreground" />
+            <img src="/assets/logos/metamask-logo.svg" alt="MetaMask" className="h-10 w-10" />
           </div>
           <div className="space-y-2 text-center">
             <h2 className="text-xl font-semibold">MetaMask Required</h2>
@@ -42,7 +41,14 @@ export function RequireMetaMaskConnection({ children, message }: RequireMetaMask
             className="w-full"
             disabled={!isMetaMaskAvailable}
           >
-            {isMetaMaskAvailable ? 'Connect MetaMask' : 'MetaMask Not Detected'}
+            {isMetaMaskAvailable ? (
+              <>
+                <img src="/assets/logos/metamask-logo.svg" alt="MetaMask" className="h-4 w-4" />
+                <span>Connect MetaMask</span>
+              </>
+            ) : (
+              'MetaMask Not Detected'
+            )}
           </Button>
         </div>
       </div>

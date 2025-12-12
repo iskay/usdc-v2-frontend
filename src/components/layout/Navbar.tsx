@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
-import { Menu } from 'lucide-react'
-import { Button } from '@/components/common/Button'
+import { Menu, Loader2 } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
 import { ThemeToggle } from '@/components/common/ThemeToggle'
+import { cn } from '@/lib/utils'
 
 interface NavbarProps {
   onToggleSidebar: () => void
@@ -25,7 +25,7 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
 
   const truncatedNamadaAddress = useMemo(() => {
     if (!state.namada.account) return undefined
-    return `${state.namada.account.slice(0, 8)}...${state.namada.account.slice(-6)}`
+    return `${state.namada.account.slice(0, 8)}...${state.namada.account.slice(-4)}`
   }, [state.namada.account])
 
   const isMetaMaskConnecting = state.metaMask.isConnecting
@@ -47,7 +47,8 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
       </div>
       <div className="flex items-center gap-3">
         {/* MetaMask Connection Button */}
-        <Button
+        <button
+          type="button"
           onClick={() => {
             if (state.metaMask.isConnected) {
               void disconnectMetaMask()
@@ -56,23 +57,35 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
             }
           }}
           disabled={!isMetaMaskAvailable || isMetaMaskConnecting}
-          variant={state.metaMask.isConnected ? 'secondary' : 'ghost'}
-          className="gap-2 px-3 py-1.5 text-xs"
+          className={cn(
+            'btn-wallet-connection',
+            state.metaMask.isConnected
+              ? 'btn-wallet-connection-connected'
+              : 'btn-wallet-connection-disconnected',
+          )}
         >
           {isMetaMaskConnecting ? (
-            <>Connecting...</>
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span>Connecting...</span>
+            </>
           ) : state.metaMask.isConnected && truncatedMetaMaskAddress ? (
             <>
+              <div className="h-2 w-2 rounded-full bg-success" />
               <span className="text-xs">MetaMask</span>
               <span className="font-mono text-xs">{truncatedMetaMaskAddress}</span>
             </>
           ) : (
-            <>Connect MetaMask</>
+            <>
+              <img src="/assets/logos/metamask-logo.svg" alt="MetaMask" className="h-4 w-4" />
+              <span>Connect MetaMask</span>
+            </>
           )}
-        </Button>
+        </button>
 
         {/* Namada Keychain Connection Button */}
-        <Button
+        <button
+          type="button"
           onClick={() => {
             if (state.namada.isConnected) {
               void disconnectNamada()
@@ -81,20 +94,31 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
             }
           }}
           disabled={isNamadaConnecting}
-          variant={state.namada.isConnected ? 'secondary' : 'ghost'}
-          className="gap-2 px-3 py-1.5 text-xs"
+          className={cn(
+            'btn-wallet-connection',
+            state.namada.isConnected
+              ? 'btn-wallet-connection-connected'
+              : 'btn-wallet-connection-disconnected',
+          )}
         >
           {isNamadaConnecting ? (
-            <>Connecting...</>
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span>Connecting...</span>
+            </>
           ) : state.namada.isConnected && truncatedNamadaAddress ? (
             <>
+              <div className="h-2 w-2 rounded-full bg-success" />
               <span className="text-xs">Namada</span>
               <span className="font-mono text-xs">{truncatedNamadaAddress}</span>
             </>
           ) : (
-            <>Connect Namada</>
+            <>
+              <img src="/assets/logos/namada-logo.svg" alt="Namada" className="h-4 w-4" />
+              <span>Connect Namada</span>
+            </>
           )}
-        </Button>
+        </button>
 
         {/* Theme Toggle */}
         <ThemeToggle />

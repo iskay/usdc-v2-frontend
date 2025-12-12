@@ -75,15 +75,22 @@ export function WalletSelector() {
             disabled={!availability.hasMetaMask || isMetaMaskConnecting}
             variant={availability.hasMetaMask ? 'primary' : 'ghost'}
           >
-            {availability.loading
-              ? 'Detecting...'
-              : availability.hasMetaMask
-                ? isMetaMaskConnecting
-                  ? 'Connecting...'
-                  : state.metaMask.isConnected
-                    ? 'Reconnect MetaMask'
-                    : 'Connect MetaMask'
-                : 'MetaMask Not Detected'}
+            {availability.loading ? (
+              'Detecting...'
+            ) : availability.hasMetaMask ? (
+              isMetaMaskConnecting ? (
+                'Connecting...'
+              ) : state.metaMask.isConnected ? (
+                'Reconnect MetaMask'
+              ) : (
+                <>
+                  <img src="/assets/logos/metamask-logo.svg" alt="MetaMask" className="h-4 w-4" />
+                  <span>Connect MetaMask</span>
+                </>
+              )
+            ) : (
+              'MetaMask Not Detected'
+            )}
           </Button>
           {state.metaMask.isConnected && state.metaMask.account ? (
             <div className="space-y-1 text-xs text-muted-foreground">
@@ -104,15 +111,22 @@ export function WalletSelector() {
             disabled={!availability.hasNamada || isNamadaConnecting}
             variant={availability.hasNamada ? 'secondary' : 'ghost'}
           >
-            {availability.loading
-              ? 'Detecting...'
-              : availability.hasNamada
-                ? isNamadaConnecting
-                  ? 'Connecting...'
-                  : state.namada.isConnected
-                    ? 'Reconnect Namada'
-                    : 'Connect Namada'
-                : 'Namada Keychain Not Detected'}
+            {availability.loading ? (
+              'Detecting...'
+            ) : availability.hasNamada ? (
+              isNamadaConnecting ? (
+                'Connecting...'
+              ) : state.namada.isConnected ? (
+                'Reconnect Namada'
+              ) : (
+                <>
+                  <img src="/assets/logos/namada-logo.svg" alt="Namada" className="h-4 w-4" />
+                  <span>Connect Namada</span>
+                </>
+              )
+            ) : (
+              'Namada Keychain Not Detected'
+            )}
           </Button>
           {state.namada.isConnected && state.namada.account ? (
             <div className="space-y-1 text-xs text-muted-foreground">
