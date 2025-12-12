@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
-import { X, CheckCircle2, XCircle, Clock, AlertCircle, Copy, ExternalLink, ChevronDown, ChevronRight, Ban } from 'lucide-react'
+import { X, CheckCircle2, XCircle, Clock, AlertCircle, ChevronDown, ChevronRight, Ban } from 'lucide-react'
+import { InfoRow } from '@/components/common/InfoRow'
+import { ExplorerLink } from '@/components/common/ExplorerLink'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import {
   isSuccess,
@@ -26,8 +28,6 @@ import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainCo
 import type { EvmChainsFile, TendermintChainsFile } from '@/config/chains'
 import { findChainByKey } from '@/config/chains'
 import { findTendermintChainByKey, getDefaultNamadaChainKey } from '@/config/chains'
-import { useToast } from '@/hooks/useToast'
-import { buildCopySuccessToast, buildCopyErrorToast } from '@/utils/toastHelpers'
 import { CollapsibleError } from '@/components/common/CollapsibleError'
 
 export interface TransactionDetailModalProps {
@@ -41,7 +41,6 @@ export function TransactionDetailModal({
   open,
   onClose,
 }: TransactionDetailModalProps) {
-  const { notify } = useToast()
   const [evmChainsConfig, setEvmChainsConfig] = useState<EvmChainsFile | null>(null)
   const [tendermintChainsConfig, setTendermintChainsConfig] = useState<TendermintChainsFile | null>(null)
   const [isStageTimelineExpanded, setIsStageTimelineExpanded] = useState(false)
@@ -103,16 +102,6 @@ export function TransactionDetailModal({
     }
   }, [open])
 
-  // Copy to clipboard helper
-  const copyToClipboard = useCallback(async (text: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      notify(buildCopySuccessToast(label))
-    } catch (error) {
-      console.error('[TransactionDetailModal] Failed to copy to clipboard:', error)
-      notify(buildCopyErrorToast())
-    }
-  }, [notify])
 
   // Helper to get EVM chain key from chain name or transaction chain
   const getEvmChainKey = useCallback((chainName?: string, transactionChain?: string): string | undefined => {
@@ -375,52 +364,6 @@ export function TransactionDetailModal({
     return `${hash.slice(0, 8)}...${hash.slice(-6)}`
   }
 
-  // Reusable InfoRow component for address/tx display
-  function InfoRow({
-    label,
-    value,
-    explorerUrl,
-    onCopy,
-  }: {
-    label: string
-    value: string
-    explorerUrl?: string
-    onCopy: () => void
-  }) {
-    return (
-      <div className="space-y-1">
-        <dt className="text-sm text-muted-foreground">{label}</dt>
-        <dd>
-          <div className="flex justify-between gap-2">
-            <span className="font-mono text-sm">{value}</span>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={onCopy}
-                className="p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                aria-label={`Copy ${label}`}
-                title={`Copy ${label}`}
-              >
-                <Copy className="h-3.5 w-3.5" />
-              </button>
-              {explorerUrl && (
-                <a
-                  href={explorerUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                  aria-label={`Open ${label} in explorer`}
-                  title={`Open ${label} in explorer`}
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </a>
-              )}
-            </div>
-          </div>
-        </dd>
-      </div>
-    )
-  }
 
   // Noble Forwarding Registration Status component
   function NobleForwardingRegistrationStatus({
@@ -441,25 +384,25 @@ export function TransactionDetailModal({
     let statusMessage
     if (reg.alreadyRegistered) {
       statusMessage = (
-        <p className="mt-1 text-xs text-green-600">
+        <p className="mt-1 text-xs text-success">
           Already registered
         </p>
       )
     } else if (reg.registrationTx?.txHash) {
       statusMessage = (
-        <p className="mt-1 text-xs text-green-600">
+        <p className="mt-1 text-xs text-success">
           Registered: {reg.registrationTx.txHash.slice(0, 16)}...
         </p>
       )
     } else if (reg.balanceCheck?.performed && !reg.balanceCheck.sufficient) {
       statusMessage = (
-        <p className="mt-1 text-xs text-orange-600">
+        <p className="mt-1 text-xs text-warning">
           Insufficient balance: {reg.balanceCheck.balanceUusdc || '0'} uusdc &lt; {reg.balanceCheck.minRequiredUusdc || '0'} uusdc required
         </p>
       )
     } else if (reg.errorMessage) {
       statusMessage = (
-        <p className="mt-1 text-xs text-red-600">
+        <p className="mt-1 text-xs text-error">
           Error: {reg.errorMessage}
         </p>
       )
@@ -508,7 +451,7 @@ export function TransactionDetailModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-overlay backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -534,10 +477,10 @@ export function TransactionDetailModal({
             {/* Status Badge */}
             <div className={cn(
               'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1',
-              isSuccess(transaction) ? 'bg-green-100 dark:bg-green-900/30 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400' :
-                isError(transaction) ? 'bg-red-100 dark:bg-red-900/30 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400' :
-                  effectiveStatus === 'user_action_required' ? 'bg-orange-100 dark:bg-orange-900/30 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-400' :
-                    effectiveStatus === 'undetermined' ? 'bg-yellow-100 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400' :
+              isSuccess(transaction) ? 'bg-success/10 border-success/30 text-success' :
+                isError(transaction) ? 'bg-error/10 border-error/30 text-error' :
+                  effectiveStatus === 'user_action_required' ? 'bg-warning/10 border-warning/30 text-warning' :
+                    effectiveStatus === 'undetermined' ? 'bg-warning/10 border-warning/30 text-warning' :
                       'bg-muted border-muted text-muted-foreground'
             )}>
               {statusIcon}
@@ -557,7 +500,7 @@ export function TransactionDetailModal({
         {/* Content */}
         <div className="p-6 pt-2 space-y-6">
           {/* Transaction Summary */}
-          <div className="text-sm border border-slate-200 p-6 rounded-md bg-slate-200/50">
+          <div className="text-sm border border-border p-6 rounded-md bg-muted/50">
             <div className="flex flex-wrap justify-around items-center gap-x-6 gap-y-2">
               {amount && (
                 <div>
@@ -613,7 +556,7 @@ export function TransactionDetailModal({
           {/* Two-Column Layout: Transaction Details and Chain Status */}
           <div className="grid grid-cols-2 gap-6">
             {/* Left Column: Transaction Details */}
-            <div className="space-y-4 border border-slate-200 p-6 rounded-md">
+            <div className="space-y-4 border border-border p-6 rounded-md">
               <h3 className="text-sm font-semibold">Transaction Details</h3>
               <div className="space-y-4">
                 {senderAddress && (
@@ -628,7 +571,6 @@ export function TransactionDetailModal({
                         ? getEvmChainKey(transaction.depositDetails?.chainName, transaction.chain)
                         : undefined
                     )}
-                    onCopy={() => copyToClipboard(senderAddress, 'Sender Address')}
                   />
                 )}
                 {receiverAddress && (
@@ -643,7 +585,6 @@ export function TransactionDetailModal({
                         ? getEvmChainKey(transaction.paymentDetails?.chainName, transaction.chain)
                         : undefined
                     )}
-                    onCopy={() => copyToClipboard(receiverAddress, 'Receiver Address')}
                   />
                 )}
                 {sendTxHash && (
@@ -658,7 +599,6 @@ export function TransactionDetailModal({
                         ? getEvmChainKey(transaction.depositDetails?.chainName, transaction.chain)
                         : undefined
                     )}
-                    onCopy={() => copyToClipboard(sendTxHash, 'Send Tx')}
                   />
                 )}
                 {receiveTxHash && (
@@ -673,27 +613,26 @@ export function TransactionDetailModal({
                         ? getEvmChainKey(transaction.paymentDetails?.chainName, transaction.chain)
                         : undefined
                     )}
-                    onCopy={() => copyToClipboard(receiveTxHash, 'Receive Tx')}
                   />
                 )}
               </div>
             </div>
 
             {/* Right Column: Chain Status */}
-            <div className="space-y-4 border border-slate-200 p-6 rounded-md">
+            <div className="space-y-4 border border-border p-6 rounded-md">
               <h3 className="text-sm font-semibold">Chain Status</h3>
               {transaction.pollingState?.flowStatus === 'cancelled' && (
-                <div className="rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 p-3 text-xs text-muted-foreground">
+                <div className="rounded-md border border-border bg-muted/50 p-3 text-xs text-muted-foreground">
                   Tracking was cancelled before we could determine the outcome of this {transaction.direction === 'deposit' ? 'deposit' : 'payment'}.
                 </div>
               )}
               {transaction.pollingState?.flowStatus === 'polling_timeout' && (
-                <div className="rounded-md border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950/50 p-3 text-xs text-yellow-800 dark:text-yellow-200">
+                <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
                   Tracking timed out before we could determine the outcome of this {transaction.direction === 'deposit' ? 'deposit' : 'payment'}. It may have succeeded or failed; verify independently on-chain.
                 </div>
               )}
               {transaction.pollingState?.flowStatus === 'polling_error' && (
-                <div className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/50 p-3 text-xs text-red-800 dark:text-red-200">
+                <div className="rounded-md border border-error/30 bg-error/10 p-3 text-xs text-error">
                   Tracking encountered an error and could not determine the outcome of this {transaction.direction === 'deposit' ? 'deposit' : 'payment'}. It may have succeeded or failed; verify independently on-chain.
                 </div>
               )}
@@ -778,17 +717,17 @@ export function TransactionDetailModal({
                             {/* Status icon */}
                             <div className="flex items-center justify-center w-5 h-5 flex-shrink-0">
                               {isSuccess ? (
-                                <CheckCircle2 className="h-5 w-5 text-green-600" />
+                                <CheckCircle2 className="h-5 w-5 text-success" />
                               ) : chainStatus?.status === 'cancelled' ? (
-                                <Ban className="h-5 w-5 text-gray-500" />
+                                <Ban className="h-5 w-5 text-muted-foreground" />
                               ) : chainStatus?.status === 'tx_error' || chainStatus?.status === 'polling_error' ? (
                                 <XCircle className={cn(
-                                  "h-5 w-5 text-red-600",
+                                  "h-5 w-5 text-error",
                                   isCurrentChain && "animate-pulse"
                                 )} />
                               ) : chainStatus?.status === 'polling_timeout' ? (
                                 <Clock className={cn(
-                                  "h-5 w-5 text-yellow-600",
+                                  "h-5 w-5 text-warning",
                                   isCurrentChain && "animate-pulse"
                                 )} />
                               ) : (
@@ -827,16 +766,12 @@ export function TransactionDetailModal({
                                       </span>
                                     )}
                                     {stage.txHash && stage.txExplorerUrl && (
-                                      <a
-                                        href={stage.txExplorerUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline flex items-center gap-1"
+                                      <ExplorerLink
+                                        url={stage.txExplorerUrl}
+                                        label="View transaction on explorer"
+                                        size="sm"
                                         onClick={(e) => e.stopPropagation()}
-                                        title="View transaction on explorer"
-                                      >
-                                        <ExternalLink className="h-3 w-3" />
-                                      </a>
+                                      />
                                     )}
                                   </div>
                                 ))}
@@ -878,14 +813,14 @@ export function TransactionDetailModal({
 
           {/* Client Timeout Notice */}
           {hasClientTimeout(transaction) && (
-            <div className="border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-950">
+            <div className="border border-warning/30 bg-warning/10 p-4">
               <div className="flex items-start gap-2">
-                <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                <AlertCircle className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
+                  <p className="text-sm font-medium text-warning-foreground">
                     Client-Side Tracking Stopped
                   </p>
-                  <p className="mt-1 text-sm text-yellow-800 dark:text-yellow-200">
+                  <p className="mt-1 text-sm text-warning/90">
                     Client-side tracking stopped at{' '}
                     {transaction.clientTimeoutAt
                       ? new Date(transaction.clientTimeoutAt).toLocaleString()
@@ -915,12 +850,12 @@ export function TransactionDetailModal({
 
                 </div>
                 {transaction.pollingState.flowStatus === 'success' && (
-                  <span className="inline-flex items-center rounded-full border border-green-200 dark:border-green-800 bg-green-100 dark:bg-green-900/30 px-4 py-2 text-xs font-medium text-green-700 dark:text-green-400">
+                  <span className="inline-flex items-center rounded-full border border-success/30 bg-success/10 px-4 py-2 text-xs font-medium text-success">
                     Success
                   </span>
                 )}
                 {transaction.pollingState.flowStatus === 'cancelled' && (
-                  <span className="inline-flex items-center rounded-full border border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-gray-900/30 px-4 py-2 text-xs font-medium text-gray-700 dark:text-gray-400">
+                  <span className="inline-flex items-center rounded-full border border-muted bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
                     Tracking Cancelled
                   </span>
                 )}
@@ -955,9 +890,9 @@ export function TransactionDetailModal({
                     const isLast = index === stageTimings.length - 1
                     const timingIcon =
                       timing.status === 'confirmed' ? (
-                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        <CheckCircle2 className="h-4 w-4 text-success" />
                       ) : timing.status === 'failed' ? (
-                        <XCircle className="h-4 w-4 text-red-600" />
+                        <XCircle className="h-4 w-4 text-error" />
                       ) : (
                         <Clock className="h-4 w-4 text-muted-foreground" />
                       )
@@ -1038,16 +973,15 @@ export function TransactionDetailModal({
                               <p className="text-xs text-muted-foreground flex items-center gap-1">
                                 Transaction:{' '}
                                 {txExplorerUrl ? (
-                                  <a
-                                    href={txExplorerUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline flex items-center gap-1"
+                                  <ExplorerLink
+                                    url={txExplorerUrl}
+                                    size="sm"
                                     onClick={(e) => e.stopPropagation()}
                                   >
-                                    {txHash.slice(0, 10)}...{txHash.slice(-8)}
-                                    <ExternalLink className="h-3 w-3" />
-                                  </a>
+                                    <span className="font-mono">
+                                      {txHash.slice(0, 10)}...{txHash.slice(-8)}
+                                    </span>
+                                  </ExplorerLink>
                                 ) : (
                                   <span className="font-mono">
                                     {txHash.slice(0, 10)}...{txHash.slice(-8)}
@@ -1067,16 +1001,13 @@ export function TransactionDetailModal({
                                   <p className="flex items-center gap-1">
                                     Block height:{' '}
                                     {blockExplorerUrl ? (
-                                      <a
-                                        href={blockExplorerUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline flex items-center gap-1"
+                                      <ExplorerLink
+                                        url={blockExplorerUrl}
+                                        size="sm"
                                         onClick={(e) => e.stopPropagation()}
                                       >
                                         {blockMetadata.blockHeight}
-                                        <ExternalLink className="h-3 w-3" />
-                                      </a>
+                                      </ExplorerLink>
                                     ) : (
                                       <span>{blockMetadata.blockHeight}</span>
                                     )}

@@ -64,7 +64,7 @@ export function TxInProgressList({ openModalTxId, onModalOpenChange, hideActions
 
   if (error) {
     return (
-      <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
+      <div className="rounded-md border border-error/20 bg-error/10 p-3 text-sm text-error">
         <p className="font-medium">Error loading transactions</p>
         <p className="mt-1 text-xs">{error}</p>
       </div>

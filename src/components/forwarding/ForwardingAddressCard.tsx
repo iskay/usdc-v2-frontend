@@ -6,8 +6,8 @@
  */
 
 import { useState, useEffect } from 'react'
-import { Copy, Check, ExternalLink, Loader2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Loader2 } from 'lucide-react'
+import { AddressDisplay } from '@/components/common/AddressDisplay'
 import { getNobleUusdcBalance } from '@/services/noble/nobleLcdClient'
 import { isNobleForwardingRegistered } from '@/services/polling/nobleForwardingRegistration'
 import { RegisterNobleForwardingButton } from '@/components/polling/RegisterNobleForwardingButton'
@@ -38,16 +38,8 @@ export function ForwardingAddressCard({ addressInfo }: ForwardingAddressCardProp
   const [isRegistered, setIsRegistered] = useState<boolean | null>(null)
   const [isRegistrationCheckLoading, setIsRegistrationCheckLoading] = useState(true)
   const [registrationError, setRegistrationError] = useState<string | null>(null)
-  const [copiedAddress, setCopiedAddress] = useState(false)
-  const [copiedRecipient, setCopiedRecipient] = useState(false)
   const [registrationTxHash, setRegistrationTxHash] = useState<string | undefined>()
   const [explorerUrl, setExplorerUrl] = useState<string | undefined>()
-
-  // Format address for display (show more characters with horizontal layout)
-  const formatAddress = (address: string): string => {
-    if (address.length <= 20) return address
-    return `${address.slice(0, 12)}...${address.slice(-12)}`
-  }
 
   // Format last used date
   const formatLastUsedDate = (timestamp: number): string => {
@@ -57,22 +49,6 @@ export function ForwardingAddressCard({ addressInfo }: ForwardingAddressCardProp
       day: 'numeric', 
       year: 'numeric' 
     })}`
-  }
-
-  // Copy to clipboard
-  const handleCopy = async (text: string, type: 'address' | 'recipient') => {
-    try {
-      await navigator.clipboard.writeText(text)
-      if (type === 'address') {
-        setCopiedAddress(true)
-        setTimeout(() => setCopiedAddress(false), 2000)
-      } else {
-        setCopiedRecipient(true)
-        setTimeout(() => setCopiedRecipient(false), 2000)
-      }
-    } catch (error) {
-      logger.error('[ForwardingAddressCard] Failed to copy to clipboard', { error })
-    }
   }
 
   // Fetch balance
@@ -182,25 +158,12 @@ export function ForwardingAddressCard({ addressInfo }: ForwardingAddressCardProp
         <div className="space-y-1">
           <dt className="text-sm font-medium text-muted-foreground">Noble Forwarding Address</dt>
           <dd>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-sm break-all">{formatAddress(forwardingAddress)}</span>
-              <button
-                type="button"
-                onClick={() => handleCopy(forwardingAddress, 'address')}
-                className={cn(
-                  'p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors rounded flex-shrink-0',
-                  copiedAddress && 'text-green-600 dark:text-green-400',
-                )}
-                aria-label="Copy forwarding address"
-                title="Copy forwarding address"
-              >
-                {copiedAddress ? (
-                  <Check className="h-4 w-4" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </button>
-            </div>
+            <AddressDisplay
+              value={forwardingAddress}
+              label="Forwarding address"
+              format="medium"
+              size="md"
+            />
           </dd>
         </div>
 
@@ -208,25 +171,12 @@ export function ForwardingAddressCard({ addressInfo }: ForwardingAddressCardProp
         <div className="space-y-1">
           <dt className="text-sm font-medium text-muted-foreground">Namada Recipient Address</dt>
           <dd>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-sm break-all">{formatAddress(recipientAddress)}</span>
-              <button
-                type="button"
-                onClick={() => handleCopy(recipientAddress, 'recipient')}
-                className={cn(
-                  'p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors rounded flex-shrink-0',
-                  copiedRecipient && 'text-green-600 dark:text-green-400',
-                )}
-                aria-label="Copy recipient address"
-                title="Copy recipient address"
-              >
-                {copiedRecipient ? (
-                  <Check className="h-4 w-4" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </button>
-            </div>
+            <AddressDisplay
+              value={recipientAddress}
+              label="Recipient address"
+              format="medium"
+              size="md"
+            />
           </dd>
         </div>
 
@@ -263,21 +213,21 @@ export function ForwardingAddressCard({ addressInfo }: ForwardingAddressCardProp
             ) : (
               <div className="flex items-center gap-2">
                 {registrationError ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-100 dark:bg-orange-900/30 px-2.5 py-0.5 text-xs font-medium text-orange-800 dark:text-orange-200">
-                    <span className="h-1.5 w-1.5 rounded-full bg-orange-600 dark:bg-orange-400" />
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 px-2.5 py-0.5 text-xs font-medium text-warning">
+                    <span className="h-1.5 w-1.5 rounded-full bg-warning" />
                     Status unavailable
                   </span>
                 ) : isRegistered === true ? (
                   <>
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 dark:bg-green-900/30 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-200">
-                      <span className="h-1.5 w-1.5 rounded-full bg-green-600 dark:bg-green-400" />
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-0.5 text-xs font-medium text-success">
+                      <span className="h-1.5 w-1.5 rounded-full bg-success" />
                       Registered
                     </span>
                   </>
                 ) : isRegistered === false ? (
                   <>
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30 px-2.5 py-0.5 text-xs font-medium text-yellow-800 dark:text-yellow-200">
-                      <span className="h-1.5 w-1.5 rounded-full bg-yellow-600 dark:text-yellow-400" />
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 px-2.5 py-0.5 text-xs font-medium text-warning">
+                      <span className="h-1.5 w-1.5 rounded-full bg-warning" />
                       Not Registered
                     </span>
                   </>
@@ -322,21 +272,13 @@ export function ForwardingAddressCard({ addressInfo }: ForwardingAddressCardProp
           <div className="space-y-1">
             <dt className="text-sm font-medium text-muted-foreground">Registration Transaction</dt>
             <dd>
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-xs break-all">{formatAddress(registrationTxHash)}</span>
-                {explorerUrl && (
-                  <a
-                    href={explorerUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors rounded flex-shrink-0"
-                    aria-label="View transaction in explorer"
-                    title="View transaction in explorer"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                )}
-              </div>
+              <AddressDisplay
+                value={registrationTxHash}
+                explorerUrl={explorerUrl}
+                label="Registration transaction"
+                format="medium"
+                size="sm"
+              />
             </dd>
           </div>
         )}

@@ -48,22 +48,22 @@ export function CollapsibleError({
   return (
     <div
       className={cn(
-        'rounded-md border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950',
+        'rounded-md border border-error/20 bg-error/10 p-4',
         className
       )}
     >
       <div className="flex items-start gap-2">
         {showIcon && (
-          <XCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+          <XCircle className="h-5 w-5 text-error flex-shrink-0 mt-0.5" />
         )}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-medium text-red-900 dark:text-red-100">{title}</p>
+            <p className="text-sm font-medium text-error-foreground">{title}</p>
             {showCopyButton && hasDetails && (
               <button
                 type="button"
                 onClick={handleCopy}
-                className="flex-shrink-0 rounded p-1 text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900 transition-colors"
+                className="flex-shrink-0 rounded p-1 text-error hover:bg-error/20 transition-colors"
                 aria-label="Copy error details"
                 title="Copy error details"
               >
@@ -77,7 +77,7 @@ export function CollapsibleError({
           </div>
           
           {/* Sanitized error message */}
-          <p className="mt-1 text-sm text-red-800 dark:text-red-200 break-words">
+          <p className="mt-1 text-sm text-error/90 break-words">
             {sanitized.message}
           </p>
 
@@ -87,7 +87,7 @@ export function CollapsibleError({
               <button
                 type="button"
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="flex items-center gap-1 text-xs text-red-700 dark:text-red-300 hover:text-red-900 dark:hover:text-red-100 transition-colors"
+                className="flex items-center gap-1 text-xs text-error hover:text-error-foreground transition-colors"
               >
                 {isExpanded ? (
                   <>
@@ -103,8 +103,8 @@ export function CollapsibleError({
               </button>
 
               {isExpanded && (
-                <div className="mt-2 rounded border border-red-300 dark:border-red-700 bg-red-100 dark:bg-red-900/50 p-3">
-                  <pre className="text-xs text-red-900 dark:text-red-100 whitespace-pre-wrap break-words overflow-x-auto max-h-96 overflow-y-auto font-mono">
+                <div className="mt-2 rounded border border-error/30 bg-error/10 p-3">
+                  <pre className="text-xs text-error-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-96 overflow-y-auto font-mono">
                     {sanitized.rawError}
                   </pre>
                 </div>

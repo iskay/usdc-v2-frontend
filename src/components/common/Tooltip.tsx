@@ -80,7 +80,7 @@ export function Tooltip({ children, content, side = 'top', className }: TooltipP
           <div
             ref={tooltipRef}
             className={cn(
-              'fixed z-[9999] px-3 py-2 text-xs text-white bg-gray-900 dark:bg-gray-800 rounded-md shadow-lg',
+              'fixed z-[9999] px-3 py-2 text-xs text-background bg-foreground rounded-md shadow-lg',
               'whitespace-nowrap pointer-events-none',
               className
             )}
@@ -93,7 +93,7 @@ export function Tooltip({ children, content, side = 'top', className }: TooltipP
             {/* Arrow */}
             <div
               className={cn(
-                'absolute w-2 h-2 bg-gray-900 dark:bg-gray-800 rotate-45',
+                'absolute w-2 h-2 bg-foreground rotate-45',
                 side === 'top' && 'top-full left-1/2 -translate-x-1/2 -translate-y-1/2',
                 side === 'bottom' && 'bottom-full left-1/2 -translate-x-1/2 translate-y-1/2',
                 side === 'left' && 'left-full top-1/2 -translate-x-1/2 -translate-y-1/2',

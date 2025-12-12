@@ -23,19 +23,19 @@ export function ClearTransactionHistoryDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+        className="absolute inset-0 bg-overlay backdrop-blur-sm transition-opacity"
         onClick={onClose}
         aria-hidden="true"
       />
 
       {/* Modal Content */}
-      <div className="relative z-50 w-full max-w-md rounded-xl border border-red-200/50 dark:border-red-800/50 bg-background shadow-2xl animate-in fade-in-0 zoom-in-95 duration-200">
+      <div className="relative z-50 w-full max-w-md rounded-xl border border-error/20 bg-background shadow-2xl animate-in fade-in-0 zoom-in-95 duration-200">
         {/* Header with warning accent */}
-        <div className="rounded-t-xl border-b border-red-200/50 dark:border-red-800/50 bg-red-50/50 dark:bg-red-950/20 px-6 py-4">
+        <div className="rounded-t-xl border-b border-error/20 bg-error/10 px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
-                <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-error/20">
+                <AlertTriangle className="h-5 w-5 text-error" />
               </div>
               <h2 className="text-lg font-semibold text-foreground">Clear Transaction History</h2>
             </div>
@@ -57,9 +57,9 @@ export function ClearTransactionHistoryDialog({
             <p className="text-sm leading-relaxed text-foreground">
               Clear transaction history?
             </p>
-            <div className="flex items-start gap-2 rounded-lg border border-red-200/50 dark:border-red-800/50 bg-red-50/30 dark:bg-red-950/10 p-3">
-              <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
-              <p className="text-sm font-medium text-red-700 dark:text-red-300">
+            <div className="flex items-start gap-2 rounded-lg border border-error/20 bg-error/10 p-3">
+              <AlertTriangle className="h-4 w-4 text-error flex-shrink-0 mt-0.5" />
+              <p className="text-sm font-medium text-error-foreground">
                 Warning: This can't be undone!
               </p>
             </div>
@@ -76,7 +76,7 @@ export function ClearTransactionHistoryDialog({
             </Button>
             <Button 
               onClick={handleConfirm} 
-              className="min-w-[80px] bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700 text-white border-0 focus:ring-red-500/50"
+              className="min-w-[80px] bg-error hover:bg-error/90 text-error-foreground border-0 focus:ring-error/50"
             >
               Clear
             </Button>

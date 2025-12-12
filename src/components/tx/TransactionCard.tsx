@@ -90,24 +90,24 @@ export const TransactionCard = memo(function TransactionCard({
   
   if (isSuccess(transaction)) {
     statusIcon = <CheckCircle2 className="h-3.5 w-3.5" />
-    badgeBgColor = 'bg-green-100 dark:bg-green-900/30'
-    badgeTextColor = 'text-green-700 dark:text-green-400'
-    badgeBorderColor = 'border-green-200 dark:border-green-800'
+    badgeBgColor = 'bg-success/10'
+    badgeTextColor = 'text-success'
+    badgeBorderColor = 'border-success/30'
   } else if (isError(transaction)) {
     statusIcon = <XCircle className="h-3.5 w-3.5" />
-    badgeBgColor = 'bg-red-100 dark:bg-red-900/30'
-    badgeTextColor = 'text-red-700 dark:text-red-400'
-    badgeBorderColor = 'border-red-200 dark:border-red-800'
+    badgeBgColor = 'bg-error/10'
+    badgeTextColor = 'text-error'
+    badgeBorderColor = 'border-error/30'
   } else if (effectiveStatus === 'user_action_required') {
     statusIcon = <AlertCircle className="h-3.5 w-3.5" />
-    badgeBgColor = 'bg-orange-100 dark:bg-orange-900/30'
-    badgeTextColor = 'text-orange-700 dark:text-orange-400'
-    badgeBorderColor = 'border-orange-200 dark:border-orange-800'
+    badgeBgColor = 'bg-warning/10'
+    badgeTextColor = 'text-warning'
+    badgeBorderColor = 'border-warning/30'
   } else if (effectiveStatus === 'undetermined') {
     statusIcon = <AlertCircle className="h-3.5 w-3.5" />
-    badgeBgColor = 'bg-yellow-100 dark:bg-yellow-900/30'
-    badgeTextColor = 'text-yellow-700 dark:text-yellow-400'
-    badgeBorderColor = 'border-yellow-200 dark:border-yellow-800'
+    badgeBgColor = 'bg-warning/10'
+    badgeTextColor = 'text-warning'
+    badgeBorderColor = 'border-warning/30'
   } else if (inProgress) {
     // In progress/broadcasted
     badgeBgColor = 'bg-muted'
@@ -122,7 +122,7 @@ export const TransactionCard = memo(function TransactionCard({
           'bg-card transition-all',
           // Conditional border, shadow, and padding: only for in-progress transactions
           inProgress 
-            ? 'rounded-lg border border-border shadow-sm hover:shadow-md p-4 bg-blue-200/20' 
+            ? 'rounded-lg border border-border shadow-sm hover:shadow-md p-4 bg-info/20' 
             : variant === 'compact' 
               ? 'p-3' 
               : 'rounded-lg border-0 shadow-none p-4',
@@ -138,12 +138,12 @@ export const TransactionCard = memo(function TransactionCard({
               {/* Transaction type icon - smaller for dashboard */}
               <div className="flex-shrink-0">
                 {transaction.direction === 'deposit' ? (
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900/30">
-                    <ArrowDown className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-warning/10">
+                    <ArrowDown className="h-4 w-4 text-warning" />
                   </div>
                 ) : (
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
-                    <Send className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-info/10">
+                    <Send className="h-4 w-4 text-info" />
                   </div>
                 )}
               </div>
@@ -184,8 +184,8 @@ export const TransactionCard = memo(function TransactionCard({
                 
                 {hasClientTimeout(transaction) && (
                   <div className="group relative">
-                    <AlertCircle className="h-3 w-3 text-yellow-600" />
-                    <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition-opacity group-hover:block group-hover:opacity-100">
+                    <AlertCircle className="h-3 w-3 text-warning" />
+                    <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-foreground px-2 py-1 text-xs text-background opacity-0 shadow-lg transition-opacity group-hover:block group-hover:opacity-100">
                       {getTimeoutMessage(transaction)}
                     </div>
                   </div>
@@ -210,12 +210,12 @@ export const TransactionCard = memo(function TransactionCard({
               {/* Transaction type icon */}
               <div className="flex-shrink-0">
                 {transaction.direction === 'deposit' ? (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900/30">
-                    <ArrowDown className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning/10">
+                    <ArrowDown className="h-5 w-5 text-warning" />
                   </div>
                 ) : (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
-                    <Send className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-info/10">
+                    <Send className="h-5 w-5 text-info" />
                   </div>
                 )}
               </div>
@@ -255,8 +255,8 @@ export const TransactionCard = memo(function TransactionCard({
               
               {hasClientTimeout(transaction) && (
                 <div className="group relative">
-                  <AlertCircle className="h-3.5 w-3.5 text-yellow-600" />
-                  <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition-opacity group-hover:block group-hover:opacity-100">
+                  <AlertCircle className="h-3.5 w-3.5 text-warning" />
+                  <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-foreground px-2 py-1 text-xs text-background opacity-0 shadow-lg transition-opacity group-hover:block group-hover:opacity-100">
                     {getTimeoutMessage(transaction)}
                   </div>
                 </div>

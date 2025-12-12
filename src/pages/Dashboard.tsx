@@ -209,7 +209,7 @@ export function Dashboard() {
           </div>
 
           {/* Unified Balance Card */}
-          <div className="rounded-lg border border-slate-200 bg-slate-200/50 dark:from-slate-950/20 dark:to-slate-900/10 dark:border-slate-800/50 p-6 shadow-xs">
+          <div className="rounded-lg border border-border bg-muted/50 p-6 shadow-xs">
             <div className="flex items-start justify-between gap-6">
               {/* Left side: Transparent Balance */}
               <div className="flex-1">
@@ -218,7 +218,7 @@ export function Dashboard() {
                   <p className="text-2xl font-bold">{displayTransparentBalance} <span className="text-lg font-semibold text-muted-foreground">USDC</span></p>
                   {hasTransparentError && (
                     <Tooltip content="Could not query transparent balance from chain" side="top">
-                      <AlertCircle className="h-4 w-4 text-red-500" aria-label="Transparent balance error" />
+                      <AlertCircle className="h-4 w-4 text-error" aria-label="Transparent balance error" />
                     </Tooltip>
                   )}
                 </div>
@@ -230,11 +230,11 @@ export function Dashboard() {
                 <div className="flex items-center gap-2 mt-1">
                   <p className="text-2xl font-bold">{displayShieldedBalance} <span className="text-lg font-semibold text-muted-foreground">USDC</span></p>
                   {isShieldedBalanceLoading && (
-                    <Loader2 className="h-4 w-4 animate-spin text-red-500" aria-label="Loading shielded balance" />
+                    <Loader2 className="h-4 w-4 animate-spin text-info" aria-label="Loading shielded balance" />
                   )}
                   {hasShieldedError && (
                     <Tooltip content="Could not query shielded balances from chain" side="top">
-                      <AlertCircle className="h-4 w-4 text-red-500" aria-label="Shielded balance error" />
+                      <AlertCircle className="h-4 w-4 text-error" aria-label="Shielded balance error" />
                     </Tooltip>
                   )}
                 </div>
@@ -299,7 +299,7 @@ export function Dashboard() {
                 align="right"
                 trigger={
                   <button
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-red-100/50 dark:hover:bg-red-900/20 hover:text-foreground transition-colors"
+                    className="rounded-md p-1.5 text-muted-foreground hover:bg-error/10 hover:text-foreground transition-colors"
                     aria-label="Shielded balance settings"
                   >
                     <MoreVertical className="h-4 w-4" />
@@ -425,7 +425,7 @@ export function Dashboard() {
                     variant="ghost" 
                     className={cn(
                       "gap-2 rounded-lg px-8 py-3 h-auto font-bold text-base",
-                      "bg-yellow-500 hover:bg-yellow-600 text-yellow-950",
+                      "bg-warning hover:bg-warning/90 text-warning-foreground",
                       "transition-all duration-200",
                       !hasShieldedBalance && "opacity-50 cursor-not-allowed"
                     )}

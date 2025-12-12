@@ -27,15 +27,15 @@ export interface ChainStatusTimelineProps {
 function ChainStatusIcon({ status }: { status: 'success' | 'error' | 'timeout' | 'pending' | 'cancelled' | 'not_started' }) {
   switch (status) {
     case 'success':
-      return <CheckCircle2 className="h-4 w-4 text-green-600" />
+      return <CheckCircle2 className="h-4 w-4 text-success" />
     case 'error':
-      return <XCircle className="h-4 w-4 text-red-600" />
+      return <XCircle className="h-4 w-4 text-error" />
     case 'timeout':
-      return <Clock className="h-4 w-4 text-yellow-600" />
+      return <Clock className="h-4 w-4 text-warning" />
     case 'pending':
-      return <Clock className="h-4 w-4 text-blue-600 animate-spin" />
+      return <Clock className="h-4 w-4 text-info animate-spin" />
     case 'cancelled':
-      return <Ban className="h-4 w-4 text-gray-500" />
+      return <Ban className="h-4 w-4 text-muted-foreground" />
     case 'not_started':
       return <Clock className="h-4 w-4 text-muted-foreground" />
     default:
@@ -102,11 +102,11 @@ export const ChainStatusTimeline = memo(function ChainStatusTimeline({
                   <ChainStatusIcon status={statusType} />
                   <div className={cn(
                     'w-0.5 flex-1 mt-1',
-                    statusType === 'success' ? 'bg-green-600' :
-                    statusType === 'error' ? 'bg-red-600' :
-                    statusType === 'timeout' ? 'bg-yellow-600' :
-                    statusType === 'pending' ? 'bg-blue-600' :
-                    statusType === 'cancelled' ? 'bg-gray-500' :
+                    statusType === 'success' ? 'bg-success' :
+                    statusType === 'error' ? 'bg-error' :
+                    statusType === 'timeout' ? 'bg-warning' :
+                    statusType === 'pending' ? 'bg-info' :
+                    statusType === 'cancelled' ? 'bg-muted' :
                     'bg-muted'
                   )} />
                 </div>
@@ -128,7 +128,7 @@ export const ChainStatusTimeline = memo(function ChainStatusTimeline({
                 </div>
                 
                 {errorMessage && (
-                  <div className="mt-1 text-xs text-red-600 dark:text-red-400 break-words">
+                  <div className="mt-1 text-xs text-error break-words">
                     {sanitizeError(errorMessage).message}
                   </div>
                 )}
@@ -151,12 +151,12 @@ export const ChainStatusTimeline = memo(function ChainStatusTimeline({
             <span className="text-muted-foreground">Tracking Status:</span>
             <span className={cn(
               'font-medium',
-              transaction.pollingState.flowStatus === 'success' ? 'text-green-600' :
-              transaction.pollingState.flowStatus === 'tx_error' || transaction.pollingState.flowStatus === 'polling_error' ? 'text-red-600' :
-              transaction.pollingState.flowStatus === 'polling_timeout' ? 'text-yellow-600' :
-              transaction.pollingState.flowStatus === 'user_action_required' ? 'text-orange-600' :
-              transaction.pollingState.flowStatus === 'cancelled' ? 'text-gray-500' :
-              'text-blue-600'
+              transaction.pollingState.flowStatus === 'success' ? 'text-success' :
+              transaction.pollingState.flowStatus === 'tx_error' || transaction.pollingState.flowStatus === 'polling_error' ? 'text-error' :
+              transaction.pollingState.flowStatus === 'polling_timeout' ? 'text-warning' :
+              transaction.pollingState.flowStatus === 'user_action_required' ? 'text-warning' :
+              transaction.pollingState.flowStatus === 'cancelled' ? 'text-muted-foreground' :
+              'text-info'
             )}>
               {transaction.pollingState.flowStatus === 'success' ? 'Success' :
                transaction.pollingState.flowStatus === 'tx_error' ? 'Transaction Error' :

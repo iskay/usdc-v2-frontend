@@ -23,19 +23,19 @@ export function InvalidateShieldedContextDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+        className="absolute inset-0 bg-overlay backdrop-blur-sm transition-opacity"
         onClick={onClose}
         aria-hidden="true"
       />
 
       {/* Modal Content */}
-      <div className="relative z-50 w-full max-w-md rounded-xl border border-amber-200/50 dark:border-amber-800/50 bg-background shadow-2xl animate-in fade-in-0 zoom-in-95 duration-200">
+      <div className="relative z-50 w-full max-w-md rounded-xl border border-warning/20 bg-background shadow-2xl animate-in fade-in-0 zoom-in-95 duration-200">
         {/* Header with warning accent */}
-        <div className="rounded-t-xl border-b border-amber-200/50 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/20 px-6 py-4">
+        <div className="rounded-t-xl border-b border-warning/20 bg-warning/10 px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
-                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning/20">
+                <AlertTriangle className="h-5 w-5 text-warning" />
               </div>
               <h2 className="text-lg font-semibold text-foreground">Invalidate Shielded Context</h2>
             </div>
@@ -57,9 +57,9 @@ export function InvalidateShieldedContextDialog({
             <p className="text-sm leading-relaxed text-foreground">
               Invalidate shielded context?
             </p>
-            <div className="flex items-start gap-2 rounded-lg border border-amber-200/50 dark:border-amber-800/50 bg-amber-50/30 dark:bg-amber-950/10 p-3">
-              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-              <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+            <div className="flex items-start gap-2 rounded-lg border border-warning/20 bg-warning/10 p-3">
+              <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0 mt-0.5" />
+              <p className="text-sm font-medium text-warning-foreground">
                 No data will be lost but your initial resync may take up to 15 minutes.
               </p>
             </div>
@@ -76,7 +76,7 @@ export function InvalidateShieldedContextDialog({
             </Button>
             <Button 
               onClick={handleConfirm} 
-              className="min-w-[80px] bg-amber-600 hover:bg-amber-700 dark:bg-amber-600 dark:hover:bg-amber-700 text-white border-0 focus:ring-amber-500/50"
+              className="min-w-[80px] bg-warning hover:bg-warning/90 text-warning-foreground border-0 focus:ring-warning/50"
             >
               Invalidate
             </Button>

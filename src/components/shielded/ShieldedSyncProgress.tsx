@@ -36,14 +36,14 @@ export function ShieldedSyncProgress({ compact = false }: ShieldedSyncProgressPr
     const iconSize = compact ? 'h-4 w-4' : 'h-5 w-5'
     switch (status) {
       case 'complete':
-        return <CheckCircle2 className={cn(iconSize, 'text-green-500')} />
+        return <CheckCircle2 className={cn(iconSize, 'text-success')} />
       case 'error':
-        return <XCircle className={cn(iconSize, 'text-red-500')} />
+        return <XCircle className={cn(iconSize, 'text-error')} />
       case 'syncing':
       case 'initializing':
       case 'loading-params':
       case 'finalizing':
-        return <Loader2 className={cn(iconSize, 'animate-spin text-blue-500')} />
+        return <Loader2 className={cn(iconSize, 'animate-spin text-info')} />
       default:
         return <Shield className={cn(iconSize, 'text-muted-foreground')} />
     }
@@ -71,14 +71,14 @@ export function ShieldedSyncProgress({ compact = false }: ShieldedSyncProgressPr
   const getStatusColor = () => {
     switch (status) {
       case 'complete':
-        return 'text-green-500'
+        return 'text-success'
       case 'error':
-        return 'text-red-500'
+        return 'text-error'
       case 'syncing':
       case 'initializing':
       case 'loading-params':
       case 'finalizing':
-        return 'text-blue-500'
+        return 'text-info'
       default:
         return 'text-muted-foreground'
     }
@@ -110,7 +110,7 @@ export function ShieldedSyncProgress({ compact = false }: ShieldedSyncProgressPr
         {(status === 'syncing' || status === 'initializing' || status === 'loading-params' || status === 'finalizing') && (
           <div className={cn('mt-1.5 w-full overflow-hidden rounded-full bg-muted', compact ? 'h-1' : 'h-2')}>
             <div
-              className="h-full bg-blue-500 transition-all duration-300 ease-out"
+              className="h-full bg-info transition-all duration-300 ease-out"
               style={{ width: `${progressPercentage}%` }}
               role="progressbar"
               aria-valuenow={progressPercentage}

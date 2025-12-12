@@ -122,16 +122,16 @@ export function getChainStatusColor(status: ChainStatus | null): string {
 
   switch (status.status) {
     case 'success':
-      return 'text-green-600'
+      return 'text-success'
     case 'tx_error':
     case 'polling_error':
-      return 'text-red-600'
+      return 'text-error'
     case 'polling_timeout':
-      return 'text-yellow-600'
+      return 'text-warning'
     case 'cancelled':
-      return 'text-gray-500'
+      return 'text-muted-foreground'
     case 'pending':
-      return 'text-blue-600'
+      return 'text-info'
     default:
       return 'text-muted-foreground'
   }

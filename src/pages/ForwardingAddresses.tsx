@@ -141,12 +141,12 @@ export function ForwardingAddresses() {
 
       {/* Error State */}
       {error && !isLoading && (
-        <div className="rounded-lg border border-red-200/50 bg-red-50/50 dark:bg-red-950/20 dark:border-red-800/50 p-8 text-center shadow-sm">
-          <p className="text-base font-semibold text-red-900 dark:text-red-100">Error loading addresses</p>
-          <p className="mt-2 text-sm text-red-800 dark:text-red-200">{error}</p>
+        <div className="rounded-lg border border-error/20 bg-error/10 p-8 text-center shadow-sm">
+          <p className="text-base font-semibold text-error">Error loading addresses</p>
+          <p className="mt-2 text-sm text-error/90">{error}</p>
           <button
             onClick={extractAddresses}
-            className="mt-4 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+            className="mt-4 rounded-md bg-error px-4 py-2 text-sm font-medium text-error-foreground hover:bg-error/90 transition-colors"
           >
             Retry
           </button>

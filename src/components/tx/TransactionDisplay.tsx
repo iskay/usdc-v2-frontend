@@ -5,8 +5,8 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Lock, CheckCircle2, ExternalLink } from 'lucide-react'
-import { Button } from '@/components/common/Button'
+import { Lock, CheckCircle2 } from 'lucide-react'
+import { ExplorerLink } from '@/components/common/ExplorerLink'
 import { ProgressStepper, type TransactionPhase } from './ProgressStepper'
 import { formatTxHash } from '@/utils/toastHelpers'
 import { cn } from '@/lib/utils'
@@ -93,7 +93,7 @@ export function TransactionDisplay({
       >
         <div className="text-center space-y-6 px-6 max-w-md">
           <div className="animate-in zoom-in-95 duration-500">
-            <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto" />
+            <CheckCircle2 className="h-16 w-16 text-success mx-auto" />
           </div>
           <div className="space-y-2">
             <h2 className="text-2xl font-semibold">Transaction Submitted!</h2>
@@ -104,15 +104,12 @@ export function TransactionDisplay({
                 </code>
               </div>
               {explorerUrl && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => window.open(explorerUrl, '_blank', 'noopener,noreferrer')}
-                  className="gap-2"
+                <ExplorerLink
+                  url={explorerUrl}
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-border bg-secondary text-secondary-foreground hover:bg-secondary/80 px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary/40"
                 >
-                  <ExternalLink className="h-4 w-4" />
                   View on Explorer
-                </Button>
+                </ExplorerLink>
               )}
             </div>
           </div>

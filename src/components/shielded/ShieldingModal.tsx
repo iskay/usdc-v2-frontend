@@ -3,7 +3,8 @@
  */
 
 import { useState, useEffect, useMemo, type FormEvent } from 'react'
-import { X, Loader2, AlertCircle, CheckCircle2, Lock, ExternalLink, XCircle } from 'lucide-react'
+import { X, Loader2, AlertCircle, CheckCircle2, Lock, XCircle } from 'lucide-react'
+import { ExplorerLink } from '@/components/common/ExplorerLink'
 import { Button } from '@/components/common/Button'
 import { useShielding } from '@/hooks/useShielding'
 import { useBalance } from '@/hooks/useBalance'
@@ -181,7 +182,7 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
       <div
         className={cn(
           "absolute inset-0 backdrop-blur-sm transition-all",
-          modalState === 'submitting' ? "bg-black/70 backdrop-blur-md" : "bg-black/60 backdrop-blur-sm"
+          modalState === 'submitting' ? "bg-overlay/90 backdrop-blur-md" : "bg-overlay backdrop-blur-sm"
         )}
         onClick={modalState !== 'submitting' ? onClose : undefined}
         aria-hidden="true"
@@ -300,7 +301,7 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
                     {/* Final Amount (after fees) */}
                     <div className="flex items-center justify-between border-t border-border pt-2">
                       <span className="text-muted-foreground">Amount Shielded</span>
-                      <span className="font-semibold text-green-600">{feeInfo.finalAmount} USDC</span>
+                      <span className="font-semibold text-success">{feeInfo.finalAmount} USDC</span>
                     </div>
                   </>
                 ) : null}
@@ -320,7 +321,7 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
                     <div className="flex flex-col items-center flex-1">
                       <div className={cn(
                         "w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-all",
-                        isComplete && "bg-green-500 text-white",
+                        isComplete && "bg-success text-success-foreground",
                         isActive && "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2",
                         !isActive && !isComplete && "bg-muted text-muted-foreground"
                       )}>
@@ -339,7 +340,7 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
                     {idx < 2 && (
                       <div className={cn(
                         "h-0.5 flex-1 mx-2 transition-colors",
-                        isComplete ? "bg-green-500" : "bg-muted"
+                        isComplete ? "bg-success" : "bg-muted"
                       )} />
                     )}
                   </div>
@@ -367,29 +368,27 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
             <div className="space-y-4">
               {/* Success Checkmark */}
               <div className="flex justify-center animate-in zoom-in-95 duration-500">
-                <CheckCircle2 className="h-16 w-16 text-green-500" />
+                <CheckCircle2 className="h-16 w-16 text-success" />
               </div>
               
               {/* Success Message */}
-              <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="rounded-lg border border-success/30 bg-success/10 p-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div className="flex flex-col gap-4">
-                  <p className="text-sm font-medium text-green-700 dark:text-green-400 text-center">
+                  <p className="text-sm font-medium text-success text-center">
                     Transaction submitted successfully!
                   </p>
                   <div className="flex items-center justify-center gap-2">
-                    <code className="text-xs font-mono text-green-600 dark:text-green-300">
+                    <code className="text-xs font-mono text-success">
                       {formatTxHash(txHash)}
                     </code>
                     {explorerUrl && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => window.open(explorerUrl, '_blank', 'noopener,noreferrer')}
-                        className="h-6 px-2 text-xs"
+                      <ExplorerLink
+                        url={explorerUrl}
+                        size="sm"
+                        className="inline-flex items-center justify-center gap-2 rounded-md border border-border px-2 py-1 h-6 text-xs font-medium transition-colors bg-transparent text-foreground hover:bg-muted"
                       >
-                        <ExternalLink className="h-3 w-3 mr-1" />
                         View on Explorer
-                      </Button>
+                      </ExplorerLink>
                     )}
                   </div>
                   <div className="flex items-center gap-3">
@@ -420,13 +419,13 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
             <div className="space-y-4">
               {/* Error X Icon */}
               <div className="flex justify-center animate-in zoom-in-95 duration-500">
-                <XCircle className="h-16 w-16 text-red-500" />
+                <XCircle className="h-16 w-16 text-error" />
               </div>
               
               {/* Error Message */}
-              <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="rounded-lg border border-error/30 bg-error/10 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
                 <div className="flex flex-col gap-4">
-                  <p className="text-sm text-red-500 text-center">{shieldingState.error}</p>
+                  <p className="text-sm text-error text-center">{shieldingState.error}</p>
                   <div className="flex items-center gap-3">
                     <Button
                       type="button"

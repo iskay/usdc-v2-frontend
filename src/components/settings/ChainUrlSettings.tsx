@@ -160,12 +160,12 @@ export function ChainUrlSettings({
                 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm',
                 'placeholder:text-muted-foreground',
                 'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-                hasUnsavedChanges && fieldHasChanges('rpcUrl') && !validationErrors.rpcUrl && 'border-yellow-500',
-                validationErrors.rpcUrl && 'border-red-500'
+                hasUnsavedChanges && fieldHasChanges('rpcUrl') && !validationErrors.rpcUrl && 'border-warning',
+                validationErrors.rpcUrl && 'border-error'
               )}
             />
             {validationErrors.rpcUrl && (
-              <p className="mt-1 text-xs text-red-500">{validationErrors.rpcUrl}</p>
+              <p className="mt-1 text-xs text-error">{validationErrors.rpcUrl}</p>
             )}
           </div>
         )}
@@ -185,12 +185,12 @@ export function ChainUrlSettings({
                 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm',
                 'placeholder:text-muted-foreground',
                 'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-                hasUnsavedChanges && fieldHasChanges('lcdUrl') && !validationErrors.lcdUrl && 'border-yellow-500',
-                validationErrors.lcdUrl && 'border-red-500'
+                hasUnsavedChanges && fieldHasChanges('lcdUrl') && !validationErrors.lcdUrl && 'border-warning',
+                validationErrors.lcdUrl && 'border-error'
               )}
             />
             {validationErrors.lcdUrl && (
-              <p className="mt-1 text-xs text-red-500">{validationErrors.lcdUrl}</p>
+              <p className="mt-1 text-xs text-error">{validationErrors.lcdUrl}</p>
             )}
           </div>
         )}
@@ -210,12 +210,12 @@ export function ChainUrlSettings({
                 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm',
                 'placeholder:text-muted-foreground',
                 'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-                hasUnsavedChanges && fieldHasChanges('indexerUrl') && !validationErrors.indexerUrl && 'border-yellow-500',
-                validationErrors.indexerUrl && 'border-red-500'
+                hasUnsavedChanges && fieldHasChanges('indexerUrl') && !validationErrors.indexerUrl && 'border-warning',
+                validationErrors.indexerUrl && 'border-error'
               )}
             />
             {validationErrors.indexerUrl && (
-              <p className="mt-1 text-xs text-red-500">{validationErrors.indexerUrl}</p>
+              <p className="mt-1 text-xs text-error">{validationErrors.indexerUrl}</p>
             )}
           </div>
         )}
@@ -235,12 +235,12 @@ export function ChainUrlSettings({
                 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm',
                 'placeholder:text-muted-foreground',
                 'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-                hasUnsavedChanges && fieldHasChanges('maspIndexerUrl') && !validationErrors.maspIndexerUrl && 'border-yellow-500',
-                validationErrors.maspIndexerUrl && 'border-red-500'
+                hasUnsavedChanges && fieldHasChanges('maspIndexerUrl') && !validationErrors.maspIndexerUrl && 'border-warning',
+                validationErrors.maspIndexerUrl && 'border-error'
               )}
             />
             {validationErrors.maspIndexerUrl && (
-              <p className="mt-1 text-xs text-red-500">{validationErrors.maspIndexerUrl}</p>
+              <p className="mt-1 text-xs text-error">{validationErrors.maspIndexerUrl}</p>
             )}
           </div>
         )}

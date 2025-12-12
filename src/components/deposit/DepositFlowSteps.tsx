@@ -36,10 +36,10 @@ export function DepositFlowSteps({
               className={cn(
                 'flex h-8 w-8 items-center justify-center rounded-full border-2 text-sm font-medium transition-all',
                 isComplete &&
-                  'border-blue-500 bg-blue-500 text-white',
+                  'border-info bg-info text-info-foreground',
                 isActive &&
                   !isComplete &&
-                  'border-blue-500 bg-transparent text-blue-500',
+                  'border-info bg-transparent text-info',
                 !isActive &&
                   !isComplete &&
                   'border-muted-foreground/30 bg-transparent text-muted-foreground'

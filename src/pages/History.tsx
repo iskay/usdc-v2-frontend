@@ -82,7 +82,7 @@ export function History() {
         </p>
         <AlertBox tone="warning">
           <div className="flex items-start gap-2">
-            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <AlertTriangle className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
             <p>
               History is only available on this device. Browser storage can be volatile, so don't rely on this to save important information long-term.
             </p>
@@ -126,9 +126,9 @@ export function History() {
           </div>
         </div>
       ) : error ? (
-        <div className="rounded-lg border border-red-200/50 bg-red-50/50 dark:bg-red-950/20 dark:border-red-800/50 p-8 text-center shadow-sm">
-          <p className="text-base font-semibold text-red-900 dark:text-red-100">Error loading transactions</p>
-          <p className="mt-2 text-sm text-red-800 dark:text-red-200">{error}</p>
+        <div className="rounded-lg border border-error/20 bg-error/10 p-8 text-center shadow-sm">
+          <p className="text-base font-semibold text-error">Error loading transactions</p>
+          <p className="mt-2 text-sm text-error/90">{error}</p>
           <Button
             variant="secondary"
             className="mt-4"
