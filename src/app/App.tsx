@@ -1,4 +1,4 @@
-import { Suspense, useMemo, useState } from 'react'
+import { Suspense, useMemo } from 'react'
 import { useLocation, useOutlet } from 'react-router-dom'
 import { motion, AnimatePresence, type Variants } from 'framer-motion'
 import { Navbar } from '@/components/layout/Navbar'
@@ -6,6 +6,7 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { ToastContainer } from '@/components/layout/ToastContainer'
 import { Spinner } from '@/components/common/Spinner'
 import { useTxTracker } from '@/hooks/useTxTracker'
+import { useSidebarState } from '@/hooks/useSidebarState'
 
 const slideFromLeft: Variants = {
   initial: { x: '-16%', opacity: 0 },
@@ -36,7 +37,7 @@ export function App() {
   const location = useLocation()
   const outlet = useOutlet()
   const variants = useMemo(() => resolveVariants(location.pathname), [location.pathname])
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const { isCollapsed: isSidebarCollapsed, toggleSidebar } = useSidebarState()
 
   // Initialize global transaction tracking and polling
   // This runs on app startup and handles hydration from localStorage + polling for in-progress transactions
@@ -47,7 +48,7 @@ export function App() {
       <ToastContainer />
       <Sidebar isCollapsed={isSidebarCollapsed} />
       <div className="flex flex-1 flex-col">
-        <Navbar onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} />
+        <Navbar onToggleSidebar={toggleSidebar} />
         <main className="relative flex-1 overflow-hidden p-6">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div

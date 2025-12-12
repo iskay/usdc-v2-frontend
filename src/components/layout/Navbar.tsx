@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Menu } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { useWallet } from '@/hooks/useWallet'
+import { ThemeToggle } from '@/components/common/ThemeToggle'
 
 interface NavbarProps {
   onToggleSidebar: () => void
@@ -94,6 +95,9 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
             <>Connect Namada</>
           )}
         </Button>
+
+        {/* Theme Toggle */}
+        <ThemeToggle />
 
         {/* TODO: Add chain selector, settings menu, and shielded sync controls. */}
       </div>

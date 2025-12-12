@@ -4,8 +4,12 @@ import { useAppInitialization } from '@/hooks/useAppInitialization'
 import { appInitAtom } from '@/atoms/appAtom'
 import { Spinner } from '@/components/common/Spinner'
 import { Button } from '@/components/common/Button'
+import { useTheme } from '@/hooks/useTheme'
 
 export function AppBootstrap({ children }: PropsWithChildren) {
+  // Initialize theme early to prevent flash of wrong theme
+  useTheme()
+  
   const initState = useAppInitialization()
   const setInitState = useSetAtom(appInitAtom)
 

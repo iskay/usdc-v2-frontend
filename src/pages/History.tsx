@@ -83,7 +83,7 @@ export function History() {
         <AlertBox tone="warning">
           <div className="flex items-start gap-2">
             <AlertTriangle className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
-            <p>
+            <p className="text-warning">
               History is only available on this device. Browser storage can be volatile, so don't rely on this to save important information long-term.
             </p>
           </div>
