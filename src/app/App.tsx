@@ -48,7 +48,7 @@ export function App() {
       <ToastContainer />
       <Sidebar isCollapsed={isSidebarCollapsed} />
       <div className="flex flex-1 flex-col">
-        <Navbar onToggleSidebar={toggleSidebar} />
+        <Navbar onToggleSidebar={toggleSidebar} isSidebarCollapsed={isSidebarCollapsed} />
         <main className="relative flex-1 overflow-hidden p-6">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div

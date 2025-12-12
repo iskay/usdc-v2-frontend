@@ -1,14 +1,15 @@
 import { useMemo } from 'react'
-import { Menu, Loader2 } from 'lucide-react'
+import { Menu, X, Loader2 } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
 import { ThemeToggle } from '@/components/common/ThemeToggle'
 import { cn } from '@/lib/utils'
 
 interface NavbarProps {
   onToggleSidebar: () => void
+  isSidebarCollapsed: boolean
 }
 
-export function Navbar({ onToggleSidebar }: NavbarProps) {
+export function Navbar({ onToggleSidebar, isSidebarCollapsed }: NavbarProps) {
   const {
     state,
     connectMetaMask,
@@ -32,17 +33,31 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
   const isNamadaConnecting = state.namada.isConnecting
 
   return (
-    <header className="flex items-center justify-between border-b border-border bg-background/80 px-6 py-4 backdrop-blur">
+    <header className="flex items-center justify-between border-border bg-background/80 px-6 py-4 pb-8 backdrop-blur">
       <div className="flex items-center gap-3">
         <button
           onClick={onToggleSidebar}
-          className="flex items-center justify-center rounded-md p-2 text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="flex gap-2 mr-4 border rounded-full items-center justify-center p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           aria-label="Toggle sidebar"
         >
-          <Menu className="h-5 w-5" />
+          {isSidebarCollapsed ? (
+            <Menu className="h-5 w-5" />
+          ) : (
+            <X className="h-5 w-5" />
+          )}
+          <span className="text-sm">{isSidebarCollapsed ? 'Menu' : 'Close'}</span>
         </button>
-        <div className="space-y-1">
-          <p className="text-sm uppercase tracking-widest text-muted-foreground">Borderless Private USDC</p>
+        <div className="relative h-14 w-72">
+          <img
+            src="/assets/logos/wordmark-light.png"
+            alt="Borderless Private USDC"
+            className="h-14 w-auto dark:hidden"
+          />
+          <img
+            src="/assets/logos/wordmark-dark.png"
+            alt="Borderless Private USDC"
+            className="hidden h-14 w-auto dark:block"
+          />
         </div>
       </div>
       <div className="flex items-center gap-3">
