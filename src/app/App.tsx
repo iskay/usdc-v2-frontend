@@ -58,7 +58,7 @@ export function App() {
               animate="animate"
               exit="exit"
               transition={{ duration: 0.35, ease: 'easeInOut' }}
-              className="absolute inset-0 overflow-y-auto flex justify-center"
+              className="absolute inset-0 overflow-y-auto flex justify-center transform-none"
             >
               <Suspense fallback={<div className="flex justify-center mt-48"><Spinner label="Loading view" /></div>}>
                 {outlet || <div className="h-full" />}

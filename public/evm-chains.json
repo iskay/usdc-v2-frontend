@@ -36,7 +36,7 @@
         "depositTimeoutMs": 720000,
         "paymentTimeoutMs": 300000
       },
-      "logo": "/ethereum-logo.svg",
+      "logo": "assets/logos/ethereum-logo.svg",
       "testnet": true
     },
     {
@@ -73,7 +73,7 @@
         "depositTimeoutMs": 300000,
         "paymentTimeoutMs": 300000
       },
-      "logo": "/base-logo.svg",
+      "logo": "assets/logos/base-logo.svg",
       "testnet": true
     },
     {
@@ -110,7 +110,7 @@
         "depositTimeoutMs": 300000,
         "paymentTimeoutMs": 300000
       },
-      "logo": "/avax-logo.svg",
+      "logo": "assets/logos/avax-logo.svg",
       "testnet": true
     },
     {
@@ -147,7 +147,7 @@
         "depositTimeoutMs": 300000,
         "paymentTimeoutMs": 300000
       },
-      "logo": "/polygon-logo.svg",
+      "logo": "/assets/logos/polygon-logo.svg",
       "testnet": true
     }
   ],

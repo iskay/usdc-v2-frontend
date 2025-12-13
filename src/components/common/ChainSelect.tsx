@@ -2,6 +2,14 @@ import { useState, useEffect, useMemo } from 'react'
 import { Clock, Loader2 } from 'lucide-react'
 import type { EvmChainsFile } from '@/config/chains'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 export interface ChainSelectProps {
   value: string
@@ -71,9 +79,14 @@ export function ChainSelect({
     return chainsConfig.chains.find((chain) => chain.key === value) ?? null
   }, [chainsConfig, value])
 
+  // Get selected chain estimated time
+  const selectedEstimatedTime = useMemo(() => {
+    if (!selectedChain) return null
+    return selectedChain.estimatedTimes?.[timeType] ?? selectedChain.estimatedTimes?.send ?? null
+  }, [selectedChain, timeType])
+
   // Handle select change
-  function handleChange(event: React.ChangeEvent<HTMLSelectElement>) {
-    const newValue = event.target.value
+  function handleValueChange(newValue: string) {
     if (newValue && newValue !== value) {
       onChange(newValue)
     }
@@ -111,49 +124,65 @@ export function ChainSelect({
 
   // Render select with chain info
   return (
-    <div className="flex flex-col gap-2">
-      {/* <label className="text-sm font-medium text-muted-foreground">Network</label> */}
-      <div className="flex items-center gap-3 rounded-lg border border-input bg-background px-4 py-3 shadow-sm">
-        {/* Chain logo */}
-        {selectedChain?.logo && (
-          <img
-            src={selectedChain.logo}
-            alt={selectedChain.name}
-            className="h-6 w-6 rounded-full"
-            onError={(e) => {
-              // Hide image if it fails to load
-              e.currentTarget.style.display = 'none'
-            }}
-          />
-        )}
-
-        {/* Select dropdown */}
-        <select
-          value={value}
-          onChange={handleChange}
-          disabled={disabled}
-          className="flex-1 border-none bg-transparent text-sm font-medium focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
-        >
+    <Select value={value} onValueChange={handleValueChange} disabled={disabled}>
+      <SelectTrigger className="flex flex-1 h-auto px-4 pl-3 py-3 shadow-sm border">
+        <div className="w-full flex items-center gap-3">
+          {/* Chain logo */}
+          {selectedChain?.logo && (
+            <img
+              src={selectedChain.logo}
+              alt={selectedChain.name}
+              className="h-6 w-6 rounded-full flex-shrink-0"
+              onError={(e) => {
+                // Hide image if it fails to load
+                e.currentTarget.style.display = 'none'
+              }}
+            />
+          )}
+          <div className="flex-1 min-w-0">
+            {selectedChain ? (
+              <div className="w-full flex items-center justify-between">
+                <span className="text-sm font-medium">{selectedChain.name}</span>
+                {showEstimatedTime && selectedEstimatedTime && selectedEstimatedTime !== '—' && (
+                  <span className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap pr-2">
+                    <Clock className="h-4 w-4" />
+                    {selectedEstimatedTime}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <SelectValue placeholder="Select a chain" />
+            )}
+          </div>
+        </div>
+      </SelectTrigger>
+      <SelectContent className="z-50">
+        <SelectGroup>
           {chainOptions.map((option) => (
-            <option key={option.key} value={option.key}>
-              {option.name}
-            </option>
+            <SelectItem key={option.key} value={option.key}>
+              <div className="min-w-84 w-full flex items-center justify-between">
+                {option.logo && (
+                  <img
+                    src={option.logo}
+                    alt={option.name}
+                    className="h-4 w-4 mr-2 rounded-full flex-shrink-0"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none'
+                    }}
+                  />
+                )}
+                <span className="flex flex-1 justify-start text-foreground font-medium">{option.name}</span>
+                {showEstimatedTime && option.estimatedTime && option.estimatedTime !== '—' && (
+                  <span className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap pr-2">
+                    <Clock className="h-4 w-4" />
+                    {option.estimatedTime}
+                  </span>
+                )}
+              </div>
+            </SelectItem>
           ))}
-        </select>
-
-        {/* Estimated time */}
-        {showEstimatedTime && selectedChain && (
-          <>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">
-              {selectedChain.estimatedTimes?.[timeType] ??
-                selectedChain.estimatedTimes?.send ??
-                '—'}
-            </span>
-          </>
-        )}
-      </div>
-    </div>
+        </SelectGroup>
+      </SelectContent>
+    </Select>
   )
 }
-
