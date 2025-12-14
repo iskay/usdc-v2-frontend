@@ -7,6 +7,7 @@ import { BackToHome } from '@/components/common/BackToHome'
 import { RequireNamadaConnection } from '@/components/wallet/RequireNamadaConnection'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { PaymentConfirmationModal } from '@/components/payment/PaymentConfirmationModal'
+import { AddressBookSelector } from '@/components/addressBook/AddressBookSelector'
 import { TransactionDisplay } from '@/components/tx/TransactionDisplay'
 import { SendFlowSteps } from '@/components/payment/SendFlowSteps'
 import { SendSummaryCard } from '@/components/payment/SendSummaryCard'
@@ -624,6 +625,14 @@ export function SendPayment() {
                     <p className="text-sm text-muted-foreground mb-3">
                       Where your USDC will be sent
                     </p>
+                    <div className="mb-2">
+                      <AddressBookSelector
+                        onSelect={(entry) => {
+                          setToAddress(entry.address)
+                        }}
+                        filterByType="evm"
+                      />
+                    </div>
                     <input
                       type="text"
                       value={toAddress}

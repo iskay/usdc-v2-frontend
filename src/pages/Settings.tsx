@@ -9,6 +9,7 @@ import { ChainUrlSettings } from '@/components/settings/ChainUrlSettings'
 import { CollapsibleChainSection } from '@/components/settings/CollapsibleChainSection'
 import { ClearTransactionHistoryDialog } from '@/components/settings/ClearTransactionHistoryDialog'
 import { InvalidateShieldedContextDialog } from '@/components/settings/InvalidateShieldedContextDialog'
+import { AddressBookSelector } from '@/components/addressBook/AddressBookSelector'
 import { customEvmChainUrlsAtom, customTendermintChainUrlsAtom, type CustomChainUrls } from '@/atoms/customChainUrlsAtom'
 import { txAtom } from '@/atoms/txAtom'
 import { nobleFallbackAddressAtom } from '@/atoms/appAtom'
@@ -337,6 +338,26 @@ export function Settings() {
           </div>
         </section>
 
+        {/* Address Book Section */}
+        <section>
+          <h2 className="mb-4 text-2xl font-semibold">Address Book</h2>
+          <div className="card">
+            <div className="flex justify-between items-baseline">
+              <div className="flex-1">
+                <p className="mb-2 text-sm text-muted-foreground">
+                  Save and manage frequently used addresses for quick access.
+                </p>
+              </div>
+              <Link to="/address-book">
+                <Button variant="primary" className="gap-2 w-72">
+                  <List className="h-4 w-4" />
+                  <span>Manage Address Book</span>
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </section>
+
         {/* Noble Forwarding Settings Section */}
         <section>
           <h2 className="mb-4 text-2xl font-semibold">Noble Forwarding Settings</h2>
@@ -365,35 +386,44 @@ export function Settings() {
                       or other issue during the auto-forward IBC transfer from Noble to Namada your funds will be refunded here. 
                       This should be an address on Noble which you control. If not set, no fallback address will be included.
                     </p>
-                    <div className="flex gap-2">
-                      <input
-                        id="fallback-address"
-                        type="text"
-                        value={fallbackInput}
-                        onChange={(e) => handleFallbackAddressChange(e.target.value)}
-                        placeholder="noble123abc..."
-                        className={`flex-1 rounded-md border px-3 py-2 text-sm ${
-                          fallbackError
-                            ? 'border-destructive focus:border-destructive focus:ring-destructive'
-                            : 'border-border focus:border-ring focus:ring-ring'
-                        } bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2`}
+                    <div className="space-y-2">
+                      <AddressBookSelector
+                        onSelect={(entry) => {
+                          handleFallbackAddressChange(entry.address)
+                        }}
+                        filterByType="noble"
+                        className="mb-2"
                       />
-                      <Button
-                        variant="primary"
-                        onClick={handleSaveFallbackAddress}
-                        className="px-4"
-                      >
-                        Save
-                      </Button>
-                      {nobleFallbackAddress && (
-                      <Button
-                        variant="secondary"
-                        onClick={handleClearFallbackAddress}
-                        className="px-4"
-                      >
-                        Clear
-                      </Button>
-                      )}
+                      <div className="flex gap-2">
+                        <input
+                          id="fallback-address"
+                          type="text"
+                          value={fallbackInput}
+                          onChange={(e) => handleFallbackAddressChange(e.target.value)}
+                          placeholder="noble123abc..."
+                          className={`flex-1 rounded-md border px-3 py-2 text-sm ${
+                            fallbackError
+                              ? 'border-destructive focus:border-destructive focus:ring-destructive'
+                              : 'border-border focus:border-ring focus:ring-ring'
+                          } bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2`}
+                        />
+                        <Button
+                          variant="primary"
+                          onClick={handleSaveFallbackAddress}
+                          className="px-4"
+                        >
+                          Save
+                        </Button>
+                        {nobleFallbackAddress && (
+                        <Button
+                          variant="secondary"
+                          onClick={handleClearFallbackAddress}
+                          className="px-4"
+                        >
+                          Clear
+                        </Button>
+                        )}
+                      </div>
                     </div>
                     {fallbackError && (
                       <p className="mt-2 text-sm text-destructive">{fallbackError}</p>

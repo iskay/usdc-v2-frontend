@@ -10,6 +10,7 @@ import { balanceSyncAtom, balanceErrorsAtom } from '@/atoms/balanceAtom'
 import { BackToHome } from '@/components/common/BackToHome'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { DepositConfirmationModal } from '@/components/deposit/DepositConfirmationModal'
+import { AddressBookSelector } from '@/components/addressBook/AddressBookSelector'
 import { DepositFlowSteps } from '@/components/deposit/DepositFlowSteps'
 import { DepositSummaryCard } from '@/components/deposit/DepositSummaryCard'
 import { TransactionDisplay } from '@/components/tx/TransactionDisplay'
@@ -940,6 +941,14 @@ export function Deposit() {
                   <p className="text-sm text-muted-foreground mb-3">
                     Where your bridged USDC will arrive
                   </p>
+                  <div className="mb-2">
+                    <AddressBookSelector
+                      onSelect={(entry) => {
+                        setToAddress(entry.address)
+                      }}
+                      filterByType="namada"
+                    />
+                  </div>
                   <input
                     type="text"
                     value={toAddress}
