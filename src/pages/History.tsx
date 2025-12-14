@@ -3,7 +3,7 @@ import { AlertTriangle, Download } from 'lucide-react'
 import { AlertBox } from '@/components/common/AlertBox'
 import { Button } from '@/components/common/Button'
 import { Tooltip } from '@/components/common/Tooltip'
-import { BackToHome } from '@/components/common/BackToHome'
+import { BreadcrumbNav } from '@/components/common/BreadcrumbNav'
 import { TransactionCard } from '@/components/tx/TransactionCard'
 import { Spinner } from '@/components/common/Spinner'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
@@ -73,39 +73,41 @@ export function History() {
 
   return (
     <div className="space-y-6 p-12 mx-auto w-full">
-      <BackToHome />
+      <div className="mb-8">
+        <BreadcrumbNav />
+      </div>
 
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Transaction History</h1>
         <p className="text-muted-foreground">
-          Review your recent transaction activity.
+          Review your recent transaction activity
         </p>
-        <AlertBox tone="warning">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
-            <p className="text-warning">
-              History is only available on this device. Browser storage can be volatile, so don't rely on this to save important information long-term.
-            </p>
-          </div>
-        </AlertBox>
       </header>
 
+      <AlertBox tone="warning">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
+          <p className="text-warning">
+            History is only available on this device. Browser storage can be volatile so this page serves as a reference only; assume any info here can be lost unless backed up independently.
+          </p>
+        </div>
+      </AlertBox>
+
       {/* Filters Section */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-2">
-            {FILTERS.map((filter) => (
-              <Button
-                key={filter}
-                variant={activeFilter === filter ? 'primary' : 'ghost'}
-                onClick={() => setActiveFilter(filter)}
-                className="transition-all rounded-xl"
-              >
-                {filter === 'all' ? 'All Activity' : filter === 'deposits' ? 'Deposits' : 'Payments'}
-              </Button>
-            ))}
-          </div>
-          <div>
-          <Tooltip 
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          {FILTERS.map((filter) => (
+            <Button
+              key={filter}
+              variant={activeFilter === filter ? 'primary' : 'ghost'}
+              onClick={() => setActiveFilter(filter)}
+              className="transition-all rounded-xl"
+            >
+              {filter === 'all' ? 'All Activity' : filter === 'deposits' ? 'Deposits' : 'Payments'}
+            </Button>
+          ))}
+        </div>
+        <div>
+          <Tooltip
             content="TODO: Add CSV export functionality for transaction history."
             side="top"
             className="whitespace-normal max-w-xs"
@@ -115,8 +117,8 @@ export function History() {
               Export History
             </Button>
           </Tooltip>
-          </div>
         </div>
+      </div>
 
       {/* Transaction List */}
       {isLoading ? (
@@ -161,14 +163,14 @@ export function History() {
             <div className="text-sm font-semibold text-muted-foreground">Amount & Status</div>
             <div className="text-sm font-semibold text-muted-foreground">Actions</div>
           </div>
-          
+
           <div className="space-y-0">
             {filteredTransactions.map((tx, index) => {
               const isCompleted = !isInProgress(tx)
               const nextTx = filteredTransactions[index + 1]
               const nextIsCompleted = nextTx ? !isInProgress(nextTx) : false
               const showDivider = isCompleted && nextIsCompleted && index < filteredTransactions.length - 1
-              
+
               return (
                 <div key={tx.id} className='mb-4'>
                   <TransactionCard

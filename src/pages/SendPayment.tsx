@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { Tooltip } from '@/components/common/Tooltip'
-import { BackToHome } from '@/components/common/BackToHome'
+import { BreadcrumbNav } from '@/components/common/BreadcrumbNav'
 import { RequireNamadaConnection } from '@/components/wallet/RequireNamadaConnection'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { PaymentConfirmationModal } from '@/components/payment/PaymentConfirmationModal'
@@ -467,12 +467,11 @@ export function SendPayment() {
     <RequireNamadaConnection message="Please connect your Namada Keychain to send payments. Shielded payments require a connected wallet.">
       <div className="relative min-h-full min-w-full">
         <div className="flex flex-col gap-6 p-12 mx-auto w-full">
-        <BackToHome />
+        <BreadcrumbNav />
 
         <header className="space-y-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Send Payment</h1>
           <p className="text-muted-foreground">
-            Send USDC from your shielded balance to an EVM address.
+            Send USDC from your shielded balance to an EVM address
           </p>
         </header>
 

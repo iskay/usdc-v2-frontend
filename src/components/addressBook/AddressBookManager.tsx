@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef } from 'react'
-import { Plus, Search, Filter, X, Trash2, Download, Upload } from 'lucide-react'
+import { Plus, Search, Filter, X, Trash2, Download, Upload, BookOpen } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { AddressBookEntryCard } from './AddressBookEntryCard'
 import { AddressBookForm } from './AddressBookForm'
@@ -323,21 +323,26 @@ export function AddressBookManager() {
         </div>
       ) : filteredAddresses.length === 0 ? (
         <div className="card text-center py-12">
-          <p className="text-muted-foreground mb-4">
-            {hasActiveFilters
-              ? 'No addresses match your filters.'
-              : 'No addresses saved yet.'}
-          </p>
-          {hasActiveFilters ? (
-            <Button variant="secondary" onClick={clearFilter}>
-              Clear filters
-            </Button>
-          ) : (
-            <Button variant="primary" onClick={handleAddNew}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add your first address
-            </Button>
-          )}
+          <div className="flex flex-col items-center gap-4">
+            <div className="rounded-full bg-muted-foreground/10 p-6">
+              <BookOpen className="h-12 w-12 text-muted-foreground" />
+            </div>
+            <p className="text-muted-foreground">
+              {hasActiveFilters
+                ? 'No addresses match your filters.'
+                : 'No addresses saved yet.'}
+            </p>
+            {hasActiveFilters ? (
+              <Button variant="secondary" onClick={clearFilter}>
+                Clear filters
+              </Button>
+            ) : (
+              <Button variant="primary" onClick={handleAddNew}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add your first address
+              </Button>
+            )}
+          </div>
         </div>
       ) : (
         <div className="space-y-4">

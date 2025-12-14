@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { BackToHome } from '@/components/common/BackToHome'
+import { BreadcrumbNav } from '@/components/common/BreadcrumbNav'
 import { Spinner } from '@/components/common/Spinner'
 import { ForwardingAddressCard, type ForwardingAddressInfo } from '@/components/forwarding/ForwardingAddressCard'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
@@ -121,7 +121,7 @@ export function ForwardingAddresses() {
 
   return (
     <div className="space-y-6 p-12 mx-auto w-full max-w-7xl">
-      <BackToHome />
+      <BreadcrumbNav />
 
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">Forwarding Addresses</h1>

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useAtom } from 'jotai'
 import { Link } from 'react-router-dom'
-import { Settings as SettingsIcon, List, Trash2, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
-import { BackToHome } from '@/components/common/BackToHome'
+import { List, Trash2, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
+import { BreadcrumbNav } from '@/components/common/BreadcrumbNav'
 import { Spinner } from '@/components/common/Spinner'
 import { Button } from '@/components/common/Button'
 import { ChainUrlSettings } from '@/components/settings/ChainUrlSettings'
@@ -254,15 +254,11 @@ export function Settings() {
   return (
     <div className="container mx-auto p-12">
 
-      <div className="mb-12 flex items-around justify-between gap-3 px-48">
-        <BackToHome />
-        <div className="flex gap-3">
-          <h1 className="text-3xl font-bold">Settings</h1>
-          <SettingsIcon className="h-6 w-6 text-foreground self-start mt-1.5" />
-        </div>
+      <div className="mb-10">
+        <BreadcrumbNav />
       </div>
 
-      <div className="space-y-8 px-48 mx-auto">
+      <div className="space-y-8 mx-auto">
         {/* Configure Chains Section */}
         <section>
           <h2 className="mb-4 text-2xl font-semibold">Configure Chains</h2>
