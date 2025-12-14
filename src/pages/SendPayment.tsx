@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { Tooltip } from '@/components/common/Tooltip'
-import { BreadcrumbNav } from '@/components/common/BreadcrumbNav'
+// import { BreadcrumbNav } from '@/components/common/BreadcrumbNav'
 import { RequireNamadaConnection } from '@/components/wallet/RequireNamadaConnection'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { PaymentConfirmationModal } from '@/components/payment/PaymentConfirmationModal'
@@ -465,9 +465,9 @@ export function SendPayment() {
 
   return (
     <RequireNamadaConnection message="Please connect your Namada Keychain to send payments. Shielded payments require a connected wallet.">
-      <div className="relative min-h-full min-w-full">
+      <div className="min-h-full container">
         <div className="flex flex-col gap-6 p-12 mx-auto w-full">
-        <BreadcrumbNav />
+        {/* <BreadcrumbNav /> */}
 
         <header className="space-y-2">
           <p className="text-muted-foreground">

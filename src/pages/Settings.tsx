@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAtom } from 'jotai'
 import { Link } from 'react-router-dom'
 import { List, Trash2, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
-import { BreadcrumbNav } from '@/components/common/BreadcrumbNav'
+// import { BreadcrumbNav } from '@/components/common/BreadcrumbNav'
 import { Spinner } from '@/components/common/Spinner'
 import { Button } from '@/components/common/Button'
 import { ChainUrlSettings } from '@/components/settings/ChainUrlSettings'
@@ -191,7 +191,7 @@ export function Settings() {
 
   const handleSaveFallbackAddress = () => {
     const trimmed = fallbackInput.trim()
-    
+
     // If empty, clear the fallback address
     if (trimmed === '') {
       setNobleFallbackAddress(undefined)
@@ -219,11 +219,11 @@ export function Settings() {
     saveNobleFallbackAddress(validatedAddress)
     setFallbackInput(validatedAddress)
     setFallbackError(null)
-    
+
     logger.info('[Settings] Noble fallback address saved', {
       address: validatedAddress.slice(0, 16) + '...',
     })
-    
+
     notify({
       level: 'success',
       title: 'Fallback address saved',
@@ -254,9 +254,15 @@ export function Settings() {
   return (
     <div className="container mx-auto p-12">
 
-      <div className="mb-10">
+      {/* <div className="mb-10">
         <BreadcrumbNav />
-      </div>
+      </div> */}
+
+      <header className="space-y-2 mb-10">
+        <p className="text-muted-foreground">
+          Manage app settings and preferences
+        </p>
+      </header>
 
       <div className="space-y-8 mx-auto">
         {/* Configure Chains Section */}
@@ -372,14 +378,14 @@ export function Settings() {
                 <h3 className="text-md font-semibold">Configure Fallback Address</h3>
               </div>
             </button>
-            
+
             {isNobleFallbackOpen && (
               <div className="border-t border-border p-4">
                 <div className="space-y-4">
                   <div>
                     <p className="text-sm text-muted-foreground mb-3">
-                      An optional Noble address to include when generating Noble forwarding addresses for deposits. If included, in case of a timeout 
-                      or other issue during the auto-forward IBC transfer from Noble to Namada your funds will be refunded here. 
+                      An optional Noble address to include when generating Noble forwarding addresses for deposits. If included, in case of a timeout
+                      or other issue during the auto-forward IBC transfer from Noble to Namada your funds will be refunded here.
                       This should be an address on Noble which you control. If not set, no fallback address will be included.
                     </p>
                     <div className="space-y-2">
@@ -397,11 +403,10 @@ export function Settings() {
                           value={fallbackInput}
                           onChange={(e) => handleFallbackAddressChange(e.target.value)}
                           placeholder="noble123abc..."
-                          className={`flex-1 rounded-md border px-3 py-2 text-sm ${
-                            fallbackError
+                          className={`flex-1 rounded-md border px-3 py-2 text-sm ${fallbackError
                               ? 'border-destructive focus:border-destructive focus:ring-destructive'
                               : 'border-border focus:border-ring focus:ring-ring'
-                          } bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2`}
+                            } bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2`}
                         />
                         <Button
                           variant="primary"
@@ -411,13 +416,13 @@ export function Settings() {
                           Save
                         </Button>
                         {nobleFallbackAddress && (
-                        <Button
-                          variant="secondary"
-                          onClick={handleClearFallbackAddress}
-                          className="px-4"
-                        >
-                          Clear
-                        </Button>
+                          <Button
+                            variant="secondary"
+                            onClick={handleClearFallbackAddress}
+                            className="px-4"
+                          >
+                            Clear
+                          </Button>
                         )}
                       </div>
                     </div>

@@ -1,15 +1,31 @@
 import { useMemo } from 'react'
-import { Menu, X, Loader2 } from 'lucide-react'
+// import { Menu, X, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
+import { NavLink } from 'react-router-dom'
 import { useWallet } from '@/hooks/useWallet'
+import { useBalance } from '@/hooks/useBalance'
+import { useAtomValue } from 'jotai'
+import { balanceSyncAtom, balanceErrorAtom } from '@/atoms/balanceAtom'
 import { ThemeToggle } from '@/components/common/ThemeToggle'
 import { cn } from '@/lib/utils'
 
 interface NavbarProps {
-  onToggleSidebar: () => void
-  isSidebarCollapsed: boolean
+  // Sidebar props disabled but kept for potential restoration
+  // onToggleSidebar?: () => void
+  // isSidebarCollapsed?: boolean
 }
 
-export function Navbar({ onToggleSidebar, isSidebarCollapsed }: NavbarProps) {
+const navLinks = [
+  { to: '/dashboard', label: 'Dashboard' },
+  { to: '/deposit', label: 'Deposit' },
+  { to: '/send', label: 'Send Payment' },
+  { to: '/history', label: 'Transaction History' },
+  { to: '/settings', label: 'Settings' },
+]
+
+export function Navbar({}: NavbarProps) {
+  // Sidebar props disabled but kept for potential restoration
+  // export function Navbar({ onToggleSidebar, isSidebarCollapsed }: NavbarProps) {
   const {
     state,
     connectMetaMask,
@@ -18,6 +34,14 @@ export function Navbar({ onToggleSidebar, isSidebarCollapsed }: NavbarProps) {
     disconnectNamada,
     isMetaMaskAvailable,
   } = useWallet()
+  const { state: balanceState } = useBalance()
+  const balanceSyncState = useAtomValue(balanceSyncAtom)
+  const balanceError = useAtomValue(balanceErrorAtom)
+
+  // Check for balance calculation error state
+  const hasBalanceError = balanceSyncState.shieldedStatus === 'error' && balanceError
+  const shieldedBalance = hasBalanceError ? '--' : balanceState.namada.usdcShielded
+  const hasShieldedBalance = shieldedBalance && shieldedBalance !== '--' && parseFloat(shieldedBalance) > 0
 
   const truncatedMetaMaskAddress = useMemo(() => {
     if (!state.metaMask.account) return undefined
@@ -33,9 +57,10 @@ export function Navbar({ onToggleSidebar, isSidebarCollapsed }: NavbarProps) {
   const isNamadaConnecting = state.namada.isConnecting
 
   return (
-    <header className="flex items-center justify-between border-border bg-background/80 px-6 py-4 pb-8 backdrop-blur">
+    <header className="flex items-center justify-between border-border bg-background/80 px-8 py-4 pb-8 backdrop-blur">
       <div className="flex items-center gap-3">
-        <button
+        {/* Sidebar toggle button disabled but kept for potential restoration */}
+        {/* <button
           onClick={onToggleSidebar}
           className="flex gap-2 mr-4 border rounded-full items-center justify-center p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           aria-label="Toggle sidebar"
@@ -46,8 +71,8 @@ export function Navbar({ onToggleSidebar, isSidebarCollapsed }: NavbarProps) {
             <X className="h-5 w-5" />
           )}
           <span className="text-sm">{isSidebarCollapsed ? 'Menu' : 'Close'}</span>
-        </button>
-        <div className="relative h-14 w-72">
+        </button> */}
+        <div className="relative h-14 w-auto">
           <img
             src="/assets/logos/wordmark-light.png"
             alt="Borderless Private USDC"
@@ -56,10 +81,41 @@ export function Navbar({ onToggleSidebar, isSidebarCollapsed }: NavbarProps) {
           <img
             src="/assets/logos/wordmark-dark.png"
             alt="Borderless Private USDC"
-            className="hidden h-14 w-auto dark:block"
+            className="hidden h-14 w-68 dark:block"
           />
         </div>
       </div>
+      <nav className="hidden lg:flex items-center gap-12">
+        {navLinks.map(({ to, label }) => {
+          const isSendPayment = to === '/send'
+          const isDisabled = isSendPayment && !hasShieldedBalance
+          
+          return (
+            <NavLink
+              key={to}
+              to={isDisabled ? '#' : to}
+              onClick={(e) => {
+                if (isDisabled) {
+                  e.preventDefault()
+                }
+              }}
+              className={({ isActive }) =>
+                cn(
+                  'text-sm transition-colors',
+                  isDisabled
+                    ? 'cursor-not-allowed opacity-50 text-muted-foreground'
+                    : isActive
+                    ? 'font-normal text-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
+                )
+              }
+              end={to === '/dashboard'}
+            >
+              {label}
+            </NavLink>
+          )
+        })}
+      </nav>
       <div className="flex items-center gap-3">
         {/* MetaMask Connection Button */}
         <button

@@ -53,15 +53,7 @@ export function Sidebar({ isCollapsed }: SidebarProps) {
             className="flex w-64 flex-col p-6"
           >
             <div className="mb-10 border-b py-2 pb-4">
-              <h2 className="text-lg font-medium text-muted-foreground/50 mb-2">Borderless Private USDC</h2>
-              <p className="text-muted-foreground flex items-center gap-4">
-                Powered by{' '}
-                <img 
-                  src="/assets/logos/namada-wordmark.gif" 
-                  alt="Namada" 
-                  className="h-6 w-auto inline-block dark:invert opacity-75"
-                />
-              </p>
+              <h2 className="text-lg font-medium text-muted-foreground/50">Borderless Private USDC</h2>
             </div>
             <nav className="flex flex-col gap-1">
               {links.map(({ to, label, glyph }) => {

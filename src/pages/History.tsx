@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { AlertTriangle, Download } from 'lucide-react'
-import { AlertBox } from '@/components/common/AlertBox'
 import { Button } from '@/components/common/Button'
 import { Tooltip } from '@/components/common/Tooltip'
-import { BreadcrumbNav } from '@/components/common/BreadcrumbNav'
 import { TransactionCard } from '@/components/tx/TransactionCard'
 import { Spinner } from '@/components/common/Spinner'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
@@ -72,25 +70,16 @@ export function History() {
   })
 
   return (
-    <div className="space-y-6 p-12 mx-auto w-full">
-      <div className="mb-8">
+    <div className="container space-y-6 p-12 mx-auto w-full">
+      {/* <div className="mb-8">
         <BreadcrumbNav />
-      </div>
+      </div> */}
 
       <header className="space-y-2">
         <p className="text-muted-foreground">
           Review your recent transaction activity
         </p>
       </header>
-
-      <AlertBox tone="warning">
-        <div className="flex items-start gap-2">
-          <AlertTriangle className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
-          <p className="text-warning">
-            History is only available on this device. Browser storage can be volatile so this page serves as a reference only; assume any info here can be lost unless backed up independently.
-          </p>
-        </div>
-      </AlertBox>
 
       {/* Filters Section */}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -106,7 +95,19 @@ export function History() {
             </Button>
           ))}
         </div>
-        <div>
+        <div className="flex items-center gap-3">
+          <div className="flex">
+          <Tooltip
+            content="History is only available on this device. Browser storage can be volatile so this page serves as a reference only; assume any info here can be lost unless backed up independently."
+            side="top"
+            className="whitespace-normal max-w-md"
+          >
+            <div className="flex gap-2">
+            <AlertTriangle className="h-5 w-5 text-warning flex-shrink-0" />
+            <span className="text-sm font-semibold text-warning">Important</span>
+            </div>
+          </Tooltip>
+          </div>
           <Tooltip
             content="TODO: Add CSV export functionality for transaction history."
             side="top"

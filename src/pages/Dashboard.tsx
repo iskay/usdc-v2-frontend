@@ -194,7 +194,7 @@ export function Dashboard() {
 
   return (
     <RequireNamadaConnection>
-      <div className="flex flex-col gap-6 p-12 mx-auto w-full">
+      <div className="flex flex-col gap-6 p-12 mx-auto w-full container">
 
         {/* Balance and Actions Section + Recent Activity Side by Side */}
         <div className="flex flex-col lg:flex-row gap-6 mb-12 items-start">

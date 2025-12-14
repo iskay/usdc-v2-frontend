@@ -7,7 +7,7 @@ import { CopyButton } from '@/components/common/CopyButton'
 import { Button } from '@/components/common/Button'
 import { Tooltip } from '@/components/common/Tooltip'
 import { balanceSyncAtom, balanceErrorsAtom } from '@/atoms/balanceAtom'
-import { BreadcrumbNav } from '@/components/common/BreadcrumbNav'
+// import { BreadcrumbNav } from '@/components/common/BreadcrumbNav'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { DepositConfirmationModal } from '@/components/deposit/DepositConfirmationModal'
 import { AddressBookSelector } from '@/components/addressBook/AddressBookSelector'
@@ -782,9 +782,9 @@ export function Deposit() {
 
   return (
     <RequireMetaMaskConnection message="Please connect your MetaMask wallet to deposit USDC. EVM deposits require a connected wallet.">
-      <div className="relative min-h-full min-w-full">
+      <div className="min-h-full container">
         <div className="flex flex-col gap-6 p-12 mx-auto w-full">
-        <BreadcrumbNav />
+        {/* <BreadcrumbNav /> */}
 
         <header className="space-y-2">
           <p className="text-muted-foreground">

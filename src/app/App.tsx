@@ -2,11 +2,12 @@ import { Suspense, useMemo } from 'react'
 import { useLocation, useOutlet } from 'react-router-dom'
 import { motion, AnimatePresence, type Variants } from 'framer-motion'
 import { Navbar } from '@/components/layout/Navbar'
-import { Sidebar } from '@/components/layout/Sidebar'
+// import { Sidebar } from '@/components/layout/Sidebar'
+import { Footer } from '@/components/layout/Footer'
 import { ToastContainer } from '@/components/layout/ToastContainer'
 import { Spinner } from '@/components/common/Spinner'
 import { useTxTracker } from '@/hooks/useTxTracker'
-import { useSidebarState } from '@/hooks/useSidebarState'
+// import { useSidebarState } from '@/hooks/useSidebarState'
 
 const slideFromLeft: Variants = {
   initial: { x: '-16%', opacity: 0 },
@@ -37,7 +38,8 @@ export function App() {
   const location = useLocation()
   const outlet = useOutlet()
   const variants = useMemo(() => resolveVariants(location.pathname), [location.pathname])
-  const { isCollapsed: isSidebarCollapsed, toggleSidebar } = useSidebarState()
+  // Sidebar state disabled but kept for potential restoration
+  // const { isCollapsed: isSidebarCollapsed, toggleSidebar } = useSidebarState()
 
   // Initialize global transaction tracking and polling
   // This runs on app startup and handles hydration from localStorage + polling for in-progress transactions
@@ -46,9 +48,11 @@ export function App() {
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       <ToastContainer />
-      <Sidebar isCollapsed={isSidebarCollapsed} />
+      {/* Sidebar disabled but kept for potential restoration */}
+      {/* <Sidebar isCollapsed={isSidebarCollapsed} /> */}
       <div className="flex flex-1 flex-col">
-        <Navbar onToggleSidebar={toggleSidebar} isSidebarCollapsed={isSidebarCollapsed} />
+        <Navbar />
+        {/* <Navbar onToggleSidebar={toggleSidebar} isSidebarCollapsed={isSidebarCollapsed} /> */}
         <main className="relative flex-1 overflow-hidden p-6">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
@@ -66,6 +70,7 @@ export function App() {
             </motion.div>
           </AnimatePresence>
         </main>
+        <Footer />
       </div>
     </div>
   )
