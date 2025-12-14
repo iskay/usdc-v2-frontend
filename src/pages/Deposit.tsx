@@ -6,6 +6,7 @@ import { Loader2, AlertCircle, CheckCircle2, Info } from 'lucide-react'
 import { CopyButton } from '@/components/common/CopyButton'
 import { Button } from '@/components/common/Button'
 import { Tooltip } from '@/components/common/Tooltip'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { balanceSyncAtom, balanceErrorsAtom } from '@/atoms/balanceAtom'
 // import { BreadcrumbNav } from '@/components/common/BreadcrumbNav'
 import { ChainSelect } from '@/components/common/ChainSelect'
@@ -69,6 +70,7 @@ export function Deposit() {
   const [nameValidationError, setNameValidationError] = useState<string | null>(null)
   const [selectedChain, setSelectedChain] = useState<string | undefined>(undefined)
   const [showConfirmationModal, setShowConfirmationModal] = useState(false)
+  const [depositRecipientType, setDepositRecipientType] = useState<'transparent' | 'custom'>('transparent')
   
   // Global transaction UI state
   const [txUiState, setTxUiState] = useAtom(txUiAtom)
@@ -143,6 +145,42 @@ export function Deposit() {
   useEffect(() => {
     setDepositRecipientAddress(toAddress || undefined)
   }, [toAddress, setDepositRecipientAddress])
+
+  // Auto-populate transparent address when "My transparent balance" is selected
+  useEffect(() => {
+    if (depositRecipientType === 'transparent' && walletState.namada.account) {
+      setToAddress(walletState.namada.account)
+    } else if (depositRecipientType === 'transparent' && !walletState.namada.account) {
+      // If transparent is selected but no address available, clear toAddress
+      setToAddress('')
+    }
+  }, [depositRecipientType, walletState.namada.account])
+
+  // Handle switching to custom: clear address if it was the transparent address
+  // Only clear on initial switch, not when user manually fills it later
+  const prevRecipientTypeRef = useRef<'transparent' | 'custom'>(depositRecipientType)
+  useEffect(() => {
+    // Only clear if we just switched from transparent to custom (one-time on switch)
+    const justSwitchedToCustom = 
+      depositRecipientType === 'custom' && 
+      prevRecipientTypeRef.current === 'transparent'
+    
+    if (justSwitchedToCustom && toAddress === walletState.namada.account) {
+      setToAddress('')
+    }
+    
+    // Update ref when recipient type changes
+    prevRecipientTypeRef.current = depositRecipientType
+  }, [depositRecipientType]) // Only run when recipient type changes
+
+  // Clear validation errors when switching recipient types
+  useEffect(() => {
+    // Clear name validation error when switching types
+    if (depositRecipientType === 'transparent') {
+      setRecipientName(null)
+      setNameValidationError(null)
+    }
+  }, [depositRecipientType])
 
   // Track the current address being checked to prevent race conditions
   const checkingAddressRef = useRef<string | null>(null)
@@ -969,26 +1007,97 @@ export function Deposit() {
                       <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
                         Step 2
                       </span>
-                      <label className="text-sm font-semibold">Recipient address</label>
+                      <label className="text-sm font-semibold">Deposit to</label>
                     </div>
                   </div>
                   <p className="text-sm text-muted-foreground mb-3">
-                    Where your bridged USDC will arrive
+                    Namada address where your USDC will arrive
                   </p>
-                  <RecipientAddressInput
-                    value={toAddress}
-                    onChange={setToAddress}
-                    onNameChange={setRecipientName}
-                    onNameValidationChange={(_isValid, error) => setNameValidationError(error)}
-                    addressType="namada"
-                    validationError={validation.addressError}
-                    autoFillAddress={walletState.namada.account}
-                    onAutoFill={handleAutoFill}
+                  
+                  {/* Radio selector for recipient type */}
+                  <RadioGroup
+                    value={depositRecipientType}
+                    onValueChange={(value) => setDepositRecipientType(value as 'transparent' | 'custom')}
+                    className="flex flex-col gap-3 mb-3"
                     disabled={isAnyTxActive}
-                  />
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Tip: Use your Namada transparent address that controls this deposit
-                  </p>
+                  >
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem
+                        value="transparent"
+                        id="transparent"
+                        disabled={isAnyTxActive || !walletState.namada.isConnected}
+                        className="mt-0.5"
+                      />
+                      <label
+                        htmlFor="transparent"
+                        className="flex-1 cursor-pointer"
+                      >
+                        <div className="flex-1">
+                          <span className="text-sm font-medium">
+                            My transparent balance
+                            {walletState.namada.account && (
+                              <span className="text-muted-foreground font-normal ml-2 font-mono">
+                                ({walletState.namada.account.slice(0, 8)}...{walletState.namada.account.slice(-4)})
+                              </span>
+                            )}
+                          </span>
+                          {!walletState.namada.isConnected && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Connect your Namada wallet to use this option
+                            </p>
+                          )}
+                        </div>
+                      </label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem
+                        value="custom"
+                        id="custom"
+                        disabled={isAnyTxActive}
+                        className="mt-0.5"
+                      />
+                      <label
+                        htmlFor="custom"
+                        className="flex-1 cursor-pointer"
+                      >
+                        <span className="text-sm font-medium">Set a custom recipient</span>
+                      </label>
+                    </div>
+                  </RadioGroup>
+
+                  {/* Show address input only when custom recipient is selected */}
+                  {depositRecipientType === 'custom' && (
+                    <RecipientAddressInput
+                      value={toAddress}
+                      onChange={setToAddress}
+                      onNameChange={setRecipientName}
+                      onNameValidationChange={(_isValid, error) => setNameValidationError(error)}
+                      addressType="namada"
+                      validationError={validation.addressError}
+                      autoFillAddress={walletState.namada.account}
+                      onAutoFill={handleAutoFill}
+                      disabled={isAnyTxActive}
+                    />
+                  )}
+
+                  {depositRecipientType === 'transparent' && !walletState.namada.isConnected && (
+                    <div className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-warning" />
+                        <p className="text-sm text-foreground">
+                          Please connect your Namada wallet to deposit to your transparent balance, or select "Use a custom recipient" to enter an address manually.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Validation error for transparent address */}
+                  {depositRecipientType === 'transparent' && validation.addressError && toAddress.trim() !== '' && (
+                    <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span className="flex-1">{validation.addressError}</span>
+                    </div>
+                  )}
                   <div className="mt-3 rounded-md border border-muted/60 bg-muted/10 px-3 py-2">
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-2 flex-1">
@@ -1006,49 +1115,55 @@ export function Deposit() {
                         )}
                         
                         {/* Radio button selection */}
-                        <div className="flex flex-col gap-2 mt-2">
-                          <label className="flex items-center gap-2 text-xs cursor-pointer">
-                            <input
-                              type="radio"
-                              name="fallback-source"
+                        <RadioGroup
+                          value={depositFallbackSelection.source === 'none' ? undefined : depositFallbackSelection.source}
+                          onValueChange={(value) => {
+                            if (value === 'custom') {
+                              const customAddress = loadNobleFallbackAddress()
+                              if (customAddress) {
+                                setDepositFallbackSelection({ source: 'custom', address: customAddress })
+                              }
+                            } else if (value === 'derived') {
+                              const currentEvmAddress = walletState.metaMask.account
+                              if (currentEvmAddress) {
+                                const derivedAddress = loadDerivedFallbackAddress(currentEvmAddress)
+                                if (derivedAddress) {
+                                  setDepositFallbackSelection({ source: 'derived', address: derivedAddress })
+                                }
+                              }
+                            }
+                          }}
+                          className="flex flex-col gap-2 mt-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <RadioGroupItem
                               value="custom"
-                              checked={depositFallbackSelection.source === 'custom'}
-                              onChange={() => {
-                                const customAddress = loadNobleFallbackAddress()
-                                if (customAddress) {
-                                  setDepositFallbackSelection({ source: 'custom', address: customAddress })
-                                }
-                              }}
+                              id="fallback-custom"
                               disabled={!loadNobleFallbackAddress()}
-                              className="w-3.5 h-3.5 text-primary focus:ring-primary"
+                              className="h-3.5 w-3.5"
                             />
-                            <span className={!loadNobleFallbackAddress() ? 'text-muted-foreground' : ''}>
+                            <label
+                              htmlFor="fallback-custom"
+                              className={`text-xs cursor-pointer ${!loadNobleFallbackAddress() ? 'text-muted-foreground' : ''}`}
+                            >
                               Use custom address from Settings {!loadNobleFallbackAddress() && '(not set)'}
-                            </span>
-                          </label>
-                          <label className="flex items-center gap-2 text-xs cursor-pointer">
-                            <input
-                              type="radio"
-                              name="fallback-source"
+                            </label>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <RadioGroupItem
                               value="derived"
-                              checked={depositFallbackSelection.source === 'derived'}
-                              onChange={() => {
-                                const currentEvmAddress = walletState.metaMask.account
-                                if (currentEvmAddress) {
-                                  const derivedAddress = loadDerivedFallbackAddress(currentEvmAddress)
-                                  if (derivedAddress) {
-                                    setDepositFallbackSelection({ source: 'derived', address: derivedAddress })
-                                  }
-                                }
-                              }}
+                              id="fallback-derived"
                               disabled={!walletState.metaMask.account || !loadDerivedFallbackAddress(walletState.metaMask.account || '')}
-                              className="w-3.5 h-3.5 text-primary focus:ring-primary"
+                              className="h-3.5 w-3.5"
                             />
-                            <span className={!walletState.metaMask.account || !loadDerivedFallbackAddress(walletState.metaMask.account || '') ? 'text-muted-foreground' : ''}>
+                            <label
+                              htmlFor="fallback-derived"
+                              className={`text-xs cursor-pointer ${!walletState.metaMask.account || !loadDerivedFallbackAddress(walletState.metaMask.account || '') ? 'text-muted-foreground' : ''}`}
+                            >
                               Use an address derived from my MetaMask account private key
-                            </span>
-                          </label>
-                        </div>
+                            </label>
+                          </div>
+                        </RadioGroup>
 
                         {/* Derivation status messages */}
                         {derivationState.stage === 'signing' && (
@@ -1228,9 +1343,6 @@ export function Deposit() {
                     showEstimatedTime={true}
                     timeType="deposit"
                   />
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Estimated time for the deposit to complete
-                  </p>
                   </div>
                 </div>
 
