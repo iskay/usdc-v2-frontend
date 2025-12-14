@@ -49,10 +49,11 @@ export function SendSummaryCard({
           </span>
           <Button
             type="button"
+            variant="primary"
             onClick={onContinue}
             disabled={!isValid || isSubmitting}
             className={cn(
-              'bg-blue-600 hover:bg-blue-700 text-white border-blue-600 rounded-full',
+              'rounded-full',
               (!isValid || isSubmitting) && 'opacity-50 cursor-not-allowed'
             )}
           >

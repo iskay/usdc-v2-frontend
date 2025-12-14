@@ -736,18 +736,6 @@ export function Deposit() {
     const namadaAddress = walletState.namada.account
     if (namadaAddress) {
       setToAddress(namadaAddress)
-      notify({
-        title: 'Address Auto-filled',
-        description: 'Namada address populated from connected wallet',
-        level: 'info',
-        icon: <Info className="h-5 w-5" />,
-      })
-    } else {
-      notify({
-        title: 'Namada Not Connected',
-        description: 'Please connect your Namada Keychain to use Auto Fill',
-        level: 'error',
-      })
     }
   }
 

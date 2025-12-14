@@ -225,18 +225,6 @@ export function SendPayment() {
     const evmAddress = walletState.metaMask.account
     if (evmAddress) {
       setToAddress(evmAddress)
-      notify({
-        title: 'Address Auto-filled',
-        description: 'EVM address populated from connected MetaMask wallet',
-        level: 'info',
-        icon: <AlertCircle className="h-5 w-5" />,
-      })
-    } else {
-      notify({
-        title: 'MetaMask Not Connected',
-        description: 'Please connect your MetaMask wallet to use Auto Fill',
-        level: 'error',
-      })
     }
   }
 

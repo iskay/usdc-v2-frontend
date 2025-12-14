@@ -244,6 +244,32 @@ body {
   
   /* Opacity variant */
   .card-opacity { @apply bg-card/80; }
+  
+  /* Toast close button border colors based on toast type */
+  [data-sonner-toast][data-type="success"] [data-close-button] {
+    border-color: var(--success) !important;
+  }
+  
+  [data-sonner-toast][data-type="error"] [data-close-button] {
+    border-color: var(--error) !important;
+  }
+  
+  [data-sonner-toast][data-type="warning"] [data-close-button] {
+    border-color: var(--warning) !important;
+  }
+  
+  [data-sonner-toast][data-type="info"] [data-close-button] {
+    border-color: var(--info) !important;
+  }
+  
+  [data-sonner-toast][data-type="loading"] [data-close-button] {
+    border-color: var(--info) !important;
+  }
+  
+  /* Toast icon spacing - control gap between icon and text */
+  [data-sonner-toast] {
+    gap: 0.75rem !important; /* Adjust as needed: 0.5rem (gap-2), 0.75rem (gap-3), 1rem (gap-4), etc. */
+  }
 }
 
 @keyframes shield-blink {

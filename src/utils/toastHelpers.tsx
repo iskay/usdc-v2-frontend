@@ -33,15 +33,15 @@ export function formatAddress(address: string, startChars = 6, endChars = 4): st
 export function getToastIcon(level: ToastArgs['level'] = 'info') {
   switch (level) {
     case 'success':
-      return <CheckCircle2 className="h-5 w-5" />
+      return <CheckCircle2 className="h-5 w-5 !text-success" />
     case 'error':
-      return <XCircle className="h-5 w-5" />
+      return <XCircle className="h-5 w-5 !text-error" />
     case 'warning':
-      return <AlertCircle className="h-5 w-5" />
+      return <AlertCircle className="h-5 w-5 !text-warning" />
     case 'loading':
-      return <Loader2 className="h-5 w-5 animate-spin" />
+      return <Loader2 className="h-5 w-5 !text-info animate-spin" />
     default:
-      return <Info className="h-5 w-5" />
+      return <Info className="h-5 w-5 !text-info" />
   }
 }
 
@@ -245,7 +245,7 @@ export function buildCopySuccessToast(label: string): ToastArgs {
     title: 'Copied',
     description: `${label} copied to clipboard`,
     level: 'success',
-    icon: <Copy className="h-5 w-5" />,
+    icon: <Copy className="h-5 w-5 !text-success" />,
     duration: TOAST_DURATION.SHORT,
   }
 }

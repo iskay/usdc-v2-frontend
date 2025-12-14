@@ -3,18 +3,36 @@ import { Toaster } from 'sonner'
 export function ToastContainer() {
   return (
     <Toaster
-      richColors
-      position="top-right"
-      closeButton
+    richColors
+      // richColors removed to allow full control over styling via classNames
+      // If you need type-specific colors (success/error/warning), you can add them via classNames.success, etc.
+      position="bottom-right"
+      // closeButton removed - toasts will not show close button by default
       toastOptions={{
         classNames: {
+          // Base toast styles (used as fallback for default/info toasts)
           toast:
-            'group toast group-[.toaster]:bg-card group-[.toaster]:text-card-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
-          description: 'group-[.toast]:text-muted-foreground',
+            '!bg-card !text-card-foreground !border-border shadow-lg rounded-lg',
+          description: '!text-muted-foreground',
           actionButton:
-            'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground group-[.toast]:focus-visible:outline-none group-[.toast]:focus-visible:ring-2 group-[.toast]:focus-visible:ring-ring',
+            '!bg-primary !text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           cancelButton:
-            'group-[.toast]:bg-muted group-[.toast]:text-muted-foreground group-[.toast]:focus-visible:outline-none group-[.toast]:focus-visible:ring-2 group-[.toast]:focus-visible:ring-ring',
+            '!bg-muted !text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          // Success toast styling (using info border color, icon remains colored)
+          success:
+            '!border-info/40 shadow-lg rounded-lg',
+          // Error toast styling (using info border color, icon remains colored)
+          error:
+            '!border-info/4- shadow-lg rounded-lg',
+          // Warning toast styling (using info border color, icon remains colored)
+          warning:
+            '!border-info/40 shadow-lg rounded-lg',
+          // Info toast styling
+          info:
+            '!border-info/40 shadow-lg rounded-lg',
+          // Loading toast styling (using info border color, icon remains colored)
+          loading:
+            '!border-info/40 shadow-lg rounded-lg',
         },
         // Accessibility: Use appropriate aria-live regions
         // Sonner automatically uses aria-live="polite" for toasts

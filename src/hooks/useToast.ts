@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { toast } from 'sonner'
 import { TOAST_DURATION } from '@/config/constants'
 import type { ReactNode } from 'react'
+import { getToastIcon } from '@/utils/toastHelpers'
 
 export type ToastLevel = 'success' | 'error' | 'info' | 'warning' | 'loading'
 
@@ -56,9 +57,12 @@ export function useToast() {
         }
       }
 
-      // Add custom icon if provided
+      // Add custom icon if provided, otherwise use default icon with theme colors
       if (icon) {
         options.icon = icon
+      } else {
+        // Automatically add icon with theme colors when no icon is provided
+        options.icon = getToastIcon(level)
       }
 
       // Handle different toast levels
