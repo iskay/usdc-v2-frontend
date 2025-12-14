@@ -10,7 +10,8 @@ import { balanceSyncAtom, balanceErrorsAtom } from '@/atoms/balanceAtom'
 // import { BreadcrumbNav } from '@/components/common/BreadcrumbNav'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { DepositConfirmationModal } from '@/components/deposit/DepositConfirmationModal'
-import { AddressBookSelector } from '@/components/addressBook/AddressBookSelector'
+import { RecipientAddressInput } from '@/components/recipient/RecipientAddressInput'
+import { addAddress } from '@/services/addressBook/addressBookService'
 import { DepositFlowSteps } from '@/components/deposit/DepositFlowSteps'
 import { DepositSummaryCard } from '@/components/deposit/DepositSummaryCard'
 import { TransactionDisplay } from '@/components/tx/TransactionDisplay'
@@ -18,7 +19,7 @@ import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { useToast } from '@/hooks/useToast'
 import { RequireMetaMaskConnection } from '@/components/wallet/RequireMetaMaskConnection'
-import { validateDepositForm, handleAmountInputChange, handleBech32InputChange, validateNamadaAddress } from '@/services/validation'
+import { validateDepositForm, handleAmountInputChange, validateNamadaAddress } from '@/services/validation'
 import {
   buildTransactionSuccessToast,
   buildTransactionErrorToast,
@@ -64,6 +65,8 @@ export function Deposit() {
   // Form state
   const [amount, setAmount] = useState('')
   const [toAddress, setToAddress] = useState('')
+  const [recipientName, setRecipientName] = useState<string | null>(null)
+  const [nameValidationError, setNameValidationError] = useState<string | null>(null)
   const [selectedChain, setSelectedChain] = useState<string | undefined>(undefined)
   const [showConfirmationModal, setShowConfirmationModal] = useState(false)
   
@@ -439,6 +442,12 @@ export function Deposit() {
       return
     }
 
+    // Validate name if save to address book is checked
+    if (nameValidationError) {
+      notify(buildValidationErrorToast('Address Book', nameValidationError))
+      return
+    }
+
     // Show confirmation modal
     setShowConfirmationModal(true)
   }
@@ -446,6 +455,11 @@ export function Deposit() {
   // Handle confirmation and submit transaction
   async function handleConfirmDeposit(): Promise<void> {
     setShowConfirmationModal(false)
+    
+    // Save address to address book immediately on initiation (non-blocking)
+    // This happens before transaction processing and does not depend on tx outcome
+    void saveAddressToBook()
+
     setTxUiState({
       ...txUiState,
       isSubmitting: true,
@@ -739,6 +753,44 @@ export function Deposit() {
     }
   }
 
+  // Save address to address book if name was provided
+  // This is called immediately on transaction initiation and does not block the transaction flow
+  async function saveAddressToBook() {
+    if (!recipientName || !toAddress) {
+      return
+    }
+
+    try {
+      const result = addAddress({
+        name: recipientName,
+        address: toAddress,
+        type: 'namada',
+      })
+      if (result.success) {
+        notify({
+          title: 'Address saved',
+          description: `"${recipientName}" has been added to your address book.`,
+          level: 'success',
+        })
+      } else {
+        // Show error toast but don't throw - transaction should continue
+        notify({
+          title: 'Failed to save address',
+          description: result.error || 'Could not save address to address book',
+          level: 'error',
+        })
+      }
+    } catch (error) {
+      // Catch any unexpected errors and show toast, but don't throw
+      console.error('[Deposit] Error saving address:', error)
+      notify({
+        title: 'Failed to save address',
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+        level: 'error',
+      })
+    }
+  }
+
   // Transaction details for confirmation modal
   // The service already formats the amounts, so we just add the symbol and USD estimate
   // Use 4 decimal places for better precision
@@ -890,7 +942,14 @@ export function Deposit() {
                       inputMode="decimal"
                       disabled={false}
                     />
-                    <span className="text-sm text-muted-foreground">USDC</span>
+                    <div className="flex items-center gap-1.5">
+                      <img
+                        src="/assets/logos/usdc-logo.svg"
+                        alt="USDC"
+                        className="h-4 w-4"
+                      />
+                      <span className="text-sm text-muted-foreground">USDC</span>
+                    </div>
                   </div>
                   {/* Validation error for amount */}
                   {validation.amountError && amount.trim() !== '' && (
@@ -912,40 +971,19 @@ export function Deposit() {
                       </span>
                       <label className="text-sm font-semibold">Recipient address</label>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleAutoFill}
-                      disabled={!walletState.namada.isConnected}
-                      className={`text-sm font-medium text-primary hover:text-primary/80 transition-colors ${
-                        !walletState.namada.isConnected
-                          ? 'opacity-50 cursor-not-allowed'
-                          : ''
-                      }`}
-                    >
-                      Auto-fill
-                    </button>
                   </div>
                   <p className="text-sm text-muted-foreground mb-3">
                     Where your bridged USDC will arrive
                   </p>
-                  <div className="mb-2">
-                    <AddressBookSelector
-                      onSelect={(entry) => {
-                        setToAddress(entry.address)
-                      }}
-                      filterByType="namada"
-                    />
-                  </div>
-                  <input
-                    type="text"
+                  <RecipientAddressInput
                     value={toAddress}
-                    onChange={(e) => handleBech32InputChange(e, setToAddress)}
-                    className={`w-full rounded-lg border bg-background px-4 py-3 text-sm font-mono shadow-sm focus-visible:outline-none focus-visible:ring-2 transition-colors ${
-                      validation.addressError && toAddress.trim() !== ''
-                        ? 'border-destructive focus-visible:ring-destructive/20 focus-visible:border-destructive'
-                        : 'border-input focus-visible:ring-ring focus-visible:border-ring'
-                    }`}
-                    placeholder="tnam1..."
+                    onChange={setToAddress}
+                    onNameChange={setRecipientName}
+                    onNameValidationChange={(_isValid, error) => setNameValidationError(error)}
+                    addressType="namada"
+                    validationError={validation.addressError}
+                    autoFillAddress={walletState.namada.account}
+                    onAutoFill={handleAutoFill}
                     disabled={isAnyTxActive}
                   />
                   <p className="text-xs text-muted-foreground mt-2">
@@ -1100,13 +1138,6 @@ export function Deposit() {
                           </div>
                         )}
                   </div>
-                  {/* Validation error for address */}
-                  {validation.addressError && toAddress.trim() !== '' && (
-                    <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                      <span className="flex-1">{validation.addressError}</span>
-                    </div>
-                  )}
                   {/* Noble forwarding registration status */}
                   {!validation.addressError && toAddress.trim() !== '' && (
                     <div className="mt-3">
@@ -1228,16 +1259,19 @@ export function Deposit() {
                 <DepositSummaryCard
                   amount={amount}
                   chainName={chainName}
-                  isValid={validation.isValid}
+                  isValid={validation.isValid && !nameValidationError}
                   validationError={
-                    !validation.isValid
-                      ? validation.amountError || validation.addressError || 'Please fill in all required fields'
+                    (!validation.isValid || nameValidationError)
+                      ? nameValidationError || validation.amountError || validation.addressError || 'Please fill in all required fields'
                       : null
                   }
                   onContinue={() => {
-                    if (validation.isValid) {
+                    if (validation.isValid && !nameValidationError) {
                       setShowConfirmationModal(true)
                     } else {
+                      if (nameValidationError) {
+                        notify(buildValidationErrorToast('Address Book', nameValidationError))
+                      }
                       if (validation.amountError) {
                         notify(buildValidationErrorToast('Amount', validation.amountError))
                       }

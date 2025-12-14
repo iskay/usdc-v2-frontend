@@ -7,7 +7,8 @@ import { Tooltip } from '@/components/common/Tooltip'
 import { RequireNamadaConnection } from '@/components/wallet/RequireNamadaConnection'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { PaymentConfirmationModal } from '@/components/payment/PaymentConfirmationModal'
-import { AddressBookSelector } from '@/components/addressBook/AddressBookSelector'
+import { RecipientAddressInput } from '@/components/recipient/RecipientAddressInput'
+import { addAddress } from '@/services/addressBook/addressBookService'
 import { TransactionDisplay } from '@/components/tx/TransactionDisplay'
 import { SendFlowSteps } from '@/components/payment/SendFlowSteps'
 import { SendSummaryCard } from '@/components/payment/SendSummaryCard'
@@ -17,7 +18,7 @@ import { useWallet } from '@/hooks/useWallet'
 import { useToast } from '@/hooks/useToast'
 import { useAtomValue, useAtom } from 'jotai'
 import { balanceSyncAtom, balanceErrorAtom } from '@/atoms/balanceAtom'
-import { validatePaymentForm, handleAmountInputChange, handleEvmAddressInputChange } from '@/services/validation'
+import { validatePaymentForm, handleAmountInputChange } from '@/services/validation'
 import {
   buildTransactionSuccessToast,
   buildTransactionErrorToast,
@@ -51,6 +52,8 @@ export function SendPayment() {
   // Form state
   const [amount, setAmount] = useState('')
   const [toAddress, setToAddress] = useState('')
+  const [recipientName, setRecipientName] = useState<string | null>(null)
+  const [nameValidationError, setNameValidationError] = useState<string | null>(null)
   const [selectedChain, setSelectedChain] = useState<string | undefined>(undefined)
   const [showConfirmationModal, setShowConfirmationModal] = useState(false)
   
@@ -215,6 +218,12 @@ export function SendPayment() {
       return
     }
 
+    // Validate name if save to address book is checked
+    if (nameValidationError) {
+      notify(buildValidationErrorToast('Address Book', nameValidationError))
+      return
+    }
+
     // Show confirmation modal
     setShowConfirmationModal(true)
   }
@@ -228,9 +237,52 @@ export function SendPayment() {
     }
   }
 
+  // Save address to address book if name was provided
+  // This is called immediately on transaction initiation and does not block the transaction flow
+  async function saveAddressToBook() {
+    if (!recipientName || !toAddress) {
+      return
+    }
+
+    try {
+      const result = addAddress({
+        name: recipientName,
+        address: toAddress,
+        type: 'evm',
+      })
+      if (result.success) {
+        notify({
+          title: 'Address saved',
+          description: `"${recipientName}" has been added to your address book.`,
+          level: 'success',
+        })
+      } else {
+        // Show error toast but don't throw - transaction should continue
+        notify({
+          title: 'Failed to save address',
+          description: result.error || 'Could not save address to address book',
+          level: 'error',
+        })
+      }
+    } catch (error) {
+      // Catch any unexpected errors and show toast, but don't throw
+      console.error('[SendPayment] Error saving address:', error)
+      notify({
+        title: 'Failed to save address',
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+        level: 'error',
+      })
+    }
+  }
+
   // Handle confirmation and submit transaction
   async function handleConfirmPayment(): Promise<void> {
     setShowConfirmationModal(false)
+    
+    // Save address to address book immediately on initiation (non-blocking)
+    // This happens before transaction processing and does not depend on tx outcome
+    void saveAddressToBook()
+
     setTxUiState({
       ...txUiState,
       isSubmitting: true,
@@ -574,7 +626,14 @@ export function SendPayment() {
                       inputMode="decimal"
                       disabled={false}
                     />
-                    <span className="text-sm text-muted-foreground">USDC</span>
+                    <div className="flex items-center gap-1.5">
+                      <img
+                        src="/assets/logos/usdc-logo.svg"
+                        alt="USDC"
+                        className="h-4 w-4"
+                      />
+                      <span className="text-sm text-muted-foreground">USDC</span>
+                    </div>
                   </div>
                   {/* Validation error for amount */}
                   {validation.amountError && amount.trim() !== '' && (
@@ -596,52 +655,21 @@ export function SendPayment() {
                         </span>
                         <label className="text-sm font-semibold">Recipient address</label>
                       </div>
-                      <button
-                        type="button"
-                        onClick={handleAutoFill}
-                        disabled={!walletState.metaMask.isConnected}
-                        className={`text-sm font-medium text-primary hover:text-primary/80 transition-colors ${
-                          !walletState.metaMask.isConnected
-                            ? 'opacity-50 cursor-not-allowed'
-                            : ''
-                        }`}
-                      >
-                        Auto-fill
-                      </button>
                     </div>
                     <p className="text-sm text-muted-foreground mb-3">
                       Where your USDC will be sent
                     </p>
-                    <div className="mb-2">
-                      <AddressBookSelector
-                        onSelect={(entry) => {
-                          setToAddress(entry.address)
-                        }}
-                        filterByType="evm"
-                      />
-                    </div>
-                    <input
-                      type="text"
+                    <RecipientAddressInput
                       value={toAddress}
-                      onChange={(e) => handleEvmAddressInputChange(e, setToAddress)}
-                      className={`w-full rounded-lg border bg-background px-4 py-3 text-sm font-mono shadow-sm focus-visible:outline-none focus-visible:ring-2 transition-colors ${
-                        validation.addressError && toAddress.trim() !== ''
-                          ? 'border-destructive focus-visible:ring-destructive/20 focus-visible:border-destructive'
-                          : 'border-input focus-visible:ring-ring focus-visible:border-ring'
-                      }`}
-                      placeholder="0x..."
-                      disabled={false}
+                      onChange={setToAddress}
+                      onNameChange={setRecipientName}
+                      onNameValidationChange={(_isValid, error) => setNameValidationError(error)}
+                      addressType="evm"
+                      validationError={validation.addressError}
+                      autoFillAddress={walletState.metaMask.account}
+                      onAutoFill={handleAutoFill}
+                      disabled={isAnyTxActive}
                     />
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Tip: Can be your address or someone else's
-                    </p>
-                    {/* Validation error for address */}
-                    {validation.addressError && toAddress.trim() !== '' && (
-                      <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                        <span className="flex-1">{validation.addressError}</span>
-                      </div>
-                    )}
                   </div>
 
                   {/* Step 3: Destination Chain Section */}
@@ -662,9 +690,6 @@ export function SendPayment() {
                       showEstimatedTime={true}
                       timeType="send"
                     />
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Estimated time for the payment to complete
-                    </p>
                   </div>
                 </div>
 
@@ -699,16 +724,19 @@ export function SendPayment() {
                 <SendSummaryCard
                   amount={amount}
                   chainName={chainName}
-                  isValid={validation.isValid}
+                  isValid={validation.isValid && !nameValidationError}
                   validationError={
-                    !validation.isValid && !isAnyTxActive
-                      ? validation.amountError || validation.addressError || 'Please fill in all required fields'
+                    (!validation.isValid || nameValidationError) && !isAnyTxActive
+                      ? nameValidationError || validation.amountError || validation.addressError || 'Please fill in all required fields'
                       : null
                   }
                   onContinue={() => {
-                    if (validation.isValid) {
+                    if (validation.isValid && !nameValidationError) {
                       setShowConfirmationModal(true)
                     } else {
+                      if (nameValidationError) {
+                        notify(buildValidationErrorToast('Address Book', nameValidationError))
+                      }
                       if (validation.amountError) {
                         notify(buildValidationErrorToast('Amount', validation.amountError))
                       }
