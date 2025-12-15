@@ -1,5 +1,5 @@
-import { useState, memo, cloneElement } from 'react'
-import { Clock, CheckCircle2, XCircle, AlertCircle, Trash2, ArrowDown, Send, MoreVertical } from 'lucide-react'
+import { useState, memo, useEffect } from 'react'
+import { Clock, AlertCircle, Trash2, ArrowDownLeft, ArrowUpRight, MoreVertical, User } from 'lucide-react'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import {
   isInProgress,
@@ -16,6 +16,11 @@ import { TransactionDetailModal } from './TransactionDetailModal'
 import { DeleteTransactionConfirmationDialog } from './DeleteTransactionConfirmationDialog'
 import { DropdownMenu, DropdownMenuItem } from '@/components/common/DropdownMenu'
 import { cn } from '@/lib/utils'
+import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
+import { findChainByKey } from '@/config/chains'
+import type { EvmChainsFile } from '@/config/chains'
+import { getAllAddresses } from '@/services/addressBook/addressBookService'
+import { formatAddress } from '@/utils/toastHelpers'
 
 export interface TransactionCardProps {
   transaction: StoredTransaction
@@ -45,6 +50,77 @@ export const TransactionCard = memo(function TransactionCard({
   const setIsModalOpen = onModalOpenChange || setInternalIsModalOpen
   
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [evmChainsConfig, setEvmChainsConfig] = useState<EvmChainsFile | null>(null)
+
+  // Load EVM chains config to resolve chain display names
+  useEffect(() => {
+    let mounted = true
+
+    async function loadConfig() {
+      try {
+        const config = await fetchEvmChainsConfig()
+        if (mounted) {
+          setEvmChainsConfig(config)
+        }
+      } catch (error) {
+        console.error('[TransactionCard] Failed to load EVM chains config:', error)
+      }
+    }
+
+    void loadConfig()
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  // Helper function to get chain display name from chain key
+  const getChainDisplayName = (chainKey: string | undefined): string => {
+    if (!chainKey) return ''
+    
+    // Look up by chain key in evm-chains.json
+    if (evmChainsConfig) {
+      const chain = findChainByKey(evmChainsConfig, chainKey)
+      if (chain) {
+        return chain.name
+      }
+      
+      // If not found by key, try to find by name (in case chainKey is already a display name)
+      const foundByName = evmChainsConfig.chains.find(
+        chain => chain.name.toLowerCase() === chainKey.toLowerCase()
+      )
+      if (foundByName) {
+        return foundByName.name
+      }
+    }
+    
+    // Fallback to the chain key itself
+    return chainKey
+  }
+
+  // Helper function to get address display (name from address book or truncated address)
+  const getAddressDisplay = (address: string | undefined): { display: string; isFromAddressBook: boolean } | null => {
+    if (!address) return null
+    
+    // Check if address is in address book
+    const addressBookEntry = getAllAddresses().find(
+      (entry) => entry.address.toLowerCase() === address.toLowerCase().trim()
+    )
+    
+    if (addressBookEntry) {
+      return { display: addressBookEntry.name, isFromAddressBook: true }
+    }
+    
+    // Return truncated address
+    return { display: formatAddress(address), isFromAddressBook: false }
+  }
+
+  // Get the address to display
+  const displayAddress = transaction.direction === 'deposit'
+    ? transaction.depositDetails?.senderAddress
+    : transaction.paymentDetails?.destinationAddress
+  
+  const addressDisplayInfo = getAddressDisplay(displayAddress)
 
   const handleClick = () => {
     if (onClick) {
@@ -71,16 +147,15 @@ export const TransactionCard = memo(function TransactionCard({
     const amountInBase = transaction.flowMetadata.amount
     if (amountInBase) {
       const amountInUsdc = (parseInt(amountInBase) / 1_000_000).toFixed(2)
-      amount = `$${amountInUsdc}`
+      amount = `${amountInUsdc} USDC`
     }
   } else if (transaction.depositDetails) {
-    amount = `$${transaction.depositDetails.amount}`
+    amount = `${transaction.depositDetails.amount} USDC`
   } else if (transaction.paymentDetails) {
-    amount = `$${transaction.paymentDetails.amount}`
+    amount = `${transaction.paymentDetails.amount} USDC`
   }
 
-  // Status icon, color, and badge styling
-  let statusIcon = <Clock className="h-3.5 w-3.5" />
+  // Status color and badge styling
   let badgeBgColor = 'bg-muted'
   let badgeTextColor = 'text-muted-foreground'
   let badgeBorderColor = 'border-muted'
@@ -89,23 +164,19 @@ export const TransactionCard = memo(function TransactionCard({
   const inProgress = isInProgress(transaction)
   
   if (isSuccess(transaction)) {
-    statusIcon = <CheckCircle2 className="h-3.5 w-3.5" />
-    badgeBgColor = 'bg-success/10'
+    badgeBgColor = 'bg-success/20'
     badgeTextColor = 'text-success'
     badgeBorderColor = 'border-success/30'
   } else if (isError(transaction)) {
-    statusIcon = <XCircle className="h-3.5 w-3.5" />
-    badgeBgColor = 'bg-error/10'
+    badgeBgColor = 'bg-error/20'
     badgeTextColor = 'text-error'
     badgeBorderColor = 'border-error/30'
   } else if (effectiveStatus === 'user_action_required') {
-    statusIcon = <AlertCircle className="h-3.5 w-3.5" />
-    badgeBgColor = 'bg-warning/10'
+    badgeBgColor = 'bg-warning/20'
     badgeTextColor = 'text-warning'
     badgeBorderColor = 'border-warning/30'
   } else if (effectiveStatus === 'undetermined') {
-    statusIcon = <AlertCircle className="h-3.5 w-3.5" />
-    badgeBgColor = 'bg-warning/10'
+    badgeBgColor = 'bg-warning/20'
     badgeTextColor = 'text-warning'
     badgeBorderColor = 'border-warning/30'
   } else if (inProgress) {
@@ -120,12 +191,9 @@ export const TransactionCard = memo(function TransactionCard({
       <div
         className={cn(
           'card',
-          // Conditional styling based on state
-          inProgress 
-            ? 'card-info card-hover' 
-            : variant === 'compact' 
-              ? 'card-sm card-no-border' 
-              : 'card-no-border',
+          variant === 'compact' 
+            ? 'card-sm card-no-border' 
+            : 'card-no-border',
           onClick || showExpandButton ? 'cursor-pointer' : '',
         )}
         onClick={handleClick}
@@ -134,16 +202,16 @@ export const TransactionCard = memo(function TransactionCard({
         {hideActions && variant === 'compact' ? (
           <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
             {/* Column 1: Transaction - Type and source chain */}
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-3 min-w-0">
               {/* Transaction type icon - smaller for dashboard */}
               <div className="flex-shrink-0">
                 {transaction.direction === 'deposit' ? (
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-warning/10">
-                    <ArrowDown className="h-4 w-4 text-warning" />
+                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
+                    <ArrowDownLeft className="h-6 h-6 text-primary" />
                   </div>
                 ) : (
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-info/10">
-                    <Send className="h-4 w-4 text-info" />
+                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-info/10">
+                    <ArrowUpRight className="h-6 h-6 text-info" />
                   </div>
                 )}
               </div>
@@ -152,20 +220,29 @@ export const TransactionCard = memo(function TransactionCard({
                 <span className="text-sm font-medium capitalize truncate">
                   {transaction.direction === 'deposit' ? 'Deposit' : 'Payment'}
                 </span>
-                <span className="text-xs text-muted-foreground truncate">
-                  {transaction.direction === 'deposit' 
-                    ? `From: ${transaction.chain}`
-                    : `To: ${transaction.paymentDetails?.chainName || transaction.chain}`
-                  }
-                </span>
+                {addressDisplayInfo && (
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground truncate">
+                    <span>{transaction.direction === 'deposit' ? 'From: ' : 'To: '}</span>
+                    {addressDisplayInfo.isFromAddressBook && (
+                      <User className="h-3 w-3 text-success flex-shrink-0" />
+                    )}
+                    <span className="truncate">{addressDisplayInfo.display}</span>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Column 2: Amount only */}
-            <div className="flex items-center justify-end min-w-0">
+            {/* Column 2: Amount and chain */}
+            <div className="flex flex-col items-center min-w-0">
               {amount && (
                 <span className="text-sm font-medium">{amount}</span>
               )}
+              <span className="text-xs text-muted-foreground truncate">
+                {transaction.direction === 'deposit' 
+                  ? getChainDisplayName(transaction.chain)
+                  : getChainDisplayName(transaction.paymentDetails?.chainName || transaction.chain)
+                }
+              </span>
             </div>
 
             {/* Column 3: Status and time - stacked vertically */}
@@ -173,12 +250,11 @@ export const TransactionCard = memo(function TransactionCard({
               {/* Status badge */}
               <div className="flex items-center gap-1.5">
                 <div className={cn(
-                  'inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5',
+                  'inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5',
                   badgeBgColor,
                   badgeTextColor,
                   badgeBorderColor
                 )}>
-                  {cloneElement(statusIcon, { className: 'h-3 w-3' })}
                   <span className="text-[10px] font-medium leading-tight">{statusLabel}</span>
                 </div>
                 
@@ -197,25 +273,37 @@ export const TransactionCard = memo(function TransactionCard({
                 <Clock className="h-3 w-3" />
                 <span>{timeElapsed}</span>
               </div>
+              
+              {/* Progress bar (for in-progress transactions) */}
+              {isInProgress(transaction) && (
+                <div className="w-full max-w-24 space-y-0.5">
+                  <div className="h-1 w-full overflow-hidden rounded-md bg-muted">
+                    <div
+                      className="h-full bg-accent transition-all duration-300"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ) : (
         <div className={cn(
             'grid items-center',
-            hideActions ? 'grid-cols-[1fr_1fr]' : 'grid-cols-[1fr_1fr_auto]',
+            hideActions ? 'grid-cols-[1fr_1fr]' : 'grid-cols-[1fr_1fr_1fr_auto]',
           variant === 'compact' ? 'gap-3' : 'gap-4'
         )}>
             {/* Column 1: Transaction - Type and source chain */}
-            <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center gap-4 min-w-0">
               {/* Transaction type icon */}
               <div className="flex-shrink-0">
                 {transaction.direction === 'deposit' ? (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning/10">
-                    <ArrowDown className="h-5 w-5 text-warning" />
+                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
+                    <ArrowDownLeft className="h-6 w-6 text-primary" />
                   </div>
                 ) : (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-info/10">
-                    <Send className="h-5 w-5 text-info" />
+                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-info/10">
+                    <ArrowUpRight className="h-6 w-6 text-info" />
                   </div>
                 )}
               </div>
@@ -224,69 +312,79 @@ export const TransactionCard = memo(function TransactionCard({
                 <span className="text-sm font-medium capitalize truncate">
                   {transaction.direction === 'deposit' ? 'Deposit' : 'Payment'}
                 </span>
+                {addressDisplayInfo && (
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground truncate">
+                    <span>{transaction.direction === 'deposit' ? 'From: ' : 'To: '}</span>
+                    {addressDisplayInfo.isFromAddressBook && (
+                      <User className="h-3 w-3 text-success flex-shrink-0" />
+                    )}
+                    <span className="truncate">{addressDisplayInfo.display}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Column 2: Amount & Status - Amount, chain, status and progress */}
+            <div className="flex flex-col gap-2 min-w-0">
+              {/* Amount and Chain on same line */}
+              <div className="flex items-center gap-2 min-w-0">
+                {amount && (
+                  <span className="text-sm font-medium">{amount}</span>
+                )}
                 <span className="text-xs text-muted-foreground truncate">
                   {transaction.direction === 'deposit' 
-                    ? `From: ${transaction.chain}`
-                    : `To: ${transaction.paymentDetails?.chainName || transaction.chain}`
+                    ? getChainDisplayName(transaction.chain)
+                    : getChainDisplayName(transaction.paymentDetails?.chainName || transaction.chain)
                   }
                 </span>
               </div>
+              
+              {/* Status */}
+              <div className="flex flex-col gap-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Pill-shaped status badge */}
+                  <div className={cn(
+                    'inline-flex items-center gap-1.5 rounded-md px-2 py-0.5',
+                    badgeBgColor,
+                    badgeTextColor,
+                    badgeBorderColor
+                  )}>
+                    <span className="text-[10px] font-medium">{statusLabel}</span>
+                  </div>
+                  
+                  {hasClientTimeout(transaction) && (
+                    <div className="group relative">
+                      <AlertCircle className="h-3.5 w-3.5 text-warning" />
+                      <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-foreground px-2 py-1 text-xs text-background opacity-0 shadow-lg transition-opacity group-hover:block group-hover:opacity-100">
+                        {getTimeoutMessage(transaction)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Progress bar (for in-progress transactions) */}
+                {isInProgress(transaction) && (
+                  <div className="w-full max-w-48">
+                    <div className="h-1.5 w-full overflow-hidden rounded-md bg-muted">
+                      <div
+                        className="h-full bg-accent transition-all duration-300"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Column 2: Amount & Status - Amount, status and time */}
-            <div className="flex flex-col gap-2 min-w-0">
-              {/* Amount */}
-              {amount && (
-                <span className="text-sm font-medium">{amount}</span>
-              )}
-              
-              {/* Status and Time */}
-              <div className="flex items-center gap-2 flex-wrap">
-              {/* Pill-shaped status badge */}
-              <div className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5',
-                badgeBgColor,
-                badgeTextColor,
-                badgeBorderColor
-              )}>
-                {statusIcon}
-                <span className="text-xs font-medium">{statusLabel}</span>
+            {/* Column 3: Time - Only shown in detailed view when actions are visible */}
+            {!hideActions && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
+                <Clock className="h-3.5 w-3.5 flex-shrink-0" />
+                <span>{timeElapsed}</span>
               </div>
-              
-              {hasClientTimeout(transaction) && (
-                <div className="group relative">
-                  <AlertCircle className="h-3.5 w-3.5 text-warning" />
-                  <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-foreground px-2 py-1 text-xs text-background opacity-0 shadow-lg transition-opacity group-hover:block group-hover:opacity-100">
-                    {getTimeoutMessage(transaction)}
-                  </div>
-                </div>
-              )}
-              
-              {/* Time with clock icon */}
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Clock className="h-3.5 w-3.5" />
-                  <span>{timeElapsed}</span>
-                </div>
-              </div>
+            )}
 
-              {/* Progress bar (for in-progress transactions) */}
-              {isInProgress(transaction) && (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Progress</span>
-                    <span className="font-medium">{progress}%</span>
-                  </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full bg-primary transition-all duration-300"
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Column 3: Actions - Action icons */}
+            {/* Column 4: Actions - Action icons */}
             {!hideActions && (
           <div className="flex items-center gap-2 flex-shrink-0">
             {onDelete && (
@@ -294,7 +392,7 @@ export const TransactionCard = memo(function TransactionCard({
                     trigger={
               <button
                 type="button"
-                        className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-muted/80 transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
+                        className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground hover:bg-muted/80 transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
                         aria-label="Transaction actions"
                       >
                         <MoreVertical className="h-4 w-4" />

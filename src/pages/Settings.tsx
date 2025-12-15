@@ -10,9 +10,10 @@ import { CollapsibleChainSection } from '@/components/settings/CollapsibleChainS
 import { ClearTransactionHistoryDialog } from '@/components/settings/ClearTransactionHistoryDialog'
 import { InvalidateShieldedContextDialog } from '@/components/settings/InvalidateShieldedContextDialog'
 import { AddressBookSelector } from '@/components/addressBook/AddressBookSelector'
+import { Switch } from '@/components/common/Switch'
 import { customEvmChainUrlsAtom, customTendermintChainUrlsAtom, type CustomChainUrls } from '@/atoms/customChainUrlsAtom'
 import { txAtom } from '@/atoms/txAtom'
-import { nobleFallbackAddressAtom } from '@/atoms/appAtom'
+import { nobleFallbackAddressAtom, autoShieldedSyncEnabledAtom } from '@/atoms/appAtom'
 import { saveCustomChainUrls, loadCustomChainUrls } from '@/services/storage/customChainUrlsStorage'
 import { loadNobleFallbackAddress, saveNobleFallbackAddress } from '@/services/storage/nobleFallbackStorage'
 import { validateBech32Address } from '@/services/validation'
@@ -30,6 +31,7 @@ export function Settings() {
   const [tendermintCustomUrls, setTendermintCustomUrls] = useAtom(customTendermintChainUrlsAtom)
   const [, setTxState] = useAtom(txAtom)
   const [nobleFallbackAddress, setNobleFallbackAddress] = useAtom(nobleFallbackAddressAtom)
+  const [autoShieldedSyncEnabled, setAutoShieldedSyncEnabled] = useAtom(autoShieldedSyncEnabledAtom)
   const [isLoading, setIsLoading] = useState(true)
   const [evmChains, setEvmChains] = useState<Awaited<ReturnType<typeof fetchEvmChainsConfig>> | null>(null)
   const [tendermintChains, setTendermintChains] = useState<Awaited<ReturnType<typeof fetchTendermintChainsConfig>> | null>(null)
@@ -438,6 +440,29 @@ export function Settings() {
                 </div>
               </div>
             )}
+          </div>
+        </section>
+
+        {/* Shielded Balance Settings Section */}
+        <section>
+          <h2 className="mb-4 text-2xl font-semibold">Shielded Balance Settings</h2>
+          <div className="card">
+            <div className="flex items-center justify-between">
+              <div className="flex gap-2">
+                <label htmlFor="auto-shielded-sync-toggle" className="text-sm font-medium cursor-pointer">
+                  Auto Sync:
+                </label>
+                <p className="text-sm text-muted-foreground">
+                  Automatically sync shielded balance during polling
+                </p>
+              </div>
+              <Switch
+                id="auto-shielded-sync-toggle"
+                checked={autoShieldedSyncEnabled}
+                onCheckedChange={setAutoShieldedSyncEnabled}
+                aria-label="Toggle automatic shielded sync during polling"
+              />
+            </div>
           </div>
         </section>
 

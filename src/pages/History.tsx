@@ -159,9 +159,10 @@ export function History() {
       ) : (
         <div className="card card-xl">
           {/* Column Headers */}
-          <div className="grid grid-cols-[1fr_1fr_auto] items-center gap-4 pb-4 mb-4 border-b border-border">
+          <div className="grid grid-cols-[1fr_1fr_1fr_auto] items-center gap-4 pb-4 mb-4 border-b border-border">
             <div className="text-sm font-semibold text-muted-foreground">Transaction<span className="text-xs font-normal ml-1">(click for details)</span></div>
             <div className="text-sm font-semibold text-muted-foreground">Amount & Status</div>
+            <div></div>
             <div className="text-sm font-semibold text-muted-foreground">Actions</div>
           </div>
 
