@@ -28,8 +28,8 @@ export function ProgressStepper({ currentPhase, className }: ProgressStepperProp
             <div className="flex flex-col items-center flex-1">
               <div className={cn(
                 "w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-all",
-                isComplete && "bg-green-500 text-white",
-                isActive && "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2",
+                isComplete && "bg-success text-foreground",
+                isActive && "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-3 ring-offset-background",
                 !isActive && !isComplete && "bg-muted text-muted-foreground"
               )}>
                 {isComplete ? <CheckCircle2 className="h-4 w-4" /> : idx + 1}
@@ -47,7 +47,7 @@ export function ProgressStepper({ currentPhase, className }: ProgressStepperProp
             {idx < 2 && (
               <div className={cn(
                 "h-0.5 flex-1 mx-2 transition-colors",
-                isComplete ? "bg-green-500" : "bg-muted"
+                isComplete ? "bg-success" : "bg-muted"
               )} />
             )}
           </div>
