@@ -186,6 +186,24 @@ export const TransactionCard = memo(function TransactionCard({
     badgeBorderColor = 'border-muted'
   }
 
+  // Icon color styling based on status
+  let iconBgColor: string
+  let iconTextColor: string
+  
+  if (isError(transaction)) {
+    // Failed/error status
+    iconBgColor = 'bg-error/10'
+    iconTextColor = 'text-error'
+  } else if (effectiveStatus === 'undetermined' || hasClientTimeout(transaction)) {
+    // Timeout/undetermined status
+    iconBgColor = 'bg-warning/10'
+    iconTextColor = 'text-warning'
+  } else {
+    // Default colors based on transaction direction
+    iconBgColor = transaction.direction === 'deposit' ? 'bg-primary/10' : 'bg-info/10'
+    iconTextColor = transaction.direction === 'deposit' ? 'text-primary' : 'text-info'
+  }
+
   return (
     <>
       <div
@@ -206,12 +224,12 @@ export const TransactionCard = memo(function TransactionCard({
               {/* Transaction type icon - smaller for dashboard */}
               <div className="flex-shrink-0">
                 {transaction.direction === 'deposit' ? (
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
-                    <ArrowDownLeft className="h-6 h-6 text-primary" />
+                  <div className={cn("flex h-8 w-8 items-center justify-center rounded-md", iconBgColor)}>
+                    <ArrowDownLeft className={cn("h-6 w-6", iconTextColor)} />
                   </div>
                 ) : (
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-info/10">
-                    <ArrowUpRight className="h-6 h-6 text-info" />
+                  <div className={cn("flex h-8 w-8 items-center justify-center rounded-md", iconBgColor)}>
+                    <ArrowUpRight className={cn("h-6 w-6", iconTextColor)} />
                   </div>
                 )}
               </div>
@@ -298,12 +316,12 @@ export const TransactionCard = memo(function TransactionCard({
               {/* Transaction type icon */}
               <div className="flex-shrink-0">
                 {transaction.direction === 'deposit' ? (
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
-                    <ArrowDownLeft className="h-6 w-6 text-primary" />
+                  <div className={cn("flex h-8 w-8 items-center justify-center rounded-md", iconBgColor)}>
+                    <ArrowDownLeft className={cn("h-6 w-6", iconTextColor)} />
                   </div>
                 ) : (
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-info/10">
-                    <ArrowUpRight className="h-6 w-6 text-info" />
+                  <div className={cn("flex h-8 w-8 items-center justify-center rounded-md", iconBgColor)}>
+                    <ArrowUpRight className={cn("h-6 w-6", iconTextColor)} />
                   </div>
                 )}
               </div>
