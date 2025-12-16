@@ -35,7 +35,7 @@ export function ExplorerLink({
       rel="noopener noreferrer"
       onClick={onClick}
       className={cn(
-        'text-info hover:text-info/80 underline flex items-center gap-1',
+        'text-primary hover:text-primary/80 underline flex items-center gap-1',
         iconOnly && 'no-underline',
         className
       )}

@@ -72,11 +72,11 @@ export function Navbar({}: NavbarProps) {
           )}
           <span className="text-sm">{isSidebarCollapsed ? 'Menu' : 'Close'}</span>
         </button> */}
-        <div className="relative h-14 w-auto">
+        <div className="relative h-14 w-68">
           <img
             src="/assets/logos/wordmark-light.png"
             alt="Borderless Private USDC"
-            className="h-14 w-auto dark:hidden"
+            className="h-14 w-68 dark:hidden"
           />
           <img
             src="/assets/logos/wordmark-dark.png"

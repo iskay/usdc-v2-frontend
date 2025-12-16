@@ -21,26 +21,26 @@ export function InfoRow({
   valueClassName,
   size = 'md',
 }: InfoRowProps) {
-  const textSizeClass = size === 'sm' ? 'text-xs' : 'text-sm'
+  const textSizeClass = size === 'sm' ? 'text-xs' : size === 'md' ? 'text-sm' : size === 'lg' ? 'text-base' : 'text-sm'
 
   return (
-    <div className={cn('space-y-1', className)}>
-      <dt className={cn('text-muted-foreground', textSizeClass)}>{label}</dt>
+    <div className={cn('space-y-2', className)}>
+      <dt className={cn('text-muted-foreground', 'text-sm')}>{label}</dt>
       <dd>
-        <div className="flex justify-between gap-2">
-          <span className={cn('font-mono', textSizeClass, valueClassName)}>{value}</span>
-          <div className="action-group">
+        <div className="flex items-center justify-start gap-2">
+          <span className={cn(textSizeClass, 'font-mono', valueClassName)}>{value}</span>
+          <div className="gap-0 flex">
             <CopyButton
               text={value}
               label={label}
-              size={size}
+              size='md'
               onCopy={onCopy}
             />
             {explorerUrl && (
               <ExplorerLink
                 url={explorerUrl}
                 label={`Open ${label} in explorer`}
-                size={size}
+                size='md'
                 iconOnly
                 className="explorer-link-inline"
               />

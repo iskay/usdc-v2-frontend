@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react'
-import { RotateCcw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import { retryPolling } from '@/services/polling/chainPollingService'
 import { canRetryPolling } from '@/services/polling/pollingStatusUtils'
@@ -69,7 +69,7 @@ export function RetryPollingButton({
   }
 
   const variantClasses = {
-    default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+    default: 'bg-transparent text-muted hover:bg-warning/90 font-semibold',
     outline: 'border border-border bg-background hover:bg-muted',
     ghost: 'hover:bg-muted',
   }
@@ -89,12 +89,12 @@ export function RetryPollingButton({
       )}
       aria-label="Retry status tracking"
     >
-      <RotateCcw className={cn(
-        'h-3 w-3',
+      <RefreshCw className={cn(
+        'h-4 w-4 font-semibold',
         size === 'lg' && 'h-4 w-4',
         isLoading && 'animate-spin',
       )} />
-      <span>{isLoading ? 'Retrying...' : 'Retry Tracking'}</span>
+      <span>{isLoading ? 'Retrying...' : 'Retry Tracing'}</span>
     </button>
   )
 }
