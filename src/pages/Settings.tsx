@@ -11,6 +11,7 @@ import { ClearTransactionHistoryDialog } from '@/components/settings/ClearTransa
 import { InvalidateShieldedContextDialog } from '@/components/settings/InvalidateShieldedContextDialog'
 import { AddressBookSelector } from '@/components/addressBook/AddressBookSelector'
 import { Switch } from '@/components/common/Switch'
+import { ThemeToggle } from '@/components/common/ThemeToggle'
 import { customEvmChainUrlsAtom, customTendermintChainUrlsAtom, type CustomChainUrls } from '@/atoms/customChainUrlsAtom'
 import { txAtom } from '@/atoms/txAtom'
 import { nobleFallbackAddressAtom, autoShieldedSyncEnabledAtom } from '@/atoms/appAtom'
@@ -440,6 +441,24 @@ export function Settings() {
                 </div>
               </div>
             )}
+          </div>
+        </section>
+
+        {/* Appearance Settings Section */}
+        <section>
+          <h2 className="mb-4 text-2xl font-semibold">Appearance</h2>
+          <div className="card">
+            <div className="flex items-center justify-between">
+              <div className="flex gap-2">
+                <label htmlFor="theme-toggle" className="text-sm font-medium cursor-pointer">
+                  Theme:
+                </label>
+                <p className="text-sm text-muted-foreground">
+                  Switch between light and dark mode
+                </p>
+              </div>
+              <ThemeToggle />
+            </div>
           </div>
         </section>
 
