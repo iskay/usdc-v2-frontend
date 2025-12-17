@@ -322,7 +322,7 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
                       <div className={cn(
                         "w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-all",
                         isComplete && "bg-success text-success-foreground",
-                        isActive && "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2",
+                        isActive && "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2 ring-offset-background",
                         !isActive && !isComplete && "bg-muted text-muted-foreground"
                       )}>
                         {isComplete ? <CheckCircle2 className="h-4 w-4" /> : idx + 1}

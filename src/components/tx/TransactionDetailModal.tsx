@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { X, CheckCircle2, XCircle, Clock, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
-import { InfoRow } from '@/components/common/InfoRow'
+import { X, CheckCircle2, XCircle, Clock, AlertCircle, ChevronDown, ChevronUp, Info, User, Ghost } from 'lucide-react'
 import { ExplorerLink } from '@/components/common/ExplorerLink'
 import { CopyButton } from '@/components/common/CopyButton'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
@@ -28,6 +27,9 @@ import { findTendermintChainByKey, getDefaultNamadaChainKey } from '@/config/cha
 import { ChainProgressTimeline } from '@/components/tx/ChainProgressTimeline'
 import { DEPOSIT_STAGES, getExpectedStages, getChainOrder, type FlowType } from '@/shared/flowStages'
 import type { StageTiming } from '@/services/tx/transactionStatusService'
+import { getAddressDisplay, isDisposableNamadaAddress } from '@/utils/addressDisplayUtils'
+import { Tooltip } from '@/components/common/Tooltip'
+import { formatAddress } from '@/utils/toastHelpers'
 
 export interface TransactionDetailModalProps {
   transaction: StoredTransaction
@@ -43,6 +45,8 @@ export function TransactionDetailModal({
   const [evmChainsConfig, setEvmChainsConfig] = useState<EvmChainsFile | null>(null)
   const [tendermintChainsConfig, setTendermintChainsConfig] = useState<TendermintChainsFile | null>(null)
   const [isStageTimelineExpanded, setIsStageTimelineExpanded] = useState(false)
+  const [showSenderAddress, setShowSenderAddress] = useState(false)
+  const [showReceiverAddress, setShowReceiverAddress] = useState(false)
 
   // Load chain configs when modal opens
   useEffect(() => {
@@ -492,10 +496,157 @@ export function TransactionDetailModal({
   }
 
 
-  // Format address for display (truncate middle)
-  function formatAddress(address: string): string {
-    if (address.length <= 10) return address
-    return `${address.slice(0, 6)}...${address.slice(-4)}`
+  // Helper function to format address display (truncated address only)
+  const formatAddressDisplay = (address: string | undefined): string => {
+    if (!address) return ''
+    return formatAddress(address)
+  }
+
+  // Address display component that handles all three cases
+  const AddressDisplaySection = ({
+    address,
+    label,
+    explorerUrl,
+    isSender = false,
+    showAddress,
+    onToggleShowAddress,
+  }: {
+    address: string | undefined
+    label: string
+    explorerUrl?: string
+    isSender?: boolean
+    showAddress: boolean
+    onToggleShowAddress: () => void
+  }) => {
+    if (!address) return null
+
+    const addressInfo = getAddressDisplay(address)
+    const isDisposable = isSender && isDisposableNamadaAddress(address, transaction)
+    const isFromAddressBook = addressInfo?.isFromAddressBook ?? false
+
+    // Always show the label at the top
+    return (
+      <div className="space-y-2">
+        <dt className="text-sm text-muted-foreground">{label}</dt>
+        
+        {/* Case 1: No address book match and not disposable - show address directly */}
+        {!isFromAddressBook && !isDisposable && (
+          <dd>
+            <div className="flex items-center justify-start gap-2">
+              <span className="text-sm font-mono">{formatAddressDisplay(address)}</span>
+              <div className="gap-0 flex">
+                <CopyButton
+                  text={address}
+                  label={label}
+                  size='md'
+                />
+                {explorerUrl && (
+                  <ExplorerLink
+                    url={explorerUrl}
+                    label={`Open ${label} in explorer`}
+                    size='md'
+                    iconOnly
+                    className="explorer-link-inline"
+                  />
+                )}
+              </div>
+            </div>
+          </dd>
+        )}
+
+        {/* Case 2: Address book match */}
+        {isFromAddressBook && !isDisposable && addressInfo && (
+          <>
+            <dd>
+              <div className="flex items-center gap-1 text-md">
+                <User className="h-4 w-4 text-success flex-shrink-0" />
+                <span className="font-semibold">{addressInfo.display}</span>
+              </div>
+            </dd>
+            {!showAddress ? (
+              <button
+                type="button"
+                onClick={onToggleShowAddress}
+                className="text-xs text-primary/80 hover:text-primary/60 p-0"
+              >
+                Show address
+              </button>
+            ) : (
+              <dd>
+                <div className="flex items-center justify-start gap-2">
+                  <span className="text-xs text-muted-foreground font-mono">{formatAddressDisplay(address)}</span>
+                  <div className="gap-0 flex">
+                    <CopyButton
+                      text={address}
+                      label={label}
+                      size='sm'
+                    />
+                    {explorerUrl && (
+                      <ExplorerLink
+                        url={explorerUrl}
+                        label={`Open ${label} in explorer`}
+                        size='sm'
+                        iconOnly
+                        className="explorer-link-inline"
+                      />
+                    )}
+                  </div>
+                </div>
+              </dd>
+            )}
+          </>
+        )}
+
+        {/* Case 3: Disposable */}
+        {isDisposable && (
+          <>
+            <dd>
+              <Tooltip
+                content="An unlinked address created only for sending a single shielded transaction."
+                side="top"
+              >
+                <div className="flex items-center gap-2 text-md font-medium">
+                  <Ghost className="h-4 w-4 flex-shrink-0 text-success" />
+                  <span>Disposable address</span>
+                  <Info className="h-3 w-3 text-muted-foreground" />
+                </div>
+              </Tooltip>
+            </dd>
+            {!showAddress ? (
+              <button
+                type="button"
+                onClick={onToggleShowAddress}
+                className="text-xs text-primary/80 hover:text-primary/60 p-0"
+              >
+                Show address
+              </button>
+            ) : (
+              <dd>
+                <div className="flex items-center justify-start gap-2">
+                  <span className="text-xs text-muted-foreground font-mono">{formatAddressDisplay(address)}</span>
+                  <div className="gap-0 flex">
+                    <CopyButton
+                      text={address}
+                      label={label}
+                      size='sm'
+                    />
+                    {explorerUrl && (
+                      <ExplorerLink
+                        url={explorerUrl}
+                        label={`Open ${label} in explorer`}
+                        size='sm'
+                        iconOnly
+                        className="explorer-link-inline"
+                      />
+                    )}
+                  </div>
+                </div>
+              </dd>
+            )}
+          </>
+        )}
+      </div>
+    )
   }
 
   // Format transaction hash
@@ -678,9 +829,9 @@ export function TransactionDetailModal({
           <div className="grid grid-cols-4 gap-4">
             {senderAddress && (
               <div className="bg-muted p-4 rounded-md">
-                <InfoRow
+                <AddressDisplaySection
+                  address={senderAddress}
                   label={`From ${getSourceChainName()}`}
-                  value={formatAddress(senderAddress)}
                   explorerUrl={buildExplorerUrl(
                     senderAddress,
                     'address',
@@ -689,15 +840,17 @@ export function TransactionDetailModal({
                       ? getEvmChainKey(transaction.depositDetails?.chainName, transaction.chain)
                       : undefined
                   )}
-                  size="md"
+                  isSender={true}
+                  showAddress={showSenderAddress}
+                  onToggleShowAddress={() => setShowSenderAddress(!showSenderAddress)}
                 />
               </div>
             )}
             {receiverAddress && (
               <div className="bg-muted p-4 rounded-md">
-                <InfoRow
+                <AddressDisplaySection
+                  address={receiverAddress}
                   label={`To ${getDestinationChainName()}`}
-                  value={formatAddress(receiverAddress)}
                   explorerUrl={buildExplorerUrl(
                     receiverAddress,
                     'address',
@@ -706,7 +859,9 @@ export function TransactionDetailModal({
                       ? getEvmChainKey(transaction.paymentDetails?.chainName, transaction.chain)
                       : undefined
                   )}
-                  size="md"
+                  isSender={false}
+                  showAddress={showReceiverAddress}
+                  onToggleShowAddress={() => setShowReceiverAddress(!showReceiverAddress)}
                 />
               </div>
             )}

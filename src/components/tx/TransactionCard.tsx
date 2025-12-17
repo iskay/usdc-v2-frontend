@@ -19,8 +19,7 @@ import { cn } from '@/lib/utils'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 import { findChainByKey } from '@/config/chains'
 import type { EvmChainsFile } from '@/config/chains'
-import { getAllAddresses } from '@/services/addressBook/addressBookService'
-import { formatAddress } from '@/utils/toastHelpers'
+import { getAddressDisplay } from '@/utils/addressDisplayUtils'
 
 export interface TransactionCardProps {
   transaction: StoredTransaction
@@ -98,22 +97,6 @@ export const TransactionCard = memo(function TransactionCard({
     return chainKey
   }
 
-  // Helper function to get address display (name from address book or truncated address)
-  const getAddressDisplay = (address: string | undefined): { display: string; isFromAddressBook: boolean } | null => {
-    if (!address) return null
-    
-    // Check if address is in address book
-    const addressBookEntry = getAllAddresses().find(
-      (entry) => entry.address.toLowerCase() === address.toLowerCase().trim()
-    )
-    
-    if (addressBookEntry) {
-      return { display: addressBookEntry.name, isFromAddressBook: true }
-    }
-    
-    // Return truncated address
-    return { display: formatAddress(address), isFromAddressBook: false }
-  }
 
   // Get the address to display
   const displayAddress = transaction.direction === 'deposit'
