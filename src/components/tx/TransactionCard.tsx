@@ -17,9 +17,9 @@ import { DeleteTransactionConfirmationDialog } from './DeleteTransactionConfirma
 import { DropdownMenu, DropdownMenuItem } from '@/components/common/DropdownMenu'
 import { cn } from '@/lib/utils'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
-import { findChainByKey } from '@/config/chains'
 import type { EvmChainsFile } from '@/config/chains'
 import { getAddressDisplay } from '@/utils/addressDisplayUtils'
+import { getEvmChainKey } from '@/utils/chainUtils'
 
 export interface TransactionCardProps {
   transaction: StoredTransaction
@@ -79,9 +79,12 @@ export const TransactionCard = memo(function TransactionCard({
     
     // Look up by chain key in evm-chains.json
     if (evmChainsConfig) {
-      const chain = findChainByKey(evmChainsConfig, chainKey)
-      if (chain) {
-        return chain.name
+      const resolvedKey = getEvmChainKey(chainKey, chainKey, evmChainsConfig)
+      if (resolvedKey) {
+        const chain = evmChainsConfig.chains.find(c => c.key === resolvedKey)
+        if (chain) {
+          return chain.name
+        }
       }
       
       // If not found by key, try to find by name (in case chainKey is already a display name)

@@ -119,3 +119,92 @@ export async function getNobleTxExplorerUrl(txHash: string): Promise<string | un
   return `${chain.explorer.baseUrl}/${txPath}/${lowercasedHash}`
 }
 
+/**
+ * Synchronous explorer URL builder that accepts configs as parameters.
+ * Use this when you already have the chain configs loaded (e.g., in components).
+ * 
+ * @param value - The value to build URL for (address, tx hash, or block height)
+ * @param type - The type of URL to build ('address', 'tx', or 'block')
+ * @param chainType - The chain type ('evm', 'namada', or 'noble')
+ * @param chainKey - Optional chain key (required for EVM chains)
+ * @param evmChainsConfig - EVM chains configuration (required for EVM chains)
+ * @param tendermintChainsConfig - Tendermint chains configuration (required for Namada/Noble chains)
+ * @returns The explorer URL, or undefined if chain config is not available
+ */
+export function buildExplorerUrlSync(
+  value: string,
+  type: 'address' | 'tx' | 'block',
+  chainType: 'evm' | 'namada' | 'noble',
+  chainKey: string | undefined,
+  evmChainsConfig: EvmChainsFile | null,
+  tendermintChainsConfig: TendermintChainsFile | null
+): string | undefined {
+  if (type === 'address') {
+    if (chainType === 'evm') {
+      const chain = chainKey && evmChainsConfig ? findChainByKey(evmChainsConfig, chainKey) : null
+      if (chain?.explorer?.baseUrl) {
+        const addressPath = chain.explorer.addressPath ?? 'address'
+        return `${chain.explorer.baseUrl}/${addressPath}/${value}`
+      }
+    } else if (chainType === 'namada') {
+      const namadaChainKey = tendermintChainsConfig ? getDefaultNamadaChainKey(tendermintChainsConfig) : 'namada-testnet'
+      const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, namadaChainKey || 'namada-testnet') : null
+      if (chain?.explorer?.baseUrl) {
+        const addressPath = chain.explorer.addressPath ?? 'account'
+        return `${chain.explorer.baseUrl}/${addressPath}/${value}`
+      }
+    } else if (chainType === 'noble') {
+      const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, 'noble-testnet') : null
+      if (chain?.explorer?.baseUrl) {
+        const addressPath = chain.explorer.addressPath ?? 'account'
+        return `${chain.explorer.baseUrl}/${addressPath}/${value}`
+      }
+    }
+  } else if (type === 'tx') {
+    const lowercasedHash = value.toLowerCase()
+    if (chainType === 'evm') {
+      const chain = chainKey && evmChainsConfig ? findChainByKey(evmChainsConfig, chainKey) : null
+      if (chain?.explorer?.baseUrl) {
+        const txPath = chain.explorer.txPath ?? 'tx'
+        return `${chain.explorer.baseUrl}/${txPath}/${lowercasedHash}`
+      }
+    } else if (chainType === 'namada') {
+      const namadaChainKey = tendermintChainsConfig ? getDefaultNamadaChainKey(tendermintChainsConfig) : 'namada-testnet'
+      const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, namadaChainKey || 'namada-testnet') : null
+      if (chain?.explorer?.baseUrl) {
+        const txPath = chain.explorer.txPath ?? 'tx'
+        return `${chain.explorer.baseUrl}/${txPath}/${lowercasedHash}`
+      }
+    } else if (chainType === 'noble') {
+      const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, 'noble-testnet') : null
+      if (chain?.explorer?.baseUrl) {
+        const txPath = chain.explorer.txPath ?? 'tx'
+        return `${chain.explorer.baseUrl}/${txPath}/${lowercasedHash}`
+      }
+    }
+  } else if (type === 'block') {
+    // Block explorer URLs
+    if (chainType === 'evm') {
+      const chain = chainKey && evmChainsConfig ? findChainByKey(evmChainsConfig, chainKey) : null
+      if (chain?.explorer?.baseUrl) {
+        const blockPath = chain.explorer.blockPath ?? 'block'
+        return `${chain.explorer.baseUrl}/${blockPath}/${value}`
+      }
+    } else if (chainType === 'namada') {
+      const namadaChainKey = tendermintChainsConfig ? getDefaultNamadaChainKey(tendermintChainsConfig) : 'namada-testnet'
+      const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, namadaChainKey || 'namada-testnet') : null
+      if (chain?.explorer?.baseUrl) {
+        const blockPath = chain.explorer.blockPath ?? 'blocks'
+        return `${chain.explorer.baseUrl}/${blockPath}/${value}`
+      }
+    } else if (chainType === 'noble') {
+      const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, 'noble-testnet') : null
+      if (chain?.explorer?.baseUrl) {
+        const blockPath = chain.explorer.blockPath ?? 'blocks'
+        return `${chain.explorer.baseUrl}/${blockPath}/${value}`
+      }
+    }
+  }
+  return undefined
+}
+

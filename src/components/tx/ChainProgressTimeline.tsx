@@ -17,53 +17,13 @@ import { RetryPollingButton } from '@/components/polling/RetryPollingButton'
 import { cn } from '@/lib/utils'
 import type { ChainKey } from '@/shared/flowStages'
 import type { ChainStatus } from '@/services/polling/types'
+import { getChainDisplayName } from '@/utils/chainUtils'
+import type { EvmChainsFile } from '@/config/chains'
 
 export interface ChainProgressTimelineProps {
   transaction: StoredTransaction
-  evmChainsConfig?: { chains: Array<{ key: string; name: string }> } | null
+  evmChainsConfig?: EvmChainsFile | null
   className?: string
-}
-
-/**
- * Get chain display name helper
- */
-function getChainDisplayName(
-  chain: ChainKey,
-  transaction: StoredTransaction,
-  evmChainsConfig?: { chains: Array<{ key: string; name: string }> } | null
-): string {
-  if (chain === 'noble') {
-    return 'Noble'
-  }
-  if (chain === 'namada') {
-    return 'Namada'
-  }
-  // For EVM, get the actual chain name from transaction details
-  if (chain === 'evm') {
-    const chainName = transaction.depositDetails?.chainName || transaction.paymentDetails?.chainName
-    if (chainName && evmChainsConfig) {
-      // Try to find chain by name
-      const foundChain = evmChainsConfig.chains.find(
-        c => c.name.toLowerCase() === chainName.toLowerCase() || c.key === chainName
-      )
-      if (foundChain) {
-        return foundChain.name
-      }
-      // If not found, return the chainName as-is (might already be display name)
-      return chainName
-    }
-    // Fallback: try to get from transaction.chain
-    if (transaction.chain && evmChainsConfig) {
-      const foundChain = evmChainsConfig.chains.find(
-        c => c.key === transaction.chain || c.name.toLowerCase() === transaction.chain.toLowerCase()
-      )
-      if (foundChain) {
-        return foundChain.name
-      }
-    }
-    return 'EVM'
-  }
-  return 'Unknown'
 }
 
 /**
@@ -405,7 +365,7 @@ export function ChainProgressTimeline({
     ? stepStates[activeStepIndex] 
     : (stepStates[stepStates.length - 1]?.state === 'completed' ? stepStates[stepStates.length - 1] : null)
   const activeChainDisplayName = activeStep
-    ? getChainDisplayName(activeStep.step.chain, transaction, evmChainsConfig)
+    ? getChainDisplayName(activeStep.step.chain, transaction, evmChainsConfig || null)
     : ''
   
   // Get status message and subheading based on status box state

@@ -1,35 +1,28 @@
-import { useEffect, useState, useCallback } from 'react'
-import { X, CheckCircle2, XCircle, Clock, AlertCircle, ChevronDown, ChevronUp, Info, User, Ghost } from 'lucide-react'
-import { ExplorerLink } from '@/components/common/ExplorerLink'
-import { CopyButton } from '@/components/common/CopyButton'
+import { useEffect, useState } from 'react'
+import { Clock, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import {
-  isSuccess,
-  isError,
   getStatusLabel,
-  getEffectiveStatus,
   getTotalDurationLabel,
   getStageTimings,
   hasClientTimeout,
 } from '@/services/tx/transactionStatusService'
-import { ResumePollingButton } from '@/components/polling/ResumePollingButton'
-import { CancelPollingButton } from '@/components/polling/CancelPollingButton'
-import { RetryPollingButton } from '@/components/polling/RetryPollingButton'
-import { RegisterNobleForwardingButton } from '@/components/polling/RegisterNobleForwardingButton'
 import type { ChainKey } from '@/shared/flowStages'
 import { getAllStagesFromTransaction } from '@/services/polling/stageUtils'
-import { cn } from '@/lib/utils'
 import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 import type { EvmChainsFile, TendermintChainsFile } from '@/config/chains'
-import { findChainByKey } from '@/config/chains'
-import { findTendermintChainByKey, getDefaultNamadaChainKey } from '@/config/chains'
 import { ChainProgressTimeline } from '@/components/tx/ChainProgressTimeline'
-import { DEPOSIT_STAGES, getExpectedStages, getChainOrder, type FlowType } from '@/shared/flowStages'
+import { getExpectedStages, getChainOrder, type FlowType } from '@/shared/flowStages'
 import type { StageTiming } from '@/services/tx/transactionStatusService'
-import { getAddressDisplay, isDisposableNamadaAddress } from '@/utils/addressDisplayUtils'
-import { Tooltip } from '@/components/common/Tooltip'
-import { formatAddress } from '@/utils/toastHelpers'
+import { TransactionDetailModalHeader } from './TransactionDetailModalHeader'
+import { AddressDisplaySection } from './AddressDisplaySection'
+import { NobleForwardingRegistrationStatus } from './NobleForwardingRegistrationStatus'
+import { TransactionHashCard } from './TransactionHashCard'
+import { StageTimelineItem } from './StageTimelineItem'
+import { getEvmChainKey, getSourceChainName, getDestinationChainName } from '@/utils/chainUtils'
+import { buildExplorerUrlSync } from '@/utils/explorerUtils'
+import { extractSendTxHash, extractReceiveTxHash, getSendTxStatus, getReceiveTxStatus } from '@/utils/transactionUtils'
 
 export interface TransactionDetailModalProps {
   transaction: StoredTransaction
@@ -104,237 +97,6 @@ export function TransactionDetailModal({
       document.body.style.overflow = ''
     }
   }, [open])
-
-
-  // Helper to get EVM chain key from chain name or transaction chain
-  const getEvmChainKey = useCallback((chainName?: string, transactionChain?: string): string | undefined => {
-    if (!evmChainsConfig) return transactionChain
-
-    // First try to find by chain name (case-insensitive)
-    if (chainName) {
-      const normalizedName = chainName.toLowerCase().replace(/\s+/g, '-')
-      const foundByNormalized = evmChainsConfig.chains.find(
-        chain => chain.key.toLowerCase() === normalizedName
-      )
-      if (foundByNormalized) return foundByNormalized.key
-
-      // Try to find by display name
-      const foundByName = evmChainsConfig.chains.find(
-        chain => chain.name.toLowerCase() === chainName.toLowerCase()
-      )
-      if (foundByName) return foundByName.key
-    }
-
-    // Fallback to transaction chain if it looks like a valid key
-    if (transactionChain) {
-      const foundByChain = evmChainsConfig.chains.find(
-        chain => chain.key === transactionChain
-      )
-      if (foundByChain) return foundByChain.key
-    }
-
-    return transactionChain
-  }, [evmChainsConfig])
-
-  // Helper to get chain display name from chain key ('evm', 'noble', 'namada')
-  const getChainDisplayName = useCallback((chainKey: 'evm' | 'noble' | 'namada'): string => {
-    if (chainKey === 'noble') {
-      return 'Noble'
-    }
-    if (chainKey === 'namada') {
-      return 'Namada'
-    }
-    // For EVM, get the actual chain name from transaction details
-    if (chainKey === 'evm') {
-      const chainName = transaction.depositDetails?.chainName || transaction.paymentDetails?.chainName
-      if (chainName && evmChainsConfig) {
-        // Try to find chain by name
-        const chain = evmChainsConfig.chains.find(
-          c => c.name.toLowerCase() === chainName.toLowerCase() || c.key === chainName
-        )
-        if (chain) {
-          return chain.name
-        }
-        // If not found, return the chainName as-is (might already be display name)
-        return chainName
-      }
-      // Fallback: try to get from transaction.chain
-      if (transaction.chain && evmChainsConfig) {
-        const chain = findChainByKey(evmChainsConfig, transaction.chain)
-        if (chain) {
-          return chain.name
-        }
-      }
-      return 'EVM'
-    }
-    // All cases handled above, this should never be reached
-    return 'Unknown'
-  }, [transaction, evmChainsConfig])
-
-  // Helper to get EVM chain logo
-  const getEvmChainLogo = useCallback((): string | undefined => {
-    const chainKey = transaction.direction === 'deposit'
-      ? getEvmChainKey(transaction.depositDetails?.chainName, transaction.chain)
-      : getEvmChainKey(transaction.paymentDetails?.chainName, transaction.chain)
-    
-    if (chainKey && evmChainsConfig) {
-      const chain = findChainByKey(evmChainsConfig, chainKey)
-      return chain?.logo
-    }
-    return undefined
-  }, [transaction, evmChainsConfig, getEvmChainKey])
-
-  // Helper to get send transaction status
-  const getSendTxStatus = useCallback((): 'success' | 'pending' => {
-    if (!transaction.pollingState) return 'pending'
-    const chainStatus = transaction.pollingState.chainStatus
-    if (transaction.direction === 'deposit') {
-      return chainStatus.evm?.status === 'success' ? 'success' : 'pending'
-    } else {
-      return chainStatus.namada?.status === 'success' ? 'success' : 'pending'
-    }
-  }, [transaction])
-
-  // Helper to get receive transaction status
-  const getReceiveTxStatus = useCallback((): 'success' | 'pending' => {
-    if (!transaction.pollingState) return 'pending'
-    const chainStatus = transaction.pollingState.chainStatus
-    if (transaction.direction === 'deposit') {
-      return chainStatus.namada?.status === 'success' ? 'success' : 'pending'
-    } else {
-      return chainStatus.evm?.status === 'success' ? 'success' : 'pending'
-    }
-  }, [transaction])
-
-  // Helper to get source chain name (From)
-  const getSourceChainName = useCallback((): string => {
-    if (transaction.direction === 'deposit') {
-      // For deposits, source is EVM chain
-      const chainName = transaction.depositDetails?.chainName || transaction.chain
-      if (chainName && evmChainsConfig) {
-        const chain = evmChainsConfig.chains.find(
-          c => c.name.toLowerCase() === chainName.toLowerCase() || c.key === chainName
-        )
-        if (chain) {
-          return chain.name
-        }
-        return chainName
-      }
-      if (transaction.chain && evmChainsConfig) {
-        const chain = findChainByKey(evmChainsConfig, transaction.chain)
-        if (chain) {
-          return chain.name
-        }
-      }
-      return transaction.chain || 'EVM'
-    } else {
-      // For payments, source is Namada
-      return 'Namada'
-    }
-  }, [transaction, evmChainsConfig])
-
-  // Helper to get destination chain name (To)
-  const getDestinationChainName = useCallback((): string => {
-    if (transaction.direction === 'deposit') {
-      // For deposits, destination is Namada
-      return 'Namada'
-    } else {
-      // For payments, destination is EVM chain
-      const chainName = transaction.paymentDetails?.chainName || transaction.chain
-      if (chainName && evmChainsConfig) {
-        const chain = evmChainsConfig.chains.find(
-          c => c.name.toLowerCase() === chainName.toLowerCase() || c.key === chainName
-        )
-        if (chain) {
-          return chain.name
-        }
-        return chainName
-      }
-      if (transaction.chain && evmChainsConfig) {
-        const chain = findChainByKey(evmChainsConfig, transaction.chain)
-        if (chain) {
-          return chain.name
-        }
-      }
-      return transaction.chain || 'EVM'
-    }
-  }, [transaction, evmChainsConfig])
-
-  // Build explorer URL helper
-  const buildExplorerUrl = useCallback((
-    value: string,
-    type: 'address' | 'tx' | 'block',
-    chainType: 'evm' | 'namada' | 'noble',
-    chainKey?: string
-  ): string | undefined => {
-    if (type === 'address') {
-      if (chainType === 'evm') {
-        const chain = chainKey && evmChainsConfig ? findChainByKey(evmChainsConfig, chainKey) : null
-        if (chain?.explorer?.baseUrl) {
-          const addressPath = chain.explorer.addressPath ?? 'address'
-          return `${chain.explorer.baseUrl}/${addressPath}/${value}`
-        }
-      } else if (chainType === 'namada') {
-        const namadaChainKey = tendermintChainsConfig ? getDefaultNamadaChainKey(tendermintChainsConfig) : 'namada-testnet'
-        const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, namadaChainKey || 'namada-testnet') : null
-        if (chain?.explorer?.baseUrl) {
-          const addressPath = chain.explorer.addressPath ?? 'account'
-          return `${chain.explorer.baseUrl}/${addressPath}/${value}`
-        }
-      } else if (chainType === 'noble') {
-        const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, 'noble-testnet') : null
-        if (chain?.explorer?.baseUrl) {
-          const addressPath = chain.explorer.addressPath ?? 'account'
-          return `${chain.explorer.baseUrl}/${addressPath}/${value}`
-        }
-      }
-    } else if (type === 'tx') {
-      const lowercasedHash = value.toLowerCase()
-      if (chainType === 'evm') {
-        const chain = chainKey && evmChainsConfig ? findChainByKey(evmChainsConfig, chainKey) : null
-        if (chain?.explorer?.baseUrl) {
-          const txPath = chain.explorer.txPath ?? 'tx'
-          return `${chain.explorer.baseUrl}/${txPath}/${lowercasedHash}`
-        }
-      } else if (chainType === 'namada') {
-        const namadaChainKey = tendermintChainsConfig ? getDefaultNamadaChainKey(tendermintChainsConfig) : 'namada-testnet'
-        const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, namadaChainKey || 'namada-testnet') : null
-        if (chain?.explorer?.baseUrl) {
-          const txPath = chain.explorer.txPath ?? 'tx'
-          return `${chain.explorer.baseUrl}/${txPath}/${lowercasedHash}`
-        }
-      } else if (chainType === 'noble') {
-        const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, 'noble-testnet') : null
-        if (chain?.explorer?.baseUrl) {
-          const txPath = chain.explorer.txPath ?? 'tx'
-          return `${chain.explorer.baseUrl}/${txPath}/${lowercasedHash}`
-        }
-      }
-    } else if (type === 'block') {
-      // Block explorer URLs
-      if (chainType === 'evm') {
-        const chain = chainKey && evmChainsConfig ? findChainByKey(evmChainsConfig, chainKey) : null
-        if (chain?.explorer?.baseUrl) {
-          const blockPath = chain.explorer.blockPath ?? 'block'
-          return `${chain.explorer.baseUrl}/${blockPath}/${value}`
-        }
-      } else if (chainType === 'namada') {
-        const namadaChainKey = tendermintChainsConfig ? getDefaultNamadaChainKey(tendermintChainsConfig) : 'namada-testnet'
-        const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, namadaChainKey || 'namada-testnet') : null
-        if (chain?.explorer?.baseUrl) {
-          const blockPath = chain.explorer.blockPath ?? 'blocks'
-          return `${chain.explorer.baseUrl}/${blockPath}/${value}`
-        }
-      } else if (chainType === 'noble') {
-        const chain = tendermintChainsConfig ? findTendermintChainByKey(tendermintChainsConfig, 'noble-testnet') : null
-        if (chain?.explorer?.baseUrl) {
-          const blockPath = chain.explorer.blockPath ?? 'blocks'
-          return `${chain.explorer.baseUrl}/${blockPath}/${value}`
-        }
-      }
-    }
-    return undefined
-  }, [evmChainsConfig, tendermintChainsConfig])
 
   if (!open) {
     return null
@@ -426,7 +188,6 @@ export function TransactionDetailModal({
     amount = transaction.paymentDetails.amount
   }
 
-
   // Get receiver address
   const receiverAddress = transaction.depositDetails?.destinationAddress || transaction.paymentDetails?.destinationAddress
 
@@ -443,300 +204,35 @@ export function TransactionDetailModal({
       transaction.flowMetadata?.shieldedMetadata?.transparentAddress
   }
 
-  // Get send and receive transaction hashes
-  let sendTxHash: string | undefined
-  let receiveTxHash: string | undefined
+  // Extract transaction hashes using utility functions
+  const sendTxHash = extractSendTxHash(transaction)
+  const receiveTxHash = extractReceiveTxHash(transaction)
 
-  // Check pollingState for transaction hashes
-  if (transaction.pollingState) {
-    const { chainStatus } = transaction.pollingState
-    if (transaction.direction === 'deposit') {
-      // Deposits: Send Tx = evm, Receive Tx = namadaTxHash from metadata
-      if (!sendTxHash) {
-        sendTxHash = chainStatus.evm?.metadata?.txHash as string | undefined ||
-          chainStatus.evm?.stages?.find(s => s.txHash)?.txHash
-      }
-      if (!receiveTxHash) {
-        // For deposits, receive tx is the namadaTxHash from metadata (the transaction hash after IBC transfer completes)
-        receiveTxHash = transaction.pollingState.metadata?.namadaTxHash as string | undefined ||
-          chainStatus.namada?.metadata?.txHash as string | undefined ||
-          chainStatus.namada?.stages?.find(s => s.stage === 'namada_received' && s.txHash)?.txHash
-      }
-    } else {
-      // Payments: Send Tx = namada, Receive Tx = evm
-      if (!sendTxHash) {
-        sendTxHash = chainStatus.namada?.metadata?.txHash as string | undefined ||
-          chainStatus.namada?.stages?.find(s => s.txHash)?.txHash
-      }
-      if (!receiveTxHash) {
-        receiveTxHash = chainStatus.evm?.metadata?.txHash as string | undefined ||
-          chainStatus.evm?.stages?.find(s => s.txHash)?.txHash
-      }
-    }
+  // Get transaction statuses
+  const sendTxStatus = getSendTxStatus(transaction)
+  const receiveTxStatus = getReceiveTxStatus(transaction)
+
+  // Get chain names
+  const sourceChainName = getSourceChainName(transaction, evmChainsConfig)
+  const destinationChainName = getDestinationChainName(transaction, evmChainsConfig)
+
+  // Helper to build explorer URLs
+  const buildExplorerUrl = (
+    value: string,
+    type: 'address' | 'tx' | 'block',
+    chainType: 'evm' | 'namada' | 'noble',
+    chainKey?: string
+  ): string | undefined => {
+    return buildExplorerUrlSync(value, type, chainType, chainKey, evmChainsConfig, tendermintChainsConfig)
   }
 
-  // Fallback to transaction.hash if neither source has the send hash
-  if (!sendTxHash && transaction.hash) {
-    sendTxHash = transaction.hash
-  }
-
-  // Status icon
-  let statusIcon = <Clock className="h-5 w-5" />
-
-  const effectiveStatus = getEffectiveStatus(transaction)
-
-  if (isSuccess(transaction)) {
-    statusIcon = <CheckCircle2 className="h-5 w-5" />
-  } else if (isError(transaction)) {
-    statusIcon = <XCircle className="h-5 w-5" />
-  } else if (effectiveStatus === 'user_action_required') {
-    statusIcon = <AlertCircle className="h-5 w-5" />
-  } else if (effectiveStatus === 'undetermined') {
-    statusIcon = <AlertCircle className="h-5 w-5" />
-  }
-
-
-  // Helper function to format address display (truncated address only)
-  const formatAddressDisplay = (address: string | undefined): string => {
-    if (!address) return ''
-    return formatAddress(address)
-  }
-
-  // Address display component that handles all three cases
-  const AddressDisplaySection = ({
-    address,
-    label,
-    explorerUrl,
-    isSender = false,
-    showAddress,
-    onToggleShowAddress,
-  }: {
-    address: string | undefined
-    label: string
-    explorerUrl?: string
-    isSender?: boolean
-    showAddress: boolean
-    onToggleShowAddress: () => void
-  }) => {
-    if (!address) return null
-
-    const addressInfo = getAddressDisplay(address)
-    const isDisposable = isSender && isDisposableNamadaAddress(address, transaction)
-    const isFromAddressBook = addressInfo?.isFromAddressBook ?? false
-
-    // Always show the label at the top
-    return (
-      <div className="space-y-2">
-        <dt className="text-sm text-muted-foreground">{label}</dt>
-        
-        {/* Case 1: No address book match and not disposable - show address directly */}
-        {!isFromAddressBook && !isDisposable && (
-          <dd>
-            <div className="flex items-center justify-start gap-2">
-              <span className="text-sm font-mono">{formatAddressDisplay(address)}</span>
-              <div className="gap-0 flex">
-                <CopyButton
-                  text={address}
-                  label={label}
-                  size='md'
-                />
-                {explorerUrl && (
-                  <ExplorerLink
-                    url={explorerUrl}
-                    label={`Open ${label} in explorer`}
-                    size='md'
-                    iconOnly
-                    className="explorer-link-inline"
-                  />
-                )}
-              </div>
-            </div>
-          </dd>
-        )}
-
-        {/* Case 2: Address book match */}
-        {isFromAddressBook && !isDisposable && addressInfo && (
-          <>
-            <dd>
-              <div className="flex items-center gap-1 text-md">
-                <User className="h-4 w-4 text-success flex-shrink-0" />
-                <span className="font-semibold">{addressInfo.display}</span>
-              </div>
-            </dd>
-            {!showAddress ? (
-              <button
-                type="button"
-                onClick={onToggleShowAddress}
-                className="text-xs text-primary/80 hover:text-primary/60 p-0"
-              >
-                Show address
-              </button>
-            ) : (
-              <dd>
-                <div className="flex items-center justify-start gap-2">
-                  <span className="text-xs text-muted-foreground font-mono">{formatAddressDisplay(address)}</span>
-                  <div className="gap-0 flex">
-                    <CopyButton
-                      text={address}
-                      label={label}
-                      size='sm'
-                    />
-                    {explorerUrl && (
-                      <ExplorerLink
-                        url={explorerUrl}
-                        label={`Open ${label} in explorer`}
-                        size='sm'
-                        iconOnly
-                        className="explorer-link-inline"
-                      />
-                    )}
-                  </div>
-                </div>
-              </dd>
-            )}
-          </>
-        )}
-
-        {/* Case 3: Disposable */}
-        {isDisposable && (
-          <>
-            <dd>
-              <Tooltip
-                content="An unlinked address created only for sending a single shielded transaction."
-                side="top"
-              >
-                <div className="flex items-center gap-2 text-md font-medium">
-                  <Ghost className="h-4 w-4 flex-shrink-0 text-success" />
-                  <span>Disposable address</span>
-                  <Info className="h-3 w-3 text-muted-foreground" />
-                </div>
-              </Tooltip>
-            </dd>
-            {!showAddress ? (
-              <button
-                type="button"
-                onClick={onToggleShowAddress}
-                className="text-xs text-primary/80 hover:text-primary/60 p-0"
-              >
-                Show address
-              </button>
-            ) : (
-              <dd>
-                <div className="flex items-center justify-start gap-2">
-                  <span className="text-xs text-muted-foreground font-mono">{formatAddressDisplay(address)}</span>
-                  <div className="gap-0 flex">
-                    <CopyButton
-                      text={address}
-                      label={label}
-                      size='sm'
-                    />
-                    {explorerUrl && (
-                      <ExplorerLink
-                        url={explorerUrl}
-                        label={`Open ${label} in explorer`}
-                        size='sm'
-                        iconOnly
-                        className="explorer-link-inline"
-                      />
-                    )}
-                  </div>
-                </div>
-              </dd>
-            )}
-          </>
-        )}
-      </div>
-    )
-  }
-
-  // Format transaction hash
-  function formatHash(hash: string): string {
-    if (hash.length <= 10) return hash
-    return `${hash.slice(0, 8)}...${hash.slice(-6)}`
-  }
-
-
-  // Noble Forwarding Registration Status component
-  function NobleForwardingRegistrationStatus({
-    reg,
-    forwardingAddress,
-    recipientAddress,
-    channelId,
-    fallback,
-    txId,
-  }: {
-    reg: any
-    forwardingAddress?: string
-    recipientAddress?: string
-    channelId?: string
-    fallback?: string
-    txId: string
-  }) {
-    let statusMessage
-    if (reg.alreadyRegistered) {
-      statusMessage = (
-        <p className="mt-1 text-xs text-success">
-          Already registered
-        </p>
-      )
-    } else if (reg.registrationTx?.txHash) {
-      statusMessage = (
-        <p className="mt-1 text-xs text-success">
-          Registered: {reg.registrationTx.txHash.slice(0, 16)}...
-        </p>
-      )
-    } else if (reg.balanceCheck?.performed && !reg.balanceCheck.sufficient) {
-      statusMessage = (
-        <p className="mt-1 text-xs text-warning">
-          Insufficient balance: {reg.balanceCheck.balanceUusdc || '0'} uusdc &lt; {reg.balanceCheck.minRequiredUusdc || '0'} uusdc required
-        </p>
-      )
-    } else if (reg.errorMessage) {
-      statusMessage = (
-        <p className="mt-1 text-xs text-error">
-          Error: {reg.errorMessage}
-        </p>
-      )
-    } else {
-      statusMessage = (
-        <p className="mt-1 text-xs text-muted-foreground">
-          Registration pending
-        </p>
-      )
-    }
-
-    const showButton = forwardingAddress && recipientAddress && !reg.registrationTx?.txHash && !reg.alreadyRegistered
-
-    return (
-      <div className="border border-border rounded-md bg-muted/50 p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h4 className="text-sm font-semibold text-foreground">Noble Forwarding Registration</h4>
-            {statusMessage}
-          </div>
-          {showButton && (
-            <RegisterNobleForwardingButton
-              txId={txId}
-              forwardingAddress={forwardingAddress!}
-              recipientAddress={recipientAddress!}
-              channelId={channelId}
-              fallback={fallback}
-              size="sm"
-              variant="outline"
-            />
-          )}
-        </div>
-
-        {/* Balance Check Details */}
-        {reg.balanceCheck?.performed && (
-          <div className="mt-2 pt-2 border-t border-border text-xs text-muted-foreground">
-            <p>Balance: {reg.balanceCheck.balanceUusdc || '0'} uusdc</p>
-            <p>Required: {reg.balanceCheck.minRequiredUusdc || '0'} uusdc</p>
-          </div>
-        )}
-      </div>
-    )
-  }
+  // Get EVM chain keys for explorer URLs
+  const senderChainKey = transaction.direction === 'deposit'
+    ? getEvmChainKey(transaction.depositDetails?.chainName, transaction.chain, evmChainsConfig)
+    : undefined
+  const receiverChainKey = transaction.direction === 'send'
+    ? getEvmChainKey(transaction.paymentDetails?.chainName, transaction.chain, evmChainsConfig)
+    : undefined
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -750,78 +246,13 @@ export function TransactionDetailModal({
       {/* Modal Content */}
       <div className="relative z-50 w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-lg border border-border bg-background shadow-lg">
         {/* Header */}
-        <div className="sticky top-0 z-20 flex items-center justify-between bg-background p-6">
-          <div className="flex items-baseline justify-between flex-1 pr-4 gap-1">
-            <div className="flex items-center gap-2">
-              {/* For deposits: logo → arrow → "Deposit" */}
-              {/* For payments: "Payment" → arrow → logo */}
-              {transaction.direction === 'deposit' ? (
-                <>
-                  {getEvmChainLogo() && (
-                    <img
-                      src={getEvmChainLogo()}
-                      alt={transaction.depositDetails?.chainName || transaction.chain || 'Source'}
-                      className="h-6 w-6 rounded-full flex-shrink-0 object-contain"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none'
-                      }}
-                    />
-                  )}
-                  <div className="text-muted-foreground">
-                    →
-                  </div>
-                  <h2 className="text-xl font-semibold">
-                    Deposit
-                  </h2>
-                </>
-              ) : (
-                <>
-                  <h2 className="text-xl font-semibold">
-                    Payment
-                  </h2>
-                  <div className="text-muted-foreground">
-                    →
-                  </div>
-                  {getEvmChainLogo() && (
-                    <img
-                      src={getEvmChainLogo()}
-                      alt={transaction.paymentDetails?.chainName || transaction.chain || 'Destination'}
-                      className="h-6 w-6 rounded-full flex-shrink-0 object-contain"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none'
-                      }}
-                    />
-                  )}
-                </>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground self-center">
-              Sent {startedAt}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            {/* Status Badge */}
-            <div className={cn(
-              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1',
-              isSuccess(transaction) ? 'bg-success/10 text-success' :
-                isError(transaction) ? 'bg-error/10 text-error' :
-                  effectiveStatus === 'user_action_required' ? 'bg-warning/10 text-warning' :
-                    effectiveStatus === 'undetermined' ? 'bg-warning/10 text-warning' :
-                      'bg-muted text-muted-foreground'
-            )}>
-              {statusIcon}
-              <span className="text-xs font-medium">{statusLabel}</span>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1 text-muted-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
-              aria-label="Close modal"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
+        <TransactionDetailModalHeader
+          transaction={transaction}
+          evmChainsConfig={evmChainsConfig}
+          statusLabel={statusLabel}
+          startedAt={startedAt}
+          onClose={onClose}
+        />
 
         {/* Content */}
         <div className="p-6 pt-2 space-y-6">
@@ -831,18 +262,17 @@ export function TransactionDetailModal({
               <div className="bg-muted p-4 rounded-md">
                 <AddressDisplaySection
                   address={senderAddress}
-                  label={`From ${getSourceChainName()}`}
+                  label={`From ${sourceChainName}`}
                   explorerUrl={buildExplorerUrl(
                     senderAddress,
                     'address',
                     transaction.direction === 'deposit' ? 'evm' : 'namada',
-                    transaction.direction === 'deposit'
-                      ? getEvmChainKey(transaction.depositDetails?.chainName, transaction.chain)
-                      : undefined
+                    senderChainKey
                   )}
                   isSender={true}
                   showAddress={showSenderAddress}
                   onToggleShowAddress={() => setShowSenderAddress(!showSenderAddress)}
+                  transaction={transaction}
                 />
               </div>
             )}
@@ -850,18 +280,17 @@ export function TransactionDetailModal({
               <div className="bg-muted p-4 rounded-md">
                 <AddressDisplaySection
                   address={receiverAddress}
-                  label={`To ${getDestinationChainName()}`}
+                  label={`To ${destinationChainName}`}
                   explorerUrl={buildExplorerUrl(
                     receiverAddress,
                     'address',
                     transaction.direction === 'deposit' ? 'namada' : 'evm',
-                    transaction.direction === 'send'
-                      ? getEvmChainKey(transaction.paymentDetails?.chainName, transaction.chain)
-                      : undefined
+                    receiverChainKey
                   )}
                   isSender={false}
                   showAddress={showReceiverAddress}
                   onToggleShowAddress={() => setShowReceiverAddress(!showReceiverAddress)}
+                  transaction={transaction}
                 />
               </div>
             )}
@@ -912,111 +341,28 @@ export function TransactionDetailModal({
 
           {/* Source and Destination Transactions */}
           <div className="grid grid-cols-2 gap-4">
-            {/* Source Transaction Card */}
-            <div className="bg-muted p-4 rounded-md">
-              <div className="space-y-3">
-                <dt className="text-sm text-muted-foreground">Source Transaction</dt>
-                <dd>
-                  <div className="flex items-center gap-2">
-                    {getSendTxStatus() === 'success' ? (
-                      <CheckCircle2 className="h-5 w-5 text-success flex-shrink-0" />
-                    ) : (
-                      <Clock className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                    )}
-                    {sendTxHash ? (
-                      <>
-                        <span className="text-sm font-mono">{formatHash(sendTxHash)}</span>
-                        <div className="flex items-center gap-1">
-                          <CopyButton
-                            text={sendTxHash}
-                            label="Source Transaction"
-                            size="md"
-                          />
-                          {buildExplorerUrl(
-                            sendTxHash,
-                            'tx',
-                            transaction.direction === 'deposit' ? 'evm' : 'namada',
-                            transaction.direction === 'deposit'
-                              ? getEvmChainKey(transaction.depositDetails?.chainName, transaction.chain)
-                              : undefined
-                          ) && (
-                            <ExplorerLink
-                              url={buildExplorerUrl(
-                                sendTxHash,
-                                'tx',
-                                transaction.direction === 'deposit' ? 'evm' : 'namada',
-                                transaction.direction === 'deposit'
-                                  ? getEvmChainKey(transaction.depositDetails?.chainName, transaction.chain)
-                                  : undefined
-                              )!}
-                              label="Open Source Transaction in explorer"
-                              size="md"
-                              iconOnly
-                              className="explorer-link-inline"
-                            />
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <span className="text-sm">Pending...</span>
-                    )}
-                  </div>
-                </dd>
-              </div>
-            </div>
-
-            {/* Destination Transaction Card */}
-            <div className="bg-muted p-4 rounded-md">
-              <div className="space-y-3">
-                <dt className="text-sm text-muted-foreground">Destination Transaction</dt>
-                <dd>
-                  <div className="flex items-center gap-2">
-                    {getReceiveTxStatus() === 'success' ? (
-                      <CheckCircle2 className="h-5 w-5 text-success flex-shrink-0" />
-                    ) : (
-                      <Clock className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                    )}
-                    {receiveTxHash ? (
-                      <>
-                        <span className="text-sm font-mono">{formatHash(receiveTxHash)}</span>
-                        <div className="flex items-center gap-1">
-                          <CopyButton
-                            text={receiveTxHash}
-                            label="Destination Transaction"
-                            size="md"
-                          />
-                          {buildExplorerUrl(
-                            receiveTxHash,
-                            'tx',
-                            transaction.direction === 'deposit' ? 'namada' : 'evm',
-                            transaction.direction === 'send'
-                              ? getEvmChainKey(transaction.paymentDetails?.chainName, transaction.chain)
-                              : undefined
-                          ) && (
-                            <ExplorerLink
-                              url={buildExplorerUrl(
-                                receiveTxHash,
-                                'tx',
-                                transaction.direction === 'deposit' ? 'namada' : 'evm',
-                                transaction.direction === 'send'
-                                  ? getEvmChainKey(transaction.paymentDetails?.chainName, transaction.chain)
-                                  : undefined
-                              )!}
-                              label="Open Destination Transaction in explorer"
-                              size="md"
-                              iconOnly
-                              className="explorer-link-inline"
-                            />
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <span className="text-sm">Pending...</span>
-                    )}
-                  </div>
-                </dd>
-              </div>
-            </div>
+            <TransactionHashCard
+              label="Source Transaction"
+              txHash={sendTxHash}
+              status={sendTxStatus}
+              explorerUrl={sendTxHash ? buildExplorerUrl(
+                sendTxHash,
+                'tx',
+                transaction.direction === 'deposit' ? 'evm' : 'namada',
+                senderChainKey
+              ) : undefined}
+            />
+            <TransactionHashCard
+              label="Destination Transaction"
+              txHash={receiveTxHash}
+              status={receiveTxStatus}
+              explorerUrl={receiveTxHash ? buildExplorerUrl(
+                receiveTxHash,
+                'tx',
+                transaction.direction === 'deposit' ? 'namada' : 'evm',
+                receiverChainKey
+              ) : undefined}
+            />
           </div>
 
           {/* Tracking Control Buttons and Noble Forwarding Registration */}
@@ -1054,22 +400,6 @@ export function TransactionDetailModal({
                     when you refresh the page.
                   </p>
                 </div>
-              </div>
-            </div>
-          )}
-
-
-          {/* Bottom Section: Tracking Control Buttons */}
-          {/* NOTE: Tracking control buttons are hidden but kept for debug purposes.
-              They can be re-enabled by uncommenting the section below.
-              The Retry button is now available in the status box for polling errors/timeouts. */}
-          {false && transaction.pollingState && (
-            <div className="space-y-3 -mt-4">
-              {/* Tracking Control Buttons */}
-              <div className="flex items-center gap-2">
-                <RetryPollingButton transaction={transaction} size="sm" variant="default" />
-                <ResumePollingButton transaction={transaction} size="sm" variant="default" />
-                <CancelPollingButton transaction={transaction} size="sm" variant="outline" />
               </div>
             </div>
           )}
@@ -1116,15 +446,7 @@ export function TransactionDetailModal({
                   )}
                   {stageTimings.map((timing, index) => {
                     const isLast = index === stageTimings.length - 1
-                    const timingIcon =
-                      timing.status === 'confirmed' ? (
-                        <CheckCircle2 className="h-4 w-4 text-success" />
-                      ) : timing.status === 'failed' ? (
-                        <XCircle className="h-4 w-4 text-error" />
-                      ) : (
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                      )
-
+                    
                     // Find matching stage with metadata
                     // Match by stage name, occurredAt timestamp, and chain
                     const stageWithMetadata = allStages.find(
@@ -1136,11 +458,6 @@ export function TransactionDetailModal({
                           stageChain === timing.chain
                       }
                     )
-                    const blockMetadata = stageWithMetadata?.metadata as {
-                      blockHeight?: number | string
-                      blockTimestamp?: number
-                      eventTxHash?: string
-                    } | undefined
 
                     // Get chain key for explorer URLs
                     const chainKey = timing.chain === 'evm'
@@ -1149,136 +466,17 @@ export function TransactionDetailModal({
                         : transaction.pollingState?.metadata?.chainKey as string | undefined || transaction.chain)
                       : undefined
 
-                    // Get transaction hash from stage.txHash (direct) or metadata.eventTxHash (from block metadata)
-                    const txHash = stageWithMetadata?.txHash || blockMetadata?.eventTxHash
-
-                    // Build explorer URLs
-                    const txExplorerUrl = txHash
-                      ? buildExplorerUrl(txHash, 'tx', timing.chain, chainKey)
-                      : undefined
-                    const blockExplorerUrl = blockMetadata?.blockHeight
-                      ? buildExplorerUrl(String(blockMetadata.blockHeight), 'block', timing.chain, chainKey)
-                      : undefined
-
-                    // Format block timestamp if available
-                    const blockTimestampStr = blockMetadata?.blockTimestamp
-                      ? new Date(blockMetadata.blockTimestamp * 1000).toLocaleString()
-                      : undefined
-
                     return (
-                      <div key={`${timing.chain}-${timing.stage}-${index}`} className="relative pl-8">
-                        {/* Timeline line */}
-                        {!isLast && (
-                          <div className="absolute left-[11px] top-[24px] bottom-[-12px] w-[2px] bg-border min-h-[36px]" />
-                        )}
-
-                        {/* Stage content */}
-                        <div className="flex items-start gap-3">
-                          <div className="relative z-10 -ml-8 flex h-6 w-6 items-center justify-center">
-                            {timingIcon}
-                          </div>
-                          <div className="flex-1 space-y-1">
-                            <div className="flex items-center gap-2 text-sm">
-                              <span className="font-medium capitalize">
-                                {timing.stage.replace(/_/g, ' ')}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                ({getChainDisplayName(timing.chain)})
-                              </span>
-                            </div>
-                            {timing.durationLabel && (
-                              <p className="text-xs text-muted-foreground">
-                                Duration: {timing.durationLabel}
-                              </p>
-                            )}
-                            {timing.status === 'pending' ? (
-                              <p className="text-xs text-muted-foreground">
-                                Not completed
-                              </p>
-                            ) : timing.occurredAt ? (
-                              <p className="text-xs text-muted-foreground">
-                                Detected: {new Date(timing.occurredAt).toLocaleString()}
-                              </p>
-                            ) : null}
-                            {/* Transaction hash (show even if no block metadata) */}
-                            {txHash && (
-                              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                Transaction:{' '}
-                                {txExplorerUrl ? (
-                                  <ExplorerLink
-                                    url={txExplorerUrl}
-                                    size="sm"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <span className="font-mono">
-                                      {txHash.slice(0, 10)}...{txHash.slice(-8)}
-                                    </span>
-                                  </ExplorerLink>
-                                ) : (
-                                  <span className="font-mono">
-                                    {txHash.slice(0, 10)}...{txHash.slice(-8)}
-                                  </span>
-                                )}
-                              </p>
-                            )}
-                            {/* Block metadata */}
-                            {blockMetadata && (
-                              <div className="space-y-1 text-xs text-muted-foreground">
-                                {blockTimestampStr && (
-                                  <p>
-                                    Block time: {blockTimestampStr}
-                                  </p>
-                                )}
-                                {blockMetadata.blockHeight && (
-                                  <p className="flex items-center gap-1">
-                                    Block height:{' '}
-                                    {blockExplorerUrl ? (
-                                      <ExplorerLink
-                                        url={blockExplorerUrl}
-                                        size="sm"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        {blockMetadata.blockHeight}
-                                      </ExplorerLink>
-                                    ) : (
-                                      <span>{blockMetadata.blockHeight}</span>
-                                    )}
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                            {/* Noble forwarding address for NOBLE_FORWARDING_REGISTRATION stage */}
-                            {timing.stage === DEPOSIT_STAGES.NOBLE_FORWARDING_REGISTRATION && (
-                              (() => {
-                                const forwardingAddress = transaction.pollingState?.metadata?.forwardingAddress as string | undefined
-                                const forwardingExplorerUrl = forwardingAddress
-                                  ? buildExplorerUrl(forwardingAddress, 'address', 'noble')
-                                  : undefined
-                                return forwardingAddress ? (
-                                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                    Forwarding address:{' '}
-                                    {forwardingExplorerUrl ? (
-                                      <ExplorerLink
-                                        url={forwardingExplorerUrl}
-                                        size="sm"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <span className="font-mono">
-                                          {forwardingAddress.slice(0, 10)}...{forwardingAddress.slice(-8)}
-                                        </span>
-                                      </ExplorerLink>
-                                    ) : (
-                                      <span className="font-mono">
-                                        {forwardingAddress.slice(0, 10)}...{forwardingAddress.slice(-8)}
-                                      </span>
-                                    )}
-                                  </p>
-                                ) : null
-                              })()
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                      <StageTimelineItem
+                        key={`${timing.chain}-${timing.stage}-${index}`}
+                        timing={timing}
+                        stageWithMetadata={stageWithMetadata}
+                        chainKey={chainKey}
+                        transaction={transaction}
+                        evmChainsConfig={evmChainsConfig}
+                        tendermintChainsConfig={tendermintChainsConfig}
+                        isLast={isLast}
+                      />
                     )
                   })}
                 </div>
@@ -1290,4 +488,3 @@ export function TransactionDetailModal({
     </div>
   )
 }
-
