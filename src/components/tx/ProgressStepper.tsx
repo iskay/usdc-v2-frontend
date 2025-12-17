@@ -35,7 +35,7 @@ export function ProgressStepper({ currentPhase, className }: ProgressStepperProp
                 {isComplete ? <CheckCircle2 className="h-4 w-4" /> : idx + 1}
               </div>
               <span className={cn(
-                "text-xs mt-1 text-center",
+                "text-xs mt-3 text-center",
                 isActive && "font-medium text-foreground",
                 !isActive && "text-muted-foreground"
               )}>
