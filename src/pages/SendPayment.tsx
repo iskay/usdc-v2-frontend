@@ -1,52 +1,35 @@
 import { useState, useEffect, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, AlertCircle } from 'lucide-react'
-import { Button } from '@/components/common/Button'
-import { Tooltip } from '@/components/common/Tooltip'
-// import { BreadcrumbNav } from '@/components/common/BreadcrumbNav'
+import { Loader2 } from 'lucide-react'
 import { RequireNamadaConnection } from '@/components/wallet/RequireNamadaConnection'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { PaymentConfirmationModal } from '@/components/payment/PaymentConfirmationModal'
-import { RecipientAddressInput } from '@/components/recipient/RecipientAddressInput'
-import { addAddress } from '@/services/addressBook/addressBookService'
 import { TransactionDisplay } from '@/components/tx/TransactionDisplay'
 import { SendFlowSteps } from '@/components/payment/SendFlowSteps'
 import { SendSummaryCard } from '@/components/payment/SendSummaryCard'
-import { useBalance } from '@/hooks/useBalance'
-import { useShieldedSync } from '@/hooks/useShieldedSync'
 import { useWallet } from '@/hooks/useWallet'
 import { useToast } from '@/hooks/useToast'
 import { useAtomValue, useAtom } from 'jotai'
-import { balanceSyncAtom, balanceErrorAtom } from '@/atoms/balanceAtom'
-import { validatePaymentForm, handleAmountInputChange } from '@/services/validation'
-import {
-  buildTransactionSuccessToast,
-  buildTransactionErrorToast,
-  buildTransactionStatusToast,
-  buildValidationErrorToast,
-  buildCopySuccessToast,
-} from '@/utils/toastHelpers'
+import { validatePaymentForm } from '@/services/validation'
+import { buildValidationErrorToast } from '@/utils/toastHelpers'
 import { usePaymentFeeEstimate } from '@/hooks/usePaymentFeeEstimate'
-import {
-  buildPaymentTransaction,
-  signPaymentTransaction,
-  broadcastPaymentTransaction,
-  savePaymentTransaction,
-  type PaymentTransactionDetails,
-} from '@/services/payment/paymentService'
-import { useTxTracker } from '@/hooks/useTxTracker'
-import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
-import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
+import { type PaymentTransactionDetails } from '@/services/payment/paymentService'
 import { triggerShieldedBalanceRefresh } from '@/services/balance/shieldedBalanceService'
 import { NAMADA_CHAIN_ID } from '@/config/constants'
-import { getNamadaTxExplorerUrl } from '@/utils/explorerUtils'
-import { sanitizeError } from '@/utils/errorSanitizer'
 import { txUiAtom, isAnyTransactionActiveAtom, resetTxUiState } from '@/atoms/txUiAtom'
+import { useSendPaymentChain } from '@/hooks/useSendPaymentChain'
+import { useSendPaymentBalance } from '@/hooks/useSendPaymentBalance'
+import { usePaymentTransaction } from '@/hooks/usePaymentTransaction'
+import { useShieldedSync } from '@/hooks/useShieldedSync'
+import { saveAddressToBook } from '@/utils/addressBookUtils'
+import { DepositErrorDisplay } from '@/components/deposit/DepositErrorDisplay'
+import { SendPaymentAmountInput } from '@/components/payment/SendPaymentAmountInput'
+import { SendPaymentRecipientSection } from '@/components/payment/SendPaymentRecipientSection'
+import { SendPaymentFeeDisplay } from '@/components/payment/SendPaymentFeeDisplay'
 
 export function SendPayment() {
   const navigate = useNavigate()
-  const { upsertTransaction } = useTxTracker({ enablePolling: false })
-  const { notify, updateToast, dismissToast } = useToast()
+  const { notify } = useToast()
   const { state: walletState } = useWallet()
 
   // Form state
@@ -54,7 +37,6 @@ export function SendPayment() {
   const [toAddress, setToAddress] = useState('')
   const [recipientName, setRecipientName] = useState<string | null>(null)
   const [nameValidationError, setNameValidationError] = useState<string | null>(null)
-  const [selectedChain, setSelectedChain] = useState<string | undefined>(undefined)
   const [showConfirmationModal, setShowConfirmationModal] = useState(false)
   
   // Global transaction UI state
@@ -68,17 +50,11 @@ export function SendPayment() {
   const errorState = txUiState.errorState
   const showSuccessState = txUiState.showSuccessState
 
-  // Get live shielded balance from balance state
-  const { state: balanceState } = useBalance()
+  // Custom hooks
+  const { selectedChain, chainName, setSelectedChain } = useSendPaymentChain()
+  const { shieldedBalance, isShieldedBalanceLoading, hasBalanceError } = useSendPaymentBalance()
   const { state: shieldedState } = useShieldedSync()
-  const balanceSyncState = useAtomValue(balanceSyncAtom)
-  const balanceError = useAtomValue(balanceErrorAtom)
-
-  // Check for balance calculation error state
-  const hasBalanceError = balanceSyncState.shieldedStatus === 'error' && balanceError
-  const shieldedBalance = hasBalanceError ? '--' : (balanceState.namada.usdcShielded || '--')
-  const isShieldedBalanceLoading =
-    shieldedState.isSyncing || balanceSyncState.shieldedStatus === 'calculating'
+  const { submitPayment } = usePaymentTransaction()
 
   // Get Namada addresses from wallet state
   const transparentAddress = walletState.namada.account
@@ -102,28 +78,6 @@ export function SendPayment() {
       : `${parseFloat(feeInfo.feeAmount).toFixed(6)} NAM`
     : '0.00'
 
-  // Load default chain from config
-  useEffect(() => {
-    let mounted = true
-
-    async function loadDefaultChain() {
-      try {
-        const config = await fetchEvmChainsConfig()
-        if (mounted && config.defaults?.selectedChainKey) {
-          setSelectedChain(config.defaults.selectedChainKey)
-        }
-      } catch (error) {
-        console.error('[SendPayment] Failed to load default chain:', error)
-      }
-    }
-
-    void loadDefaultChain()
-
-    return () => {
-      mounted = false
-    }
-  }, [])
-
   // Trigger shielded sync on page load (non-blocking, happens in background)
   useEffect(() => {
     if (walletState.namada.isConnected && shieldedAddress) {
@@ -133,34 +87,6 @@ export function SendPayment() {
       })
     }
   }, [walletState.namada.isConnected, shieldedAddress])
-
-
-  // Get chain name for display
-  const [chainName, setChainName] = useState('')
-  useEffect(() => {
-    let mounted = true
-
-    async function loadChainName() {
-      try {
-        const config = await fetchEvmChainsConfig()
-        if (mounted) {
-          const chain = config.chains.find((c) => c.key === selectedChain)
-          setChainName(chain?.name ?? selectedChain ?? '')
-        }
-      } catch (error) {
-        console.error('[SendPayment] Failed to load chain name:', error)
-        if (mounted) {
-          setChainName(selectedChain ?? '')
-        }
-      }
-    }
-
-    void loadChainName()
-
-    return () => {
-      mounted = false
-    }
-  }, [selectedChain])
 
   // Don't render form until chain is loaded
   if (!selectedChain) {
@@ -237,251 +163,42 @@ export function SendPayment() {
     }
   }
 
-  // Save address to address book if name was provided
-  // This is called immediately on transaction initiation and does not block the transaction flow
-  async function saveAddressToBook() {
-    if (!recipientName || !toAddress) {
-      return
-    }
-
-    try {
-      const result = addAddress({
-        name: recipientName,
-        address: toAddress,
-        type: 'evm',
-      })
-      if (result.success) {
-        notify({
-          title: 'Address saved',
-          description: `"${recipientName}" has been added to your address book.`,
-          level: 'success',
-        })
-      } else {
-        // Show error toast but don't throw - transaction should continue
-        notify({
-          title: 'Failed to save address',
-          description: result.error || 'Could not save address to address book',
-          level: 'error',
-        })
-      }
-    } catch (error) {
-      // Catch any unexpected errors and show toast, but don't throw
-      console.error('[SendPayment] Error saving address:', error)
-      notify({
-        title: 'Failed to save address',
-        description: error instanceof Error ? error.message : 'An unexpected error occurred',
-        level: 'error',
-      })
-    }
-  }
-
   // Handle confirmation and submit transaction
   async function handleConfirmPayment(): Promise<void> {
     setShowConfirmationModal(false)
-    
-    // Save address to address book immediately on initiation (non-blocking)
-    // This happens before transaction processing and does not depend on tx outcome
-    void saveAddressToBook()
 
-    setTxUiState({
-      ...txUiState,
-      isSubmitting: true,
-      phase: 'building',
-      errorState: null,
-      txHash: null,
-      explorerUrl: undefined,
-      showSuccessState: false,
-      transactionType: 'send',
+    await submitPayment({
+      amount,
+      toAddress,
+      selectedChain: selectedChain!,
+      chainName,
+      estimatedFee,
+      total,
+      transparentAddress: transparentAddress!,
+      shieldedAddress,
+      isShieldedSyncing: shieldedState.isSyncing,
+      onAddressBookSave: () => {
+        void saveAddressToBook({
+          name: recipientName,
+          address: toAddress,
+          type: 'evm',
+          onSuccess: (name) => {
+            notify({
+              title: 'Address saved',
+              description: `"${name}" has been added to your address book.`,
+              level: 'success',
+            })
+          },
+          onError: (error) => {
+            notify({
+              title: 'Failed to save address',
+              description: error,
+              level: 'error',
+            })
+          },
+        })
+      },
     })
-
-    // Track transaction state for error handling
-    let tx: Awaited<ReturnType<typeof buildPaymentTransaction>> | undefined
-    let signedTx: Awaited<ReturnType<typeof signPaymentTransaction>> | undefined
-    let currentTx: StoredTransaction | undefined
-
-    // Use a consistent toast ID for transaction status updates (moved outside try so it's accessible in catch)
-    const txToastId = `payment-tx-${Date.now()}`
-
-    try {
-      // Build transaction details
-      const transactionDetails: PaymentTransactionDetails = {
-        amount,
-        fee: estimatedFee,
-        total,
-        destinationAddress: toAddress,
-        chainName,
-      }
-
-      if (!transparentAddress) {
-        throw new Error('Namada transparent address not found. Please connect your Namada Keychain.')
-      }
-
-      // Show sync status if sync is happening
-      if (shieldedState.isSyncing) {
-        notify({
-          title: 'Syncing shielded balance...',
-          description: 'Please wait while we update your shielded context',
-          level: 'info',
-        })
-      }
-
-      // Build transaction (this will ensure sync completes before building)
-      notify(buildTransactionStatusToast('building', 'send', txToastId))
-      tx = await buildPaymentTransaction({
-        amount,
-        destinationAddress: toAddress,
-        destinationChain: selectedChain!, // Safe: guarded by check at line 123
-        transparentAddress,
-        shieldedAddress,
-      })
-
-      // Save transaction immediately after build (for error tracking)
-      currentTx = {
-        ...tx,
-        paymentDetails: transactionDetails,
-        updatedAt: Date.now(),
-      }
-      transactionStorageService.saveTransaction(currentTx)
-      upsertTransaction(tx)
-
-      // Sign transaction (no-op, actual signing happens during broadcast)
-      setTxUiState({ ...txUiState, phase: 'signing' })
-      updateToast(txToastId, buildTransactionStatusToast('signing', 'send'))
-      signedTx = await signPaymentTransaction(tx)
-      
-      // Update status to signing
-      currentTx = {
-        ...currentTx,
-        ...signedTx,
-        status: 'signing',
-        updatedAt: Date.now(),
-      }
-      transactionStorageService.saveTransaction(currentTx)
-      upsertTransaction(signedTx)
-
-      // Broadcast transaction (signing popup appears here, so keep showing "Signing transaction...")
-      // Update status to submitting after signing completes
-      currentTx = {
-        ...currentTx,
-        status: 'submitting',
-        updatedAt: Date.now(),
-      }
-      transactionStorageService.saveTransaction(currentTx)
-      
-      const broadcastResult = await broadcastPaymentTransaction(signedTx, {
-        onSigningComplete: () => {
-          // Phase 3: Submitting (only after signing is complete)
-          setTxUiState({ ...txUiState, phase: 'submitting' })
-          updateToast(txToastId, buildTransactionStatusToast('submitting', 'send'))
-        },
-      })
-      const txHash = broadcastResult.hash
-      const blockHeight = broadcastResult.blockHeight
-
-      // Update transaction with hash and block height
-      const txWithHash = {
-        ...signedTx,
-        hash: txHash,
-        blockHeight,
-        status: 'broadcasted' as const,
-      }
-
-      // Save transaction to unified storage with payment details
-      // Frontend polling handles all tracking (no backend registration needed)
-      const savedTx = await savePaymentTransaction(txWithHash, transactionDetails)
-
-      // Also update in-memory state for immediate UI updates
-      upsertTransaction(savedTx)
-
-      // Update the existing loading toast to success toast
-      const successToast = buildTransactionSuccessToast(savedTx, {
-        onViewTransaction: (id) => {
-          navigate(`/dashboard?tx=${id}`)
-        },
-        onCopyHash: () => {
-          notify(buildCopySuccessToast('Transaction hash'))
-        },
-      })
-      const { id: _, ...successToastArgs } = successToast
-      updateToast(txToastId, successToastArgs)
-
-      // Set success state and fetch explorer URL
-      setTxUiState({ ...txUiState, phase: null, txHash, showSuccessState: true })
-      getNamadaTxExplorerUrl(txHash).then((url) => {
-        setTxUiState((prev) => ({ ...prev, explorerUrl: url }))
-      }).catch(() => {
-        // Silently fail if explorer URL can't be fetched
-      })
-    } catch (error) {
-      // Dismiss the loading toast if it exists
-      dismissToast(txToastId)
-      
-      console.error('[SendPayment] Payment submission failed:', error)
-      const sanitized = sanitizeError(error)
-      const message = sanitized.message
-      
-      // Save error transaction to storage for history tracking
-      try {
-        // Build transaction details for error case
-        const transactionDetails: PaymentTransactionDetails = {
-          amount,
-          fee: estimatedFee,
-          total,
-          destinationAddress: toAddress,
-          chainName,
-        }
-        
-        // Use current transaction state if available, otherwise create new error transaction
-        const errorTx: StoredTransaction = currentTx
-          ? {
-              ...currentTx,
-              status: 'error',
-              errorMessage: message,
-              updatedAt: Date.now(),
-            }
-          : {
-              id: tx?.id || crypto.randomUUID(),
-              createdAt: tx?.createdAt || Date.now(),
-              updatedAt: Date.now(),
-              chain: tx?.chain || selectedChain || '',
-              direction: 'send',
-              status: 'error',
-              errorMessage: message,
-              paymentDetails: transactionDetails,
-            }
-        
-        transactionStorageService.saveTransaction(errorTx)
-        upsertTransaction(errorTx)
-      } catch (saveError) {
-        console.error('[SendPayment] Failed to save error transaction:', saveError)
-      }
-      
-      // Show error toast with action to view transaction if available
-      const errorTxForToast = currentTx || (tx ? { id: tx.id, direction: 'send' as const } : undefined)
-      if (errorTxForToast) {
-        notify(
-          buildTransactionErrorToast(errorTxForToast, message, {
-            onViewTransaction: (id) => {
-              navigate(`/dashboard?tx=${id}`)
-            },
-          })
-        )
-      } else {
-        notify({
-          title: 'Payment Failed',
-          description: message,
-          level: 'error',
-        })
-      }
-      
-      // Set error state for enhanced error display
-      setTxUiState({ ...txUiState, errorState: { message }, phase: null, isSubmitting: false })
-    } finally {
-      // Reset isSubmitting in global state if not already reset
-      if (txUiState.isSubmitting) {
-        setTxUiState((prev) => ({ ...prev, isSubmitting: false }))
-      }
-    }
   }
 
   const handleRetry = () => {
@@ -517,26 +234,7 @@ export function SendPayment() {
 
         {/* Enhanced Error State */}
         {errorState && (
-          <div className="card card-error animate-in fade-in slide-in-from-top-2 duration-300">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-error shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <h3 className="font-semibold text-error mb-1">
-                  Transaction Failed
-                </h3>
-                <p className="text-sm text-error/90 mb-3">
-                  {errorState.message}
-                </p>
-                <Button
-                  variant="secondary"
-                  onClick={handleRetry}
-                  className="h-8 text-sm"
-                >
-                  Try Again
-                </Button>
-              </div>
-            </div>
-          </div>
+          <DepositErrorDisplay error={errorState} onRetry={handleRetry} />
         )}
 
         {/* Transaction Display (replaces form when transaction is active or success state is shown) */}
@@ -575,102 +273,30 @@ export function SendPayment() {
                 <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
             
                 {/* Step 1: Amount Section */}
-                <div className="card card-xl">
-                  <div className="mb-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
-                        Step 1
-                      </span>
-                      <span className="text-sm font-semibold">Amount</span>
-                    </div>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-muted-foreground">
-                          Available {shieldedBalance} USDC
-                        </span>
-                        {isShieldedBalanceLoading && (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Loading shielded balance" />
-                        )}
-                        {hasBalanceError && (
-                          <Tooltip content="Could not query shielded balances from chain" side="top">
-                            <AlertCircle className="h-3.5 w-3.5 text-error" aria-label="Shielded balance error" />
-                          </Tooltip>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (shieldedBalance !== '--' && shieldedBalance !== '0.00') {
-                            const balanceNum = parseFloat(shieldedBalance)
-                            const feeNum = feeInfo && feeInfo.feeToken === 'USDC' ? parseFloat(feeInfo.feeAmount) : 0
-                            const maxAmount = Math.max(0, balanceNum - feeNum)
-                            // Format to 6 decimal places to match input handling
-                            setAmount(maxAmount.toFixed(6).replace(/\.?0+$/, ''))
-                          }
-                        }}
-                        disabled={shieldedBalance === '--' || shieldedBalance === '0.00'}
-                        className="text-sm font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Use Max
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-muted-foreground">$</span>
-                    <input
-                      type="text"
-                      value={amount}
-                      onChange={(e) => handleAmountInputChange(e, setAmount, 6)}
-                      className="flex-1 border-none bg-transparent p-0 text-3xl font-bold focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30"
-                      placeholder="0.00"
-                      inputMode="decimal"
-                      disabled={false}
-                    />
-                    <div className="flex items-center gap-1.5">
-                      <img
-                        src="/assets/logos/usdc-logo.svg"
-                        alt="USDC"
-                        className="h-4 w-4"
-                      />
-                      <span className="text-sm text-muted-foreground">USDC</span>
-                    </div>
-                  </div>
-                  {/* Validation error for amount */}
-                  {validation.amountError && amount.trim() !== '' && (
-                    <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                      <span className="flex-1">{validation.amountError}</span>
-                    </div>
-                  )}
-                </div>
+                <SendPaymentAmountInput
+                  amount={amount}
+                  onAmountChange={setAmount}
+                  availableBalance={shieldedBalance}
+                  isShieldedBalanceLoading={isShieldedBalanceLoading}
+                  hasBalanceError={hasBalanceError}
+                  validationError={validation.amountError}
+                  feeInfo={feeInfo}
+                />
 
                 {/* Step 2 & 3: Recipient Address and Destination Chain Sections */}
                 <div className="flex flex-col lg:flex-row gap-6">
                   {/* Step 2: Recipient Address Section */}
-                  <div className="flex-1 card card-xl">
-                    <div className="flex items-baseline justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
-                          Step 2
-                        </span>
-                        <label className="text-sm font-semibold">Recipient address</label>
-                      </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Where your USDC will be sent
-                    </p>
-                    <RecipientAddressInput
-                      value={toAddress}
-                      onChange={setToAddress}
-                      onNameChange={setRecipientName}
-                      onNameValidationChange={(_isValid, error) => setNameValidationError(error)}
-                      addressType="evm"
-                      validationError={validation.addressError}
-                      autoFillAddress={walletState.metaMask.account}
-                      onAutoFill={handleAutoFill}
-                      disabled={isAnyTxActive}
-                    />
-                  </div>
+                  <SendPaymentRecipientSection
+                    address={toAddress}
+                    onAddressChange={setToAddress}
+                    recipientName={recipientName}
+                    onRecipientNameChange={setRecipientName}
+                    onNameValidationChange={(_isValid, error) => setNameValidationError(error)}
+                    validationError={validation.addressError}
+                    autoFillAddress={walletState.metaMask.account}
+                    onAutoFill={handleAutoFill}
+                    disabled={isAnyTxActive}
+                  />
 
                   {/* Step 3: Destination Chain Section */}
                   <div className="flex-1 card card-xl">
@@ -694,31 +320,12 @@ export function SendPayment() {
                 </div>
 
                 {/* Step 4: Fees & Review Section */}
-                <div className="space-y-3 mx-auto my-8">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Network fee</span>
-                    {isEstimatingFee ? (
-                      <div className="flex items-center gap-1.5">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">Estimating...</span>
-                      </div>
-                    ) : feeInfo ? (
-                      <span className="text-sm font-semibold">
-                        {feeInfo.feeToken === 'USDC'
-                          ? `$${parseFloat(feeInfo.feeAmount).toFixed(2)}`
-                          : `${parseFloat(feeInfo.feeAmount).toFixed(6)} NAM`}
-                      </span>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">--</span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between border-t border-border pt-3 space-x-24">
-                    <span className="text-base font-semibold">Total amount deducted</span>
-                    <span className="text-xl font-bold">
-                      {feeInfo && feeInfo.feeToken === 'USDC' ? `$${total}` : `$${amount || '0.00'}`}
-                    </span>
-                  </div>
-                </div>
+                <SendPaymentFeeDisplay
+                  feeInfo={feeInfo}
+                  isEstimatingFee={isEstimatingFee}
+                  total={total}
+                  amount={amount}
+                />
 
                 {/* Send Summary Card */}
                 <SendSummaryCard

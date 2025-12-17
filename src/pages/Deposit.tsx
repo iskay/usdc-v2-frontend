@@ -5,7 +5,7 @@ import { jotaiStore } from '@/store/jotaiStore'
 import { Loader2 } from 'lucide-react'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { DepositConfirmationModal } from '@/components/deposit/DepositConfirmationModal'
-import { addAddress } from '@/services/addressBook/addressBookService'
+import { saveAddressToBook } from '@/utils/addressBookUtils'
 import { DepositFlowSteps } from '@/components/deposit/DepositFlowSteps'
 import { DepositSummaryCard } from '@/components/deposit/DepositSummaryCard'
 import { TransactionDisplay } from '@/components/tx/TransactionDisplay'
@@ -270,7 +270,27 @@ export function Deposit() {
       estimatedFee,
       total,
       evmAddress,
-      onAddressBookSave: saveAddressToBook,
+      onAddressBookSave: () => {
+        void saveAddressToBook({
+          name: recipientName,
+          address: toAddress,
+          type: 'namada',
+          onSuccess: (name) => {
+            notify({
+              title: 'Address saved',
+              description: `"${name}" has been added to your address book.`,
+              level: 'success',
+            })
+          },
+          onError: (error) => {
+            notify({
+              title: 'Failed to save address',
+              description: error,
+              level: 'error',
+            })
+          },
+        })
+      },
     })
   }
 
@@ -278,43 +298,6 @@ export function Deposit() {
     resetTxUiState(setTxUiState)
   }
 
-  // Save address to address book if name was provided
-  // This is called immediately on transaction initiation and does not block the transaction flow
-  async function saveAddressToBook() {
-    if (!recipientName || !toAddress) {
-      return
-    }
-
-    try {
-      const result = addAddress({
-        name: recipientName,
-        address: toAddress,
-        type: 'namada',
-      })
-      if (result.success) {
-        notify({
-          title: 'Address saved',
-          description: `"${recipientName}" has been added to your address book.`,
-          level: 'success',
-        })
-      } else {
-        // Show error toast but don't throw - transaction should continue
-        notify({
-          title: 'Failed to save address',
-          description: result.error || 'Could not save address to address book',
-          level: 'error',
-        })
-      }
-    } catch (error) {
-      // Catch any unexpected errors and show toast, but don't throw
-      console.error('[Deposit] Error saving address:', error)
-      notify({
-        title: 'Failed to save address',
-        description: error instanceof Error ? error.message : 'An unexpected error occurred',
-        level: 'error',
-      })
-    }
-  }
 
   // Transaction details for confirmation modal
   // The service already formats the amounts, so we just add the symbol and USD estimate
