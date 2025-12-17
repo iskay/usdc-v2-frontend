@@ -92,3 +92,25 @@ export function getReceiveTxStatus(transaction: StoredTransaction): 'success' | 
   }
 }
 
+/**
+ * Extract and format transaction amount from transaction metadata.
+ * Returns formatted string with "USDC" suffix (e.g., "100.00 USDC").
+ * 
+ * @param transaction - The transaction to extract amount from
+ * @returns Formatted amount string with "USDC" suffix, or undefined if amount not available
+ */
+export function extractTransactionAmount(transaction: StoredTransaction): string | undefined {
+  if (transaction.flowMetadata) {
+    const amountInBase = transaction.flowMetadata.amount
+    if (amountInBase) {
+      const amountInUsdc = (parseInt(amountInBase) / 1_000_000).toFixed(2)
+      return `${amountInUsdc} USDC`
+    }
+  } else if (transaction.depositDetails) {
+    return `${transaction.depositDetails.amount} USDC`
+  } else if (transaction.paymentDetails) {
+    return `${transaction.paymentDetails.amount} USDC`
+  }
+  return undefined
+}
+

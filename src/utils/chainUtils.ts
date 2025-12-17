@@ -188,3 +188,41 @@ export function getEvmChainLogo(
   return undefined
 }
 
+/**
+ * Get chain display name from a string chain key.
+ * This is useful when you have a chain key as a string (e.g., from transaction.chain)
+ * rather than the enum type used in getChainDisplayName.
+ * 
+ * @param chainKey - The chain key as a string (e.g., 'sepolia', 'base-sepolia')
+ * @param evmChainsConfig - The EVM chains configuration
+ * @returns The display name for the chain, or the chainKey itself if not found
+ */
+export function getChainDisplayNameFromKey(
+  chainKey: string | undefined,
+  evmChainsConfig: EvmChainsFile | null
+): string {
+  if (!chainKey) return ''
+  
+  // Look up by chain key in evm-chains.json
+  if (evmChainsConfig) {
+    const resolvedKey = getEvmChainKey(chainKey, chainKey, evmChainsConfig)
+    if (resolvedKey) {
+      const chain = evmChainsConfig.chains.find(c => c.key === resolvedKey)
+      if (chain) {
+        return chain.name
+      }
+    }
+    
+    // If not found by key, try to find by name (in case chainKey is already a display name)
+    const foundByName = evmChainsConfig.chains.find(
+      chain => chain.name.toLowerCase() === chainKey.toLowerCase()
+    )
+    if (foundByName) {
+      return foundByName.name
+    }
+  }
+  
+  // Fallback to the chain key itself
+  return chainKey
+}
+

@@ -22,7 +22,7 @@ import { TransactionHashCard } from './TransactionHashCard'
 import { StageTimelineItem } from './StageTimelineItem'
 import { getEvmChainKey, getSourceChainName, getDestinationChainName } from '@/utils/chainUtils'
 import { buildExplorerUrlSync } from '@/utils/explorerUtils'
-import { extractSendTxHash, extractReceiveTxHash, getSendTxStatus, getReceiveTxStatus } from '@/utils/transactionUtils'
+import { extractSendTxHash, extractReceiveTxHash, getSendTxStatus, getReceiveTxStatus, extractTransactionAmount } from '@/utils/transactionUtils'
 
 export interface TransactionDetailModalProps {
   transaction: StoredTransaction
@@ -174,19 +174,9 @@ export function TransactionDetailModal({
   // Format started at timestamp
   const startedAt = new Date(transaction.createdAt).toLocaleString()
 
-  // Get amount from transaction metadata
-  let amount: string | undefined
-  if (transaction.flowMetadata) {
-    const amountInBase = transaction.flowMetadata.amount
-    if (amountInBase) {
-      const amountInUsdc = (parseInt(amountInBase) / 1_000_000).toFixed(2)
-      amount = amountInUsdc
-    }
-  } else if (transaction.depositDetails) {
-    amount = transaction.depositDetails.amount
-  } else if (transaction.paymentDetails) {
-    amount = transaction.paymentDetails.amount
-  }
+  // Extract amount using utility function (returns with "USDC" suffix, but modal needs without)
+  const amountWithSuffix = extractTransactionAmount(transaction)
+  const amount = amountWithSuffix?.replace(' USDC', '')
 
   // Get receiver address
   const receiverAddress = transaction.depositDetails?.destinationAddress || transaction.paymentDetails?.destinationAddress
@@ -488,3 +478,4 @@ export function TransactionDetailModal({
     </div>
   )
 }
+
