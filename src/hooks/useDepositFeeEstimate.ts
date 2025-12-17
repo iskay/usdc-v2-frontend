@@ -10,7 +10,7 @@ import {
   type DepositFeeInfo,
 } from '@/services/deposit/evmFeeEstimatorService'
 import { checkNobleForwardingRegistration } from '@/services/deposit/nobleForwardingService'
-import { nobleFallbackAddressAtom } from '@/atoms/appAtom'
+import { depositFallbackSelectionAtom } from '@/atoms/appAtom'
 
 export interface UseDepositFeeEstimateState {
   feeInfo: DepositFeeInfo | null
@@ -38,7 +38,7 @@ export function useDepositFeeEstimate(
   namadaAddress: string | undefined,
   evmAddress: string | undefined,
 ): UseDepositFeeEstimateReturn {
-  const nobleFallbackAddress = useAtomValue(nobleFallbackAddressAtom)
+  const depositFallbackSelection = useAtomValue(depositFallbackSelectionAtom)
   const [state, setState] = useState<UseDepositFeeEstimateState>({
     feeInfo: null,
     isLoading: false,
@@ -71,22 +71,33 @@ export function useDepositFeeEstimate(
         let nobleRegistered = false
         if (namadaAddress) {
           try {
-            const fallback = nobleFallbackAddress || ''
-            const registrationStatus = await checkNobleForwardingRegistration(namadaAddress, undefined, fallback)
+            // Use fallback address from deposit selection, or empty string if not available
+            // If fallback is unknown (needs to be derived), assume registration fee is needed
+            const fallback = depositFallbackSelection.address || ''
             
-            // If there's an error determining status, log it and assume not registered (include fee)
-            if (registrationStatus.error) {
-              logger.warn('[useDepositFeeEstimate] Could not determine Noble registration status, assuming not registered', {
+            // If fallback address is not available, assume registration fee is needed
+            if (!fallback) {
+              logger.debug('[useDepositFeeEstimate] Fallback address not available, assuming registration fee needed', {
                 namadaAddress: namadaAddress.slice(0, 12) + '...',
-                error: registrationStatus.error,
               })
               nobleRegistered = false
             } else {
-              nobleRegistered = registrationStatus.exists
-              logger.debug('[useDepositFeeEstimate] Noble registration status', {
-                namadaAddress: namadaAddress.slice(0, 12) + '...',
-                exists: nobleRegistered,
-              })
+              const registrationStatus = await checkNobleForwardingRegistration(namadaAddress, undefined, fallback)
+              
+              // If there's an error determining status, log it and assume not registered (include fee)
+              if (registrationStatus.error) {
+                logger.warn('[useDepositFeeEstimate] Could not determine Noble registration status, assuming not registered', {
+                  namadaAddress: namadaAddress.slice(0, 12) + '...',
+                  error: registrationStatus.error,
+                })
+                nobleRegistered = false
+              } else {
+                nobleRegistered = registrationStatus.exists
+                logger.debug('[useDepositFeeEstimate] Noble registration status', {
+                  namadaAddress: namadaAddress.slice(0, 12) + '...',
+                  exists: nobleRegistered,
+                })
+              }
             }
           } catch (error) {
             logger.warn('[useDepositFeeEstimate] Noble registration check failed, assuming not registered', {
@@ -143,7 +154,7 @@ export function useDepositFeeEstimate(
     }
 
     void estimateFee()
-  }, [chainKey, amount, namadaAddress, evmAddress, nobleFallbackAddress])
+  }, [chainKey, amount, namadaAddress, evmAddress, depositFallbackSelection])
 
   return { state }
 }

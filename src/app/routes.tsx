@@ -24,6 +24,9 @@ const SettingsPage = lazy(async () => ({
 const AddressBookPage = lazy(async () => ({
   default: (await import('@/pages/AddressBook')).AddressBook,
 }))
+const FallbackAddressesPage = lazy(async () => ({
+  default: (await import('@/pages/FallbackAddresses')).FallbackAddresses,
+}))
 
 const routes: RouteObject[] = [
   {
@@ -36,6 +39,7 @@ const routes: RouteObject[] = [
       { path: 'deposit', element: <DepositPage /> },
       { path: 'history', element: <HistoryPage /> },
       { path: 'forwarding-addresses', element: <ForwardingAddressesPage /> },
+      { path: 'fallback-addresses', element: <FallbackAddressesPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'address-book', element: <AddressBookPage /> },
     ],

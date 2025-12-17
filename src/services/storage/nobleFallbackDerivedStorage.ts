@@ -4,6 +4,7 @@ const STORAGE_KEY = 'noble-fallback-derived'
 
 interface DerivedFallbackEntry {
   nobleAddress: string
+  evmAddress?: string // Optional for backward compatibility (can be derived from storage key)
   publicKey?: string
   derivedAt: number
 }
@@ -42,6 +43,7 @@ export function saveDerivedFallbackAddress(
   
   storage[normalizedEvmAddress] = {
     nobleAddress,
+    evmAddress: evmAddress, // Store the EVM address explicitly for easier access
     publicKey,
     derivedAt: Date.now(),
   }
@@ -100,4 +102,23 @@ export function getDerivedFallbackEntry(evmAddress: string): DerivedFallbackEntr
   const storage = loadDerivedStorage()
   const normalizedEvmAddress = evmAddress.toLowerCase()
   return storage[normalizedEvmAddress]
+}
+
+/**
+ * Get all derived fallback entries with their EVM addresses
+ * @returns Array of entries with EVM address and Noble address
+ */
+export function getAllDerivedFallbackEntries(): Array<{ evmAddress: string; nobleAddress: string; entry: DerivedFallbackEntry }> {
+  const storage = loadDerivedStorage()
+  const result: Array<{ evmAddress: string; nobleAddress: string; entry: DerivedFallbackEntry }> = []
+  
+  for (const [evmAddress, entry] of Object.entries(storage)) {
+    result.push({
+      evmAddress: entry.evmAddress || evmAddress, // Use explicit evmAddress if available, otherwise use key
+      nobleAddress: entry.nobleAddress,
+      entry,
+    })
+  }
+  
+  return result
 }

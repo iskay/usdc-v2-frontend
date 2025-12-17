@@ -329,16 +329,29 @@ export function Settings() {
         <section>
           <h2 className="mb-4 text-2xl font-semibold">Recovery Center</h2>
           <div className="card">
-            <div className="flex justify-between items-baseline">
-              <p className="mb-4 text-sm text-muted-foreground">
-                Manage and register Noble forwarding addresses for deposit recovery.
-              </p>
-              <Link to="/forwarding-addresses">
-                <Button variant="primary" className="gap-2 w-72">
-                  <List className="h-4 w-4" />
-                  <span>View Forwarding Addresses</span>
-                </Button>
-              </Link>
+            <div className="flex flex-col gap-4">
+              <div className="flex justify-between items-baseline">
+                <p className="text-sm text-muted-foreground">
+                  Manage and register Noble forwarding addresses for deposit recovery.
+                </p>
+                <Link to="/forwarding-addresses">
+                  <Button variant="primary" className="gap-2 w-72">
+                    <List className="h-4 w-4" />
+                    <span>View Forwarding Addresses</span>
+                  </Button>
+                </Link>
+              </div>
+              <div className="flex justify-between items-baseline">
+                <p className="text-sm text-muted-foreground">
+                  View Noble fallback (refund) addresses and their balances.
+                </p>
+                <Link to="/fallback-addresses">
+                  <Button variant="primary" className="gap-2 w-72">
+                    <List className="h-4 w-4" />
+                    <span>View Fallback Addresses</span>
+                  </Button>
+                </Link>
+              </div>
             </div>
           </div>
         </section>
@@ -407,8 +420,8 @@ export function Settings() {
                           onChange={(e) => handleFallbackAddressChange(e.target.value)}
                           placeholder="noble123abc..."
                           className={`flex-1 rounded-md border px-3 py-2 text-sm ${fallbackError
-                              ? 'border-destructive focus:border-destructive focus:ring-destructive'
-                              : 'border-border focus:border-ring focus:ring-ring'
+                            ? 'border-destructive focus:border-destructive focus:ring-destructive'
+                            : 'border-border focus:border-ring focus:ring-ring'
                             } bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2`}
                         />
                         <Button

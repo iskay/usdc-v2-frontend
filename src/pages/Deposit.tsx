@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useSetAtom, useAtomValue, useAtom } from 'jotai'
 import { jotaiStore } from '@/store/jotaiStore'
 import { Loader2, AlertCircle, CheckCircle2, Info } from 'lucide-react'
@@ -71,11 +71,12 @@ export function Deposit() {
   const [selectedChain, setSelectedChain] = useState<string | undefined>(undefined)
   const [showConfirmationModal, setShowConfirmationModal] = useState(false)
   const [depositRecipientType, setDepositRecipientType] = useState<'transparent' | 'custom'>('transparent')
-  
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false)
+
   // Global transaction UI state
   const [txUiState, setTxUiState] = useAtom(txUiAtom)
   const isAnyTxActive = useAtomValue(isAnyTransactionActiveAtom)
-  
+
   // Local state derived from global state for convenience
   const currentPhase = txUiState.phase
   const txHash = txUiState.txHash
@@ -107,29 +108,34 @@ export function Deposit() {
     error: null,
   })
 
+  // State for custom address override checkbox
+  const [useCustomOverride, setUseCustomOverride] = useState(false)
+
   // Auto-load fallback addresses on mount and when account changes
   useEffect(() => {
     const currentEvmAddress = walletState.metaMask.account
-    
+
     // Load custom address from settings
     const customAddress = loadNobleFallbackAddress()
-    
+
     // Load derived address for current account (if connected)
     const derivedAddress = currentEvmAddress ? loadDerivedFallbackAddress(currentEvmAddress) : undefined
-    
-    // Auto-select priority: derived > custom > none
+
+    // Default behavior: use derived address (unless custom override is checked)
+    // If custom override is checked, use custom address
+    // If no derived address available and no custom override, set to 'none' (will prompt derivation)
     let newSelection: DepositFallbackSelection
-    if (derivedAddress) {
-      newSelection = { source: 'derived', address: derivedAddress }
-    } else if (customAddress) {
+    if (useCustomOverride && customAddress) {
       newSelection = { source: 'custom', address: customAddress }
+    } else if (derivedAddress) {
+      newSelection = { source: 'derived', address: derivedAddress }
     } else {
       newSelection = { source: 'none', address: undefined }
     }
-    
+
     // Only update if selection actually changed to avoid unnecessary re-renders
     const currentSelection = jotaiStore.get(depositFallbackSelectionAtom)
-    
+
     if (
       newSelection.source !== currentSelection.source ||
       newSelection.address !== currentSelection.address
@@ -138,6 +144,7 @@ export function Deposit() {
     }
   }, [
     walletState.metaMask.account,
+    useCustomOverride,
     setDepositFallbackSelection,
   ])
 
@@ -161,14 +168,14 @@ export function Deposit() {
   const prevRecipientTypeRef = useRef<'transparent' | 'custom'>(depositRecipientType)
   useEffect(() => {
     // Only clear if we just switched from transparent to custom (one-time on switch)
-    const justSwitchedToCustom = 
-      depositRecipientType === 'custom' && 
+    const justSwitchedToCustom =
+      depositRecipientType === 'custom' &&
       prevRecipientTypeRef.current === 'transparent'
-    
+
     if (justSwitchedToCustom && toAddress === walletState.namada.account) {
       setToAddress('')
     }
-    
+
     // Update ref when recipient type changes
     prevRecipientTypeRef.current = depositRecipientType
   }, [depositRecipientType]) // Only run when recipient type changes
@@ -220,8 +227,23 @@ export function Deposit() {
 
       try {
         const fallback = depositFallbackSelection.address || ''
+
+        // If fallback address is not available, we can't check registration status
+        // In this case, assume registration fee is needed
+        if (!fallback) {
+          if (checkingAddressRef.current === addressToCheck) {
+            setRegistrationStatus({
+              isLoading: false,
+              isRegistered: null, // Unknown status
+              forwardingAddress: null,
+              error: 'Fallback address not yet derived. Registration fee will be included.',
+            })
+          }
+          return
+        }
+
         const status = await checkCurrentDepositRecipientRegistration(addressToCheck, undefined, fallback)
-        
+
         // Only update if we're still checking the same address
         if (checkingAddressRef.current === addressToCheck) {
           setRegistrationStatus({
@@ -347,7 +369,7 @@ export function Deposit() {
           chainKey = preferredChainKey
         } else {
           // 2. Try to derive from MetaMask chainId
-        const config = await fetchEvmChainsConfig()
+          const config = await fetchEvmChainsConfig()
           if (walletState.metaMask.isConnected && walletState.metaMask.chainId && config) {
             const chain = findChainByChainId(config, walletState.metaMask.chainId)
             if (chain) {
@@ -465,9 +487,25 @@ export function Deposit() {
   const totalUsd = amountNum + feeUsd + nobleRegUsd
   const total = totalUsd.toFixed(4)
 
-  // Handle form submission
-  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault()
+  // Check if derivation is needed before submission
+  const needsDerivation =
+    walletState.metaMask.isConnected &&
+    walletState.metaMask.account &&
+    !useCustomOverride &&
+    depositFallbackSelection.source === 'none'
+
+  // Shared function to handle deposit continuation (derivation, validation, show modal)
+  async function handleDepositContinue(): Promise<void> {
+    // Check if derivation is needed
+    if (needsDerivation) {
+      // Trigger derivation before proceeding
+      const derivationSuccess = await handleDeriveFallbackFromMetaMask()
+      // If derivation failed, halt the flow
+      if (!derivationSuccess) {
+        return
+      }
+      // Derivation succeeded, continue with the flow
+    }
 
     // Validate form
     if (!validation.isValid) {
@@ -490,10 +528,16 @@ export function Deposit() {
     setShowConfirmationModal(true)
   }
 
+  // Handle form submission
+  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    await handleDepositContinue()
+  }
+
   // Handle confirmation and submit transaction
   async function handleConfirmDeposit(): Promise<void> {
     setShowConfirmationModal(false)
-    
+
     // Save address to address book immediately on initiation (non-blocking)
     // This happens before transaction processing and does not depend on tx outcome
     void saveAddressToBook()
@@ -549,7 +593,7 @@ export function Deposit() {
       setTxUiState({ ...txUiState, phase: 'signing' })
       updateToast(txToastId, buildTransactionStatusToast('signing', 'deposit'))
       signedTx = await signDepositTransaction(tx)
-      
+
       // Update status to signing
       currentTx = {
         ...currentTx,
@@ -568,7 +612,7 @@ export function Deposit() {
         updatedAt: Date.now(),
       }
       transactionStorageService.saveTransaction(currentTx)
-      
+
       const txHashResult = await broadcastDepositTransaction(signedTx, {
         onSigningComplete: () => {
           // Phase 3: Submitting (only after signing is complete)
@@ -576,13 +620,13 @@ export function Deposit() {
           updateToast(txToastId, buildTransactionStatusToast('submitting', 'deposit'))
         },
       })
-      
+
       const txHash = txHashResult
 
       // Update transaction with hash
       const txWithHash = {
-            ...signedTx,
-            hash: txHash,
+        ...signedTx,
+        hash: txHash,
         status: 'broadcasted' as const,
       }
 
@@ -617,11 +661,11 @@ export function Deposit() {
     } catch (error) {
       // Dismiss the loading toast if it exists
       dismissToast(txToastId)
-      
+
       console.error('[Deposit] Deposit submission failed:', error)
       const sanitized = sanitizeError(error)
       const message = sanitized.message
-      
+
       // Save error transaction to storage for history tracking
       try {
         // Build transaction details for error case
@@ -632,32 +676,32 @@ export function Deposit() {
           destinationAddress: toAddress,
           chainName,
         }
-        
+
         // Use current transaction state if available, otherwise create new error transaction
         const errorTx: StoredTransaction = currentTx
           ? {
-              ...currentTx,
-              status: 'error',
-              errorMessage: message,
-              updatedAt: Date.now(),
-            }
+            ...currentTx,
+            status: 'error',
+            errorMessage: message,
+            updatedAt: Date.now(),
+          }
           : {
-              id: tx?.id || crypto.randomUUID(),
-              createdAt: tx?.createdAt || Date.now(),
-              updatedAt: Date.now(),
-              chain: tx?.chain || selectedChain || '',
-              direction: 'deposit',
-              status: 'error',
-              errorMessage: message,
-              depositDetails: transactionDetails,
-            }
-        
+            id: tx?.id || crypto.randomUUID(),
+            createdAt: tx?.createdAt || Date.now(),
+            updatedAt: Date.now(),
+            chain: tx?.chain || selectedChain || '',
+            direction: 'deposit',
+            status: 'error',
+            errorMessage: message,
+            depositDetails: transactionDetails,
+          }
+
         transactionStorageService.saveTransaction(errorTx)
         upsertTransaction(errorTx)
       } catch (saveError) {
         console.error('[Deposit] Failed to save error transaction:', saveError)
       }
-      
+
       // Show error toast with action to view transaction if available
       const errorTxForToast = currentTx || (tx ? { id: tx.id, direction: 'deposit' as const } : undefined)
       if (errorTxForToast) {
@@ -675,7 +719,7 @@ export function Deposit() {
           level: 'error',
         })
       }
-      
+
       // Set error state for enhanced error display
       setTxUiState({ ...txUiState, errorState: { message }, phase: null, isSubmitting: false })
     } finally {
@@ -692,14 +736,15 @@ export function Deposit() {
 
   // Handle Auto Fill for Namada address
   // Handle Noble fallback address derivation from MetaMask
-  async function handleDeriveFallbackFromMetaMask(): Promise<void> {
+  // Returns true if derivation succeeded, false if it failed
+  async function handleDeriveFallbackFromMetaMask(): Promise<boolean> {
     if (!walletState.metaMask.isConnected || !walletState.metaMask.account) {
       notify({
         title: 'MetaMask Not Connected',
         description: 'Please connect your MetaMask wallet to derive a fallback address.',
         level: 'error',
       })
-      return
+      return false
     }
 
     setDerivationState({
@@ -722,24 +767,10 @@ export function Deposit() {
         error: null,
       })
 
-      // Stage 2: Extract public key
-      notify({
-        title: 'Extracting Public Key',
-        description: 'Recovering your public key from the signature...',
-        level: 'info',
-      })
-
       setDerivationState({
         isLoading: true,
         stage: 'deriving',
         error: null,
-      })
-
-      // Stage 3: Derive Noble address
-      notify({
-        title: 'Deriving Noble Address',
-        description: 'Converting your public key to a Noble address...',
-        level: 'info',
       })
 
       const result = await deriveNobleFallbackFromMetaMask({
@@ -766,9 +797,11 @@ export function Deposit() {
         description: `Noble fallback address: ${result.nobleAddress.slice(0, 16)}...`,
         level: 'success',
       })
+
+      return true
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to derive Noble fallback address'
-      
+
       setDerivationState({
         isLoading: false,
         stage: 'error',
@@ -780,6 +813,8 @@ export function Deposit() {
         description: errorMessage,
         level: 'error',
       })
+
+      return false
     }
   }
 
@@ -844,16 +879,16 @@ export function Deposit() {
     chainName,
     feeBreakdown: feeInfo
       ? {
-          approveNative: feeInfo.approveNative,
-          burnNative: feeInfo.burnNative,
-          totalNative: feeInfo.totalNative,
-          nativeSymbol: feeInfo.nativeSymbol,
-          approvalNeeded: feeInfo.approvalNeeded,
-          approveUsd: feeInfo.approveUsd,
-          burnUsd: feeInfo.burnUsd,
-          totalUsd: feeInfo.totalUsd,
-          nobleRegUsd: feeInfo.nobleRegUsd,
-        }
+        approveNative: feeInfo.approveNative,
+        burnNative: feeInfo.burnNative,
+        totalNative: feeInfo.totalNative,
+        nativeSymbol: feeInfo.nativeSymbol,
+        approvalNeeded: feeInfo.approvalNeeded,
+        approveUsd: feeInfo.approveUsd,
+        burnUsd: feeInfo.burnUsd,
+        totalUsd: feeInfo.totalUsd,
+        nobleRegUsd: feeInfo.nobleRegUsd,
+      }
       : undefined,
     isLoadingFee: isEstimatingFee,
   }
@@ -862,565 +897,566 @@ export function Deposit() {
     <RequireMetaMaskConnection message="Please connect your MetaMask wallet to deposit USDC. EVM deposits require a connected wallet.">
       <div className="min-h-full container">
         <div className="flex flex-col gap-6 p-12 mx-auto w-full">
-        {/* <BreadcrumbNav /> */}
+          {/* <BreadcrumbNav /> */}
 
-        <header className="space-y-2">
-          <p className="text-muted-foreground">
-            Deposit USDC from an EVM chain to your Namada address
-          </p>
-        </header>
+          <header className="space-y-2">
+            <p className="text-muted-foreground">
+              Deposit USDC from an EVM chain to your Namada address
+            </p>
+          </header>
 
-        {/* Enhanced Error State */}
-        {errorState && (
-          <div className="rounded-lg border border-error/50 bg-error/10 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-error shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <h3 className="font-semibold text-error mb-1">
-                  Transaction Failed
-                </h3>
-                <p className="text-sm text-error/90 mb-3">
-                  {errorState.message}
-                </p>
-                <Button
-                  variant="secondary"
-                  onClick={handleRetry}
-                  className="h-8 text-sm"
-                >
-                  Try Again
-                </Button>
+          {/* Enhanced Error State */}
+          {errorState && (
+            <div className="rounded-lg border border-error/50 bg-error/10 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-error shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="font-semibold text-error mb-1">
+                    Transaction Failed
+                  </h3>
+                  <p className="text-sm text-error/90 mb-3">
+                    {errorState.message}
+                  </p>
+                  <Button
+                    variant="secondary"
+                    onClick={handleRetry}
+                    className="h-8 text-sm"
+                  >
+                    Try Again
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Transaction Display (replaces form when transaction is active or success state is shown) */}
-        {isAnyTxActive || showSuccessState ? (
-          <TransactionDisplay
-            phase={currentPhase}
-            showSuccessState={showSuccessState}
-            txHash={txHash}
-            explorerUrl={explorerUrl}
-            onNavigate={() => {
-              // Navigate first, then reset state after route transition completes
-              navigate('/dashboard')
-              // Delay state reset to allow fade-out and route transition (500ms fade + 350ms route transition)
-              setTimeout(() => {
-                resetTxUiState(setTxUiState)
-              }, 600)
-            }}
-            countdownSeconds={3}
-          />
-        ) : (
-          <div className="flex flex-col gap-6">
-            {/* Two-column layout: Flow Steps Sidebar + Main Content */}
-            <div className="flex flex-col lg:flex-row gap-8">
-              {/* Left Sidebar - Flow Steps */}
-              <div className="w-full lg:w-64 shrink-0">
-                <DepositFlowSteps
-                  amountComplete={amountComplete}
-                  recipientComplete={recipientComplete}
-                  sourceChainComplete={sourceChainComplete}
-                  activeStep={activeStep}
-                />
-              </div>
-
-              {/* Right Column - Main Content */}
-              <div className="flex-1">
-                <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
-            
-                {/* Step 1: Amount Section */}
-                <div className="card card-xl">
-                  <div className="mb-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
-                        Step 1
-                      </span>
-                      <span className="text-sm font-semibold">Amount</span>
-                    </div>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground">
-                        Available {availableBalance} USDC
-                      </span>
-                        {hasEvmError && (
-                          <Tooltip content="Could not query EVM balance from chain" side="top">
-                            <AlertCircle className="h-3.5 w-3.5 text-error" aria-label="EVM balance error" />
-                          </Tooltip>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (availableBalance !== '--') {
-                            const balanceNum = parseFloat(availableBalance)
-                            const feeUsd = feeInfo?.totalUsd ?? 0
-                            const nobleRegUsd = feeInfo?.nobleRegUsd ?? 0
-                            const totalFees = feeUsd + nobleRegUsd
-                            const maxAmount = Math.max(0, balanceNum - totalFees)
-                            // Format to 6 decimal places to match input handling
-                            setAmount(maxAmount.toFixed(6).replace(/\.?0+$/, ''))
-                          }
-                        }}
-                        disabled={availableBalance === '--'}
-                        className="text-sm font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Use Max
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-muted-foreground">$</span>
-                    <input
-                      type="text"
-                      value={amount}
-                      onChange={(e) => handleAmountInputChange(e, setAmount, 6)}
-                      className="flex-1 border-none bg-transparent p-0 text-3xl font-bold focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30"
-                      placeholder="0.00"
-                      inputMode="decimal"
-                      disabled={false}
-                    />
-                    <div className="flex items-center gap-1.5">
-                      <img
-                        src="/assets/logos/usdc-logo.svg"
-                        alt="USDC"
-                        className="h-4 w-4"
-                      />
-                      <span className="text-sm text-muted-foreground">USDC</span>
-                    </div>
-                  </div>
-                  {/* Validation error for amount */}
-                  {validation.amountError && amount.trim() !== '' && (
-                    <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                      <span className="flex-1">{validation.amountError}</span>
-                    </div>
-                  )}
+          {/* Transaction Display (replaces form when transaction is active or success state is shown) */}
+          {isAnyTxActive || showSuccessState ? (
+            <TransactionDisplay
+              phase={currentPhase}
+              showSuccessState={showSuccessState}
+              txHash={txHash}
+              explorerUrl={explorerUrl}
+              onNavigate={() => {
+                // Navigate first, then reset state after route transition completes
+                navigate('/dashboard')
+                // Delay state reset to allow fade-out and route transition (500ms fade + 350ms route transition)
+                setTimeout(() => {
+                  resetTxUiState(setTxUiState)
+                }, 600)
+              }}
+              countdownSeconds={3}
+            />
+          ) : (
+            <div className="flex flex-col gap-6">
+              {/* Two-column layout: Flow Steps Sidebar + Main Content */}
+              <div className="flex flex-col lg:flex-row gap-8">
+                {/* Left Sidebar - Flow Steps */}
+                <div className="w-full lg:w-64 shrink-0">
+                  <DepositFlowSteps
+                    amountComplete={amountComplete}
+                    recipientComplete={recipientComplete}
+                    sourceChainComplete={sourceChainComplete}
+                    activeStep={activeStep}
+                  />
                 </div>
 
-                {/* Step 2 & 3: Recipient Address and Source Chain Sections */}
-                <div className="flex flex-col lg:flex-row gap-6">
-                  {/* Step 2: Recipient Address Section */}
-                  <div className="flex-1 card card-xl">
-                  <div className="flex items-baseline justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
-                        Step 2
-                      </span>
-                      <label className="text-sm font-semibold">Deposit to</label>
-                    </div>
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Namada address where your USDC will arrive
-                  </p>
-                  
-                  {/* Radio selector for recipient type */}
-                  <RadioGroup
-                    value={depositRecipientType}
-                    onValueChange={(value) => setDepositRecipientType(value as 'transparent' | 'custom')}
-                    className="flex flex-col gap-3 mb-3"
-                    disabled={isAnyTxActive}
-                  >
-                    <div className="flex items-center gap-2">
-                      <RadioGroupItem
-                        value="transparent"
-                        id="transparent"
-                        disabled={isAnyTxActive || !walletState.namada.isConnected}
-                        className="mt-0.5"
-                      />
-                      <label
-                        htmlFor="transparent"
-                        className="flex-1 cursor-pointer"
-                      >
-                        <div className="flex-1">
-                          <span className="text-sm font-medium">
-                            My transparent balance
-                            {walletState.namada.account && (
-                              <span className="text-muted-foreground font-normal ml-2 font-mono">
-                                ({walletState.namada.account.slice(0, 8)}...{walletState.namada.account.slice(-4)})
-                              </span>
-                            )}
+                {/* Right Column - Main Content */}
+                <div className="flex-1">
+                  <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
+
+                    {/* Step 1: Amount Section */}
+                    <div className="card card-xl">
+                      <div className="mb-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
+                            Step 1
                           </span>
-                          {!walletState.namada.isConnected && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Connect your Namada wallet to use this option
-                            </p>
-                          )}
+                          <span className="text-sm font-semibold">Amount</span>
                         </div>
-                      </label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <RadioGroupItem
-                        value="custom"
-                        id="custom"
-                        disabled={isAnyTxActive}
-                        className="mt-0.5"
-                      />
-                      <label
-                        htmlFor="custom"
-                        className="flex-1 cursor-pointer"
-                      >
-                        <span className="text-sm font-medium">Set a custom recipient</span>
-                      </label>
-                    </div>
-                  </RadioGroup>
-
-                  {/* Show address input only when custom recipient is selected */}
-                  {depositRecipientType === 'custom' && (
-                    <RecipientAddressInput
-                      value={toAddress}
-                      onChange={setToAddress}
-                      onNameChange={setRecipientName}
-                      onNameValidationChange={(_isValid, error) => setNameValidationError(error)}
-                      addressType="namada"
-                      validationError={validation.addressError}
-                      autoFillAddress={walletState.namada.account}
-                      onAutoFill={handleAutoFill}
-                      disabled={isAnyTxActive}
-                    />
-                  )}
-
-                  {depositRecipientType === 'transparent' && !walletState.namada.isConnected && (
-                    <div className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2">
-                      <div className="flex items-start gap-2">
-                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-warning" />
-                        <p className="text-sm text-foreground">
-                          Please connect your Namada wallet to deposit to your transparent balance, or select "Use a custom recipient" to enter an address manually.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Validation error for transparent address */}
-                  {depositRecipientType === 'transparent' && validation.addressError && toAddress.trim() !== '' && (
-                    <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                      <span className="flex-1">{validation.addressError}</span>
-                    </div>
-                  )}
-                  <div className="mt-3 rounded-md border border-muted/60 bg-muted/10 px-3 py-2">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-2 flex-1">
-                        <p className="text-xs font-semibold text-foreground">Noble fallback address</p>
-                        <p className="text-xs text-muted-foreground">
-                          Used if the auto-forward from Noble to Namada needs to refund.
-                        </p>
-
-                        {/* Display selected address */}
-                        {depositFallbackSelection.address && (
-                          <div className="text-xs break-all text-foreground/90 mt-2">
-                            <span>Current: </span>
-                            <span className="font-mono">{depositFallbackSelection.address}</span>
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">
+                              Available {availableBalance} USDC
+                            </span>
+                            {hasEvmError && (
+                              <Tooltip content="Could not query EVM balance from chain" side="top">
+                                <AlertCircle className="h-3.5 w-3.5 text-error" aria-label="EVM balance error" />
+                              </Tooltip>
+                            )}
                           </div>
-                        )}
-                        
-                        {/* Radio button selection */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (availableBalance !== '--') {
+                                const balanceNum = parseFloat(availableBalance)
+                                const feeUsd = feeInfo?.totalUsd ?? 0
+                                const nobleRegUsd = feeInfo?.nobleRegUsd ?? 0
+                                const totalFees = feeUsd + nobleRegUsd
+                                const maxAmount = Math.max(0, balanceNum - totalFees)
+                                // Format to 6 decimal places to match input handling
+                                setAmount(maxAmount.toFixed(6).replace(/\.?0+$/, ''))
+                              }
+                            }}
+                            disabled={availableBalance === '--'}
+                            className="text-sm font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Use Max
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-3xl font-bold text-muted-foreground">$</span>
+                        <input
+                          type="text"
+                          value={amount}
+                          onChange={(e) => handleAmountInputChange(e, setAmount, 6)}
+                          className="flex-1 border-none bg-transparent p-0 text-3xl font-bold focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30"
+                          placeholder="0.00"
+                          inputMode="decimal"
+                          disabled={false}
+                        />
+                        <div className="flex items-center gap-1.5">
+                          <img
+                            src="/assets/logos/usdc-logo.svg"
+                            alt="USDC"
+                            className="h-4 w-4"
+                          />
+                          <span className="text-sm text-muted-foreground">USDC</span>
+                        </div>
+                      </div>
+                      {/* Validation error for amount */}
+                      {validation.amountError && amount.trim() !== '' && (
+                        <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                          <span className="flex-1">{validation.amountError}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Step 2 & 3: Recipient Address and Source Chain Sections */}
+                    <div className="flex flex-col lg:flex-row gap-6">
+                      {/* Step 2: Recipient Address Section */}
+                      <div className="flex-1 card card-xl">
+                        <div className="flex items-baseline justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
+                              Step 2
+                            </span>
+                            <label className="text-sm font-semibold">Deposit to</label>
+                          </div>
+                          <div className="flex items-center justify-end">
+                          <button
+                            type="button"
+                            onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+                            className="text-xs text-warning hover:text-warning/80 transition-colors"
+                          >
+                            Advanced
+                          </button>
+                        </div>
+                        </div>
+                        <p className="text-sm text-muted-foreground mb-3">
+                          Namada address where your USDC will arrive
+                        </p>
+
+                        {/* Radio selector for recipient type */}
                         <RadioGroup
-                          value={depositFallbackSelection.source === 'none' ? undefined : depositFallbackSelection.source}
-                          onValueChange={(value) => {
-                            if (value === 'custom') {
-                              const customAddress = loadNobleFallbackAddress()
-                              if (customAddress) {
-                                setDepositFallbackSelection({ source: 'custom', address: customAddress })
-                              }
-                            } else if (value === 'derived') {
-                              const currentEvmAddress = walletState.metaMask.account
-                              if (currentEvmAddress) {
-                                const derivedAddress = loadDerivedFallbackAddress(currentEvmAddress)
-                                if (derivedAddress) {
-                                  setDepositFallbackSelection({ source: 'derived', address: derivedAddress })
-                                }
-                              }
-                            }
-                          }}
-                          className="flex flex-col gap-2 mt-2"
+                          value={depositRecipientType}
+                          onValueChange={(value) => setDepositRecipientType(value as 'transparent' | 'custom')}
+                          className="flex flex-col gap-3 mb-3"
+                          disabled={isAnyTxActive}
                         >
                           <div className="flex items-center gap-2">
                             <RadioGroupItem
-                              value="custom"
-                              id="fallback-custom"
-                              disabled={!loadNobleFallbackAddress()}
-                              className="h-3.5 w-3.5"
+                              value="transparent"
+                              id="transparent"
+                              disabled={isAnyTxActive || !walletState.namada.isConnected}
+                              className="mt-0.5"
                             />
                             <label
-                              htmlFor="fallback-custom"
-                              className={`text-xs cursor-pointer ${!loadNobleFallbackAddress() ? 'text-muted-foreground' : ''}`}
+                              htmlFor="transparent"
+                              className="flex-1 cursor-pointer"
                             >
-                              Use custom address from Settings {!loadNobleFallbackAddress() && '(not set)'}
+                              <div className="flex-1">
+                                <span className="text-sm font-medium">
+                                  My transparent balance
+                                  {walletState.namada.account && (
+                                    <span className="text-muted-foreground font-normal ml-2 font-mono">
+                                      ({walletState.namada.account.slice(0, 8)}...{walletState.namada.account.slice(-4)})
+                                    </span>
+                                  )}
+                                </span>
+                                {!walletState.namada.isConnected && (
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Connect your Namada wallet to use this option
+                                  </p>
+                                )}
+                              </div>
                             </label>
                           </div>
                           <div className="flex items-center gap-2">
                             <RadioGroupItem
-                              value="derived"
-                              id="fallback-derived"
-                              disabled={!walletState.metaMask.account || !loadDerivedFallbackAddress(walletState.metaMask.account || '')}
-                              className="h-3.5 w-3.5"
+                              value="custom"
+                              id="custom"
+                              disabled={isAnyTxActive}
+                              className="mt-0.5"
                             />
                             <label
-                              htmlFor="fallback-derived"
-                              className={`text-xs cursor-pointer ${!walletState.metaMask.account || !loadDerivedFallbackAddress(walletState.metaMask.account || '') ? 'text-muted-foreground' : ''}`}
+                              htmlFor="custom"
+                              className="flex-1 cursor-pointer"
                             >
-                              Use an address derived from my MetaMask account private key
+                              <span className="text-sm font-medium">Set a custom recipient</span>
                             </label>
                           </div>
                         </RadioGroup>
 
-                        {/* Derivation status messages */}
-                        {derivationState.stage === 'signing' && (
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            <span>Requesting signature...</span>
-                          </div>
-                        )}
-                        {derivationState.stage === 'extracting' && (
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            <span>Extracting public key...</span>
-                          </div>
-                        )}
-                        {derivationState.stage === 'deriving' && (
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            <span>Deriving Noble address...</span>
-                          </div>
-                        )}
-                        {derivationState.stage === 'success' && (
-                          <div className="flex items-center gap-2 text-xs text-success mt-1">
-                            <CheckCircle2 className="h-3 w-3" />
-                            <span>Address derived successfully</span>
-                          </div>
-                        )}
-                        {derivationState.stage === 'error' && derivationState.error && (
-                          <div className="flex flex-col gap-2 mt-1">
-                            <div className="flex items-start gap-2 text-xs text-destructive">
-                              <AlertCircle className="h-3 w-3 shrink-0 mt-0.5" />
-                              <span className="flex-1">{derivationState.error}</span>
-                            </div>
-                            {walletState.metaMask.isConnected && walletState.metaMask.account && (
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                onClick={handleDeriveFallbackFromMetaMask}
-                                disabled={derivationState.isLoading || isAnyTxActive}
-                                className="text-xs h-7 px-2 w-fit"
-                              >
-                                Try again
-                              </Button>
-                            )}
-                          </div>
+                        {/* Show address input only when custom recipient is selected */}
+                        {depositRecipientType === 'custom' && (
+                          <RecipientAddressInput
+                            value={toAddress}
+                            onChange={setToAddress}
+                            onNameChange={setRecipientName}
+                            onNameValidationChange={(_isValid, error) => setNameValidationError(error)}
+                            addressType="namada"
+                            validationError={validation.addressError}
+                            autoFillAddress={walletState.namada.account}
+                            onAutoFill={handleAutoFill}
+                            disabled={isAnyTxActive}
+                          />
                         )}
 
-                        {/* Derive button - show when no derived address available */}
-                        {walletState.metaMask.isConnected && walletState.metaMask.account && !loadDerivedFallbackAddress(walletState.metaMask.account) && derivationState.stage === 'idle' && (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={handleDeriveFallbackFromMetaMask}
-                            disabled={derivationState.isLoading || isAnyTxActive}
-                            className="text-xs h-7 px-3 mt-2"
-                          >
-                            {derivationState.isLoading ? (
-                              <>
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                                Deriving...
-                              </>
-                            ) : (
-                              'Derive now'
-                            )}
-                          </Button>
-                        )}
-                      </div>
-                      {depositFallbackSelection.address && (
-                        <CopyButton
-                          text={depositFallbackSelection.address}
-                          label="Fallback address"
-                          size="sm"
-                          className="hover:bg-muted/60"
-                        />
-                      )}
-                    </div>
-                    {/* Warning when no fallback */}
-                    {depositFallbackSelection.source === 'none' && (
-                          <div className="flex items-start gap-2 text-xs text-warning mt-2 p-2 rounded border border-warning/30 bg-warning/10">
-                            <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                            <span className="flex-1">
-                              No fallback address configured. Set one in{' '}
-                              <Link to="/settings" className="font-medium underline hover:text-warning/80">
-                                Settings
-                              </Link>
-                              {' '}or derive from your MetaMask account. Proceeding without a fallback address may result in lost funds.
-                            </span>
-                          </div>
-                        )}
-                  </div>
-                  {/* Noble forwarding registration status */}
-                  {!validation.addressError && toAddress.trim() !== '' && (
-                    <div className="mt-3">
-                      {registrationStatus.isLoading && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <span>Checking registration status...</span>
-                        </div>
-                      )}
-                      {!registrationStatus.isLoading && registrationStatus.isRegistered === true && (
-                        <div className="card">
-                          <div className="flex items-start gap-3">
-                            <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-info" />
-                            <div className="flex-1 space-y-2">
-                              <p className="text-sm text-foreground">Noble forwarding address is already registered</p>
-                              {registrationStatus.forwardingAddress && (
-                                <div className="flex items-center gap-2 pt-2 border-t border-info/20">
-                                  <span className="font-mono text-xs text-muted-foreground break-all">
-                                    {registrationStatus.forwardingAddress}
-                                  </span>
-                                  <CopyButton
-                                    text={registrationStatus.forwardingAddress!}
-                                    label="Forwarding address"
-                                    size="sm"
-                                    className="hover:bg-info/20"
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      {!registrationStatus.isLoading && registrationStatus.isRegistered === false && (
-                        <div className="card card-warning">
-                          <div className="flex items-start gap-3">
-                            <Info className="h-4 w-4 shrink-0 mt-0.5 text-warning" />
-                            <div className="flex-1 space-y-2">
-                              <p className="text-sm text-foreground">Noble forwarding address not yet registered. A $0.02 registration fee will be included.</p>
-                              {registrationStatus.forwardingAddress && (
-                                <div className="flex items-center gap-2 pt-2 border-t border-warning/20">
-                                  <span className="font-mono text-xs text-muted-foreground break-all">
-                                    {registrationStatus.forwardingAddress}
-                                  </span>
-                                  <CopyButton
-                                    text={registrationStatus.forwardingAddress!}
-                                    label="Forwarding address"
-                                    size="sm"
-                                    className="hover:bg-warning/20"
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      {!registrationStatus.isLoading && registrationStatus.error && (
-                        <div className="card card-warning">
-                          <div className="flex items-start gap-3">
-                            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-warning" />
-                            <div className="flex-1 space-y-1">
-                              <p className="text-sm font-medium text-foreground">Could not determine forwarding address registration status</p>
-                              <p className="text-sm text-muted-foreground">
-                                If the forwarding address is not registered, your funds may become stuck and require further action on Noble chain for retrieval. Proceed at your own risk.
+                        {depositRecipientType === 'transparent' && !walletState.namada.isConnected && (
+                          <div className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2">
+                            <div className="flex items-start gap-2">
+                              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-warning" />
+                              <p className="text-sm text-foreground">
+                                Please connect your Namada wallet to deposit to your transparent balance, or select "Use a custom recipient" to enter an address manually.
                               </p>
                             </div>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  </div>
+                        )}
 
-                  {/* Step 3: Source Chain Section */}
-                  <div className="flex-1 card card-xl">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
-                      Step 3
-                    </span>
-                    <label className="text-sm font-semibold">Source chain</label>
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    The chain you wish to deposit USDC from
-                  </p>
-                  <ChainSelect
-                    value={selectedChain}
-                    onChange={setSelectedChain}
-                    disabled={isAnyTxActive}
-                    showEstimatedTime={true}
-                    timeType="deposit"
-                  />
-                  </div>
-                </div>
+                        {/* Validation error for transparent address */}
+                        {depositRecipientType === 'transparent' && validation.addressError && toAddress.trim() !== '' && (
+                          <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                            <span className="flex-1">{validation.addressError}</span>
+                          </div>
+                        )}
+                        
+                        {showAdvancedOptions && (
+                          <div className="mt-12 rounded-none border-t border-muted-foreground/20 p-3">
+                            <div className="space-y-2">
+                              <p className="text-sm font-semibold">Advanced Noble Forwarding Options</p>
+                              <div className="flex gap-1">
+                                <AlertCircle className="h-4 w-4 text-warning cursor-help" />
+                                <p className="text-xs text-warning/90">
+                                  Most users don't need to adjust these settings!
+                                </p>
+                              </div>
+                              <div className="mt-4 space-y-2">
+                              <div className="mt-6 flex items-center gap-1.5">
+                                <p className="text-xs font-semibold text-foreground">Fallback address</p>
+                                <Tooltip content="If automatic IBC forwarding from Noble to Namada fails, your funds are refunded to this Noble address.">
+                                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                                </Tooltip>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Unless changed, your fallback address is derived from your MetaMask account when submitting the first deposit. You can also test derivation ahead of time or override with a custom address.
+                              </p>
 
-                {/* Step 4: Fees & Review Section */}
-                <div className="space-y-3 mx-auto my-8">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Network fee</span>
-                    {isEstimatingFee ? (
-                      <div className="flex items-center gap-1.5">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">Estimating...</span>
+                              {/* Derivation status messages */}
+                              {derivationState.stage === 'signing' && (
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  <span>Requesting signature...</span>
+                                </div>
+                              )}
+                              {derivationState.stage === 'extracting' && (
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  <span>Extracting public key...</span>
+                                </div>
+                              )}
+                              {derivationState.stage === 'deriving' && (
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  <span>Deriving Noble address...</span>
+                                </div>
+                              )}
+                              {derivationState.stage === 'success' && (
+                                <div className="flex items-center gap-2 text-xs text-success mt-2">
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  <span>Address derived successfully</span>
+                                </div>
+                              )}
+                              {derivationState.stage === 'error' && derivationState.error && (
+                                <div className="flex flex-col gap-2 mt-2">
+                                  <div className="flex items-start gap-2 text-xs text-destructive">
+                                    <AlertCircle className="h-3 w-3 shrink-0 mt-0.5" />
+                                    <span className="flex-1">{derivationState.error}</span>
+                                  </div>
+                                  {walletState.metaMask.isConnected && walletState.metaMask.account && (
+                                    <Button
+                                      type="button"
+                                      variant="secondary"
+                                      onClick={handleDeriveFallbackFromMetaMask}
+                                      disabled={derivationState.isLoading || isAnyTxActive}
+                                      className="text-xs h-7 px-2 w-fit"
+                                    >
+                                      Try again
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Derive button - available as an option to derive ahead of time */}
+                              {walletState.metaMask.isConnected &&
+                                walletState.metaMask.account &&
+                                !useCustomOverride &&
+                                derivationState.stage === 'idle' && (
+                                  <Button
+                                    type="button"
+                                    variant="secondary"
+                                    onClick={handleDeriveFallbackFromMetaMask}
+                                    disabled={derivationState.isLoading || isAnyTxActive}
+                                    className="text-xs h-7 px-3 mt-2"
+                                  >
+                                    {derivationState.isLoading ? (
+                                      <>
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                        Deriving...
+                                      </>
+                                    ) : (
+                                      'Test Derivation now'
+                                    )}
+                                  </Button>
+                                )}
+
+                              {/* Checkbox for custom address override */}
+                              <div className="flex items-center gap-2 mt-4">
+                                <input
+                                  type="checkbox"
+                                  id="fallback-custom-override"
+                                  checked={useCustomOverride}
+                                  onChange={(e) => {
+                                    setUseCustomOverride(e.target.checked)
+                                  }}
+                                  disabled={!loadNobleFallbackAddress() || isAnyTxActive}
+                                  className="w-3.5 h-3.5 rounded border-input text-primary focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                                />
+                                <label
+                                  htmlFor="fallback-custom-override"
+                                  className={`text-xs cursor-pointer ${!loadNobleFallbackAddress() || isAnyTxActive ? 'text-muted-foreground' : ''}`}
+                                >
+                                  Use custom address from Settings instead
+                                  {!loadNobleFallbackAddress() && ' (not set)'}
+                                </label>
+                              </div>
+
+                              {/* Display selected address */}
+                              {depositFallbackSelection.address && (
+                                <div className="flex items-center gap-2 text-xs text-foreground/90 mt-3">
+                                  <span>Currently using</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-mono">
+                                      {depositFallbackSelection.address.length > 10
+                                        ? `${depositFallbackSelection.address.slice(0, 8)}...${depositFallbackSelection.address.slice(-6)}`
+                                        : depositFallbackSelection.address}
+                                    </span>
+                                    <CopyButton
+                                      text={depositFallbackSelection.address}
+                                      label="Fallback address"
+                                      size="sm"
+                                    />
+                                  </div>
+                                  <span className="text-muted-foreground">
+                                    ({depositFallbackSelection.source === 'custom' ? 'custom' : 'derived'})
+                                  </span>
+                                </div>
+                              )}
+
+                              <div className="mt-6 flex items-center gap-1.5">
+                                <p className="text-xs font-semibold text-foreground">Forwarding address</p>
+                                <Tooltip content="A deterministic address derived from the tuple of channel/recipient/fallback. Any funds sent here will be automatically forwarded to the destination after registration.">
+                                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                                </Tooltip>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-2">
+                                Registration will be completed automatically during deposit, and a 0.02 USDC registration fee will be subtracted from the amount transferred. This only applies once per forwarding address.
+                              </p>
+
+                              {/* Noble forwarding registration status */}
+                              {!validation.addressError && toAddress.trim() !== '' && (
+                                <div className="mt-3">
+                                  {registrationStatus.isLoading && (
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                      <span>Checking registration status...</span>
+                                    </div>
+                                  )}
+                                  {!registrationStatus.isLoading && registrationStatus.isRegistered === true && (
+                                    <div className="flex items-center gap-3">
+                                      <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-success" />
+                                      <div className="flex-1 space-y-2">
+                                        <div className="flex justify-between items-center">
+                                          <p className="text-xs text-muted-foreground">Already registered</p>
+                                          {registrationStatus.forwardingAddress && (
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-mono text-xs text-muted-foreground">
+                                                {registrationStatus.forwardingAddress.length > 10
+                                                  ? `${registrationStatus.forwardingAddress.slice(0, 8)}...${registrationStatus.forwardingAddress.slice(-6)}`
+                                                  : registrationStatus.forwardingAddress}
+                                              </span>
+                                              <CopyButton
+                                                text={registrationStatus.forwardingAddress!}
+                                                label="Forwarding address"
+                                                size="sm"
+                                                className="hover:bg-info/20"
+                                              />
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {!registrationStatus.isLoading && registrationStatus.isRegistered === false && (
+                                    <div className="flex items-center gap-3">
+                                      <Info className="h-4 w-4 shrink-0 mt-0.5 text-warning" />
+                                      <div className="flex-1 space-y-2">
+                                        <div className="flex justify-between items-center">
+                                          <p className="text-xs text-muted-foreground">Registration required</p>
+                                          {registrationStatus.forwardingAddress && (
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-mono text-xs text-muted-foreground">
+                                                {registrationStatus.forwardingAddress.length > 10
+                                                  ? `${registrationStatus.forwardingAddress.slice(0, 8)}...${registrationStatus.forwardingAddress.slice(-6)}`
+                                                  : registrationStatus.forwardingAddress}
+                                              </span>
+                                              <CopyButton
+                                                text={registrationStatus.forwardingAddress!}
+                                                label="Forwarding address"
+                                                size="sm"
+                                                className="hover:bg-warning/20"
+                                              />
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {!registrationStatus.isLoading && registrationStatus.error && (
+                                    <div className="flex items-center gap-3">
+                                      {registrationStatus.error.includes('Fallback address not yet derived') ||
+                                        registrationStatus.error.includes('not yet derived') ? (
+                                        <Info className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />
+                                      ) : (
+                                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-error" />
+                                      )}
+                                      <div className="flex-1 space-y-1">
+                                        <p className={`text-xs ${
+                                          registrationStatus.error.includes('Fallback address not yet derived') ||
+                                          registrationStatus.error.includes('not yet derived')
+                                            ? 'text-muted-foreground'
+                                            : 'text-error'
+                                        }`}>
+                                          {registrationStatus.error.includes('Fallback address not yet derived') ||
+                                            registrationStatus.error.includes('not yet derived')
+                                            ? 'Derive a fallback address first to view forwarding registration status. You can use the \'Test Derivation now\' button above.'
+                                            : 'Unable to query Noble API'}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    ) : feeInfo ? (
-                      <span className="text-sm font-semibold">{estimatedFee}</span>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">--</span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between border-t border-border pt-3 space-x-24 ">
-                    <span className="text-base font-semibold">Total amount deducted</span>
-                    <span className="text-xl font-bold">${total}</span>
-                  </div>
-                </div>
 
-                {/* Deposit Summary Card */}
-                <DepositSummaryCard
-                  amount={amount}
-                  chainName={chainName}
-                  isValid={validation.isValid && !nameValidationError}
-                  validationError={
-                    (!validation.isValid || nameValidationError)
-                      ? nameValidationError || validation.amountError || validation.addressError || 'Please fill in all required fields'
-                      : null
-                  }
-                  onContinue={() => {
-                    if (validation.isValid && !nameValidationError) {
-                      setShowConfirmationModal(true)
-                    } else {
-                      if (nameValidationError) {
-                        notify(buildValidationErrorToast('Address Book', nameValidationError))
+                      {/* Step 3: Source Chain Section */}
+                      <div className="flex-1 card card-xl">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
+                            Step 3
+                          </span>
+                          <label className="text-sm font-semibold">Source chain</label>
+                        </div>
+                        <p className="text-sm text-muted-foreground mb-3">
+                          The chain you wish to deposit USDC from
+                        </p>
+                        <ChainSelect
+                          value={selectedChain}
+                          onChange={setSelectedChain}
+                          disabled={isAnyTxActive}
+                          showEstimatedTime={true}
+                          timeType="deposit"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Step 4: Fees & Review Section */}
+                    <div className="space-y-3 mx-auto my-8">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Network fee</span>
+                        {isEstimatingFee ? (
+                          <div className="flex items-center gap-1.5">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">Estimating...</span>
+                          </div>
+                        ) : feeInfo ? (
+                          <span className="text-sm font-semibold">{estimatedFee}</span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">--</span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between border-t border-border pt-3 space-x-24 ">
+                        <span className="text-base font-semibold">Total amount deducted</span>
+                        <span className="text-xl font-bold">${total}</span>
+                      </div>
+                    </div>
+
+                    {/* Deposit Summary Card */}
+                    <DepositSummaryCard
+                      amount={amount}
+                      chainName={chainName}
+                      isValid={validation.isValid && !nameValidationError}
+                      validationError={
+                        (!validation.isValid || nameValidationError)
+                          ? nameValidationError || validation.amountError || validation.addressError || 'Please fill in all required fields'
+                          : null
                       }
-                      if (validation.amountError) {
-                        notify(buildValidationErrorToast('Amount', validation.amountError))
-                      }
-                      if (validation.addressError) {
-                        notify(buildValidationErrorToast('Address', validation.addressError))
-                      }
-                    }
-                  }}
-                  isSubmitting={false}
-                  currentPhase={null}
-                />
-                </form>
-                <div className='min-h-12' />
+                      onContinue={handleDepositContinue}
+                      isSubmitting={false}
+                      currentPhase={null}
+                    />
+                  </form>
+                  <div className='min-h-12' />
+                </div>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* Confirmation Modal */}
-        <DepositConfirmationModal
-          open={showConfirmationModal}
-          onClose={() => setShowConfirmationModal(false)}
-          onConfirm={handleConfirmDeposit}
-          transactionDetails={transactionDetails}
-        />
-
-        {/* ARIA Live Region for Screen Readers */}
-        <div aria-live="polite" aria-atomic="true" className="sr-only">
-          {currentPhase && (
-            <span>
-              {currentPhase === 'building' && 'Building transaction'}
-              {currentPhase === 'signing' && 'Waiting for wallet approval'}
-              {currentPhase === 'submitting' && 'Submitting transaction'}
-            </span>
           )}
+
+          {/* Confirmation Modal */}
+          <DepositConfirmationModal
+            open={showConfirmationModal}
+            onClose={() => setShowConfirmationModal(false)}
+            onConfirm={handleConfirmDeposit}
+            transactionDetails={transactionDetails}
+          />
+
+          {/* ARIA Live Region for Screen Readers */}
+          <div aria-live="polite" aria-atomic="true" className="sr-only">
+            {currentPhase && (
+              <span>
+                {currentPhase === 'building' && 'Building transaction'}
+                {currentPhase === 'signing' && 'Waiting for wallet approval'}
+                {currentPhase === 'submitting' && 'Submitting transaction'}
+              </span>
+            )}
+          </div>
         </div>
-      </div>
       </div>
     </RequireMetaMaskConnection>
   )

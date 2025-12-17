@@ -1,24 +1,24 @@
 /**
- * Forwarding Addresses Page
+ * Fallback Addresses Page
  * 
- * Displays all unique Noble forwarding addresses from the user's transaction history,
- * showing balances, registration status, and providing registration functionality.
+ * Displays all unique Noble fallback addresses from the user's transaction history,
+ * showing the fallback address, associated EVM address, and USDC balance.
  */
 
 import { useState, useEffect, useCallback } from 'react'
 import { BreadcrumbNav } from '@/components/common/BreadcrumbNav'
 import { Spinner } from '@/components/common/Spinner'
-import { ForwardingAddressCard, type ForwardingAddressInfo } from '@/components/forwarding/ForwardingAddressCard'
-import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
+import { FallbackAddressCard, type FallbackAddressInfo } from '@/components/fallback/FallbackAddressCard'
+import { transactionStorageService } from '@/services/tx/transactionStorageService'
+import { getAllDerivedFallbackEntries } from '@/services/storage/nobleFallbackDerivedStorage'
 import { logger } from '@/utils/logger'
-import { env } from '@/config/env'
 
-export function ForwardingAddresses() {
-  const [addresses, setAddresses] = useState<ForwardingAddressInfo[]>([])
+export function FallbackAddresses() {
+  const [addresses, setAddresses] = useState<FallbackAddressInfo[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Extract unique forwarding addresses from transactions
+  // Extract unique fallback addresses from transactions
   const extractAddresses = useCallback(() => {
     try {
       const allTxs = transactionStorageService.getAllTransactions()
@@ -26,82 +26,61 @@ export function ForwardingAddresses() {
       // Filter for deposit transactions
       const depositTxs = allTxs.filter((tx) => tx.direction === 'deposit')
 
-      // Map to store unique addresses (key: forwardingAddress)
+      // Get all derived fallback entries to map Noble addresses to EVM addresses
+      const derivedEntries = getAllDerivedFallbackEntries()
+      const nobleToEvmMap = new Map<string, string>()
+      for (const { nobleAddress, evmAddress } of derivedEntries) {
+        nobleToEvmMap.set(nobleAddress.toLowerCase(), evmAddress)
+      }
+
+      // Map to store unique addresses (key: fallbackAddress)
       const addressMap = new Map<string, {
-        forwardingAddress: string
-        recipientAddress: string
-        transaction: StoredTransaction
+        fallbackAddress: string
+        evmAddress: string | null
         lastUsedTimestamp: number
-        channelId?: string
-        fallback?: string
       }>()
 
       depositTxs.forEach((tx) => {
-        // Try multiple sources for forwarding address (depositData is primary, pollingState metadata is fallback)
-        const forwardingAddress =
-          tx.depositData?.nobleForwardingAddress ||
-          tx.pollingState?.metadata?.forwardingAddress as string | undefined
+        // Extract fallback address from depositData
+        const fallbackAddress = tx.depositData?.fallback as string | undefined
 
-        // Try multiple sources for recipient address
-        const recipientAddress =
-          tx.depositDetails?.destinationAddress ||
-          tx.pollingState?.metadata?.namadaReceiver as string | undefined ||
-          tx.pollingState?.metadata?.recipient as string | undefined
-
-        if (forwardingAddress && recipientAddress) {
-          // Get channel ID from transaction metadata or use default
-          const channelId =
-            tx.pollingState?.chainStatus.noble?.metadata?.channelId as string | undefined ||
-            tx.pollingState?.metadata?.channelId as string | undefined ||
-            env.nobleToNamadaChannel()
-
-          const fallback = tx.depositData?.fallback as string | undefined
-
+        if (fallbackAddress && fallbackAddress.trim() !== '') {
           // Get transaction timestamp
           const txTimestamp = tx.updatedAt || tx.createdAt
 
-          // Track both the primary transaction and the max timestamp across all transactions
-          const existing = addressMap.get(forwardingAddress)
+          // Look up EVM address from derived storage
+          const evmAddress = nobleToEvmMap.get(fallbackAddress.toLowerCase()) || null
+
+          // Track both the primary address and the max timestamp across all transactions
+          const existing = addressMap.get(fallbackAddress)
           if (!existing) {
             // First time seeing this address
-            addressMap.set(forwardingAddress, {
-              forwardingAddress,
-              recipientAddress,
-              transaction: tx,
+            addressMap.set(fallbackAddress, {
+              fallbackAddress,
+              evmAddress,
               lastUsedTimestamp: txTimestamp,
-              channelId,
-              fallback,
             })
           } else {
             // Update lastUsedTimestamp to be the maximum across all transactions
             const maxTimestamp = Math.max(existing.lastUsedTimestamp, txTimestamp)
-
-            // Also update the primary transaction if this one is more recent
-            if (txTimestamp > (existing.transaction.updatedAt || existing.transaction.createdAt)) {
-              existing.transaction = tx
-            }
-
-            // Always update lastUsedTimestamp to reflect the most recent usage
             existing.lastUsedTimestamp = maxTimestamp
           }
         }
       })
 
-      const uniqueAddresses: ForwardingAddressInfo[] = Array.from(addressMap.values())
+      const uniqueAddresses: FallbackAddressInfo[] = Array.from(addressMap.values())
 
       // Sort by most recent transaction first
       uniqueAddresses.sort((a, b) => {
-        const aTime = a.transaction.updatedAt || a.transaction.createdAt
-        const bTime = b.transaction.updatedAt || b.transaction.createdAt
-        return bTime - aTime
+        return b.lastUsedTimestamp - a.lastUsedTimestamp
       })
 
       setAddresses(uniqueAddresses)
       setIsLoading(false)
       setError(null)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load forwarding addresses'
-      logger.error('[ForwardingAddresses] Failed to extract addresses', {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load fallback addresses'
+      logger.error('[FallbackAddresses] Failed to extract addresses', {
         error: errorMessage,
       })
       setError(errorMessage)
@@ -126,9 +105,9 @@ export function ForwardingAddresses() {
       </div>
 
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Forwarding Addresses</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Fallback Addresses</h1>
         <p className="text-muted-foreground">
-          Manage your Noble forwarding addresses from deposit transactions. View balances, check registration status, and register addresses as needed.
+          View all Noble fallback addresses used in your deposit transactions. These addresses are used for refunds if automatic IBC forwarding to Namada fails.
         </p>
       </header>
 
@@ -136,7 +115,7 @@ export function ForwardingAddresses() {
       {isLoading && (
         <div className="rounded-lg border border-border bg-card p-12 shadow-sm">
           <div className="flex items-center justify-center">
-            <Spinner label="Loading forwarding addresses..." />
+            <Spinner label="Loading fallback addresses..." />
           </div>
         </div>
       )}
@@ -159,7 +138,7 @@ export function ForwardingAddresses() {
       {!isLoading && !error && addresses.length === 0 && (
         <div className="rounded-lg border border-border bg-card p-12 text-center shadow-sm">
           <p className="text-base text-muted-foreground">
-            No forwarding addresses found. Forwarding addresses will appear here after you make deposit transactions.
+            No fallback addresses found. Fallback addresses will appear here after you make deposit transactions.
           </p>
         </div>
       )}
@@ -169,14 +148,14 @@ export function ForwardingAddresses() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              Found {addresses.length} unique forwarding address{addresses.length !== 1 ? 'es' : ''}
+              Found {addresses.length} unique fallback address{addresses.length !== 1 ? 'es' : ''} in your transaction history
             </p>
           </div>
 
           <div className="space-y-4">
             {addresses.map((addressInfo) => (
-              <ForwardingAddressCard
-                key={addressInfo.forwardingAddress}
+              <FallbackAddressCard
+                key={addressInfo.fallbackAddress}
                 addressInfo={addressInfo}
               />
             ))}
