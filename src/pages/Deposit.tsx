@@ -2,63 +2,38 @@ import { useState, useEffect, useRef, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSetAtom, useAtomValue, useAtom } from 'jotai'
 import { jotaiStore } from '@/store/jotaiStore'
-import { Loader2, AlertCircle, CheckCircle2, Info } from 'lucide-react'
-import { CopyButton } from '@/components/common/CopyButton'
-import { Button } from '@/components/common/Button'
-import { Tooltip } from '@/components/common/Tooltip'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { balanceSyncAtom, balanceErrorsAtom } from '@/atoms/balanceAtom'
-// import { BreadcrumbNav } from '@/components/common/BreadcrumbNav'
+import { Loader2 } from 'lucide-react'
 import { ChainSelect } from '@/components/common/ChainSelect'
 import { DepositConfirmationModal } from '@/components/deposit/DepositConfirmationModal'
-import { RecipientAddressInput } from '@/components/recipient/RecipientAddressInput'
 import { addAddress } from '@/services/addressBook/addressBookService'
 import { DepositFlowSteps } from '@/components/deposit/DepositFlowSteps'
 import { DepositSummaryCard } from '@/components/deposit/DepositSummaryCard'
 import { TransactionDisplay } from '@/components/tx/TransactionDisplay'
 import { useWallet } from '@/hooks/useWallet'
-import { useBalance } from '@/hooks/useBalance'
 import { useToast } from '@/hooks/useToast'
 import { RequireMetaMaskConnection } from '@/components/wallet/RequireMetaMaskConnection'
-import { validateDepositForm, handleAmountInputChange, validateNamadaAddress } from '@/services/validation'
-import {
-  buildTransactionSuccessToast,
-  buildTransactionErrorToast,
-  buildTransactionStatusToast,
-  buildValidationErrorToast,
-  buildCopySuccessToast,
-} from '@/utils/toastHelpers'
-import { checkCurrentDepositRecipientRegistration } from '@/services/deposit/nobleForwardingService'
+import { validateDepositForm } from '@/services/validation'
+import { buildValidationErrorToast } from '@/utils/toastHelpers'
 import { useDepositFeeEstimate } from '@/hooks/useDepositFeeEstimate'
-import {
-  buildDepositTransaction,
-  signDepositTransaction,
-  broadcastDepositTransaction,
-  saveDepositTransaction,
-  type DepositTransactionDetails,
-} from '@/services/deposit/depositService'
-import { useTxTracker } from '@/hooks/useTxTracker'
-import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
-import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
-import { preferredChainKeyAtom, depositRecipientAddressAtom, depositFallbackSelectionAtom, type DepositFallbackSelection } from '@/atoms/appAtom'
-import { findChainByChainId, getDefaultChainKey } from '@/config/chains'
-import { getEvmTxExplorerUrl } from '@/utils/explorerUtils'
-import { sanitizeError } from '@/utils/errorSanitizer'
+import { type DepositTransactionDetails } from '@/services/deposit/depositService'
+import { depositRecipientAddressAtom, depositFallbackSelectionAtom, type DepositFallbackSelection } from '@/atoms/appAtom'
 import { txUiAtom, isAnyTransactionActiveAtom, resetTxUiState } from '@/atoms/txUiAtom'
 import { loadNobleFallbackAddress } from '@/services/storage/nobleFallbackStorage'
 import { loadDerivedFallbackAddress } from '@/services/storage/nobleFallbackDerivedStorage'
-import { deriveNobleFallbackFromMetaMask, saveDerivedFallbackToStorage } from '@/services/fallback/nobleFallbackDerivationService'
+import { useDepositChain } from '@/hooks/useDepositChain'
+import { useDepositBalance } from '@/hooks/useDepositBalance'
+import { useNobleFallbackDerivation } from '@/hooks/useNobleFallbackDerivation'
+import { useNobleRegistrationStatus } from '@/hooks/useNobleRegistrationStatus'
+import { useDepositTransaction } from '@/hooks/useDepositTransaction'
+import { DepositErrorDisplay } from '@/components/deposit/DepositErrorDisplay'
+import { DepositAmountInput } from '@/components/deposit/DepositAmountInput'
+import { DepositRecipientSection } from '@/components/deposit/DepositRecipientSection'
+import { DepositFeeDisplay } from '@/components/deposit/DepositFeeDisplay'
 
 export function Deposit() {
   const navigate = useNavigate()
-  const { upsertTransaction } = useTxTracker({ enablePolling: false })
-  const { notify, updateToast, dismissToast } = useToast()
+  const { notify } = useToast()
   const { state: walletState } = useWallet()
-  const { state: balanceState, refresh } = useBalance()
-  const balanceSyncState = useAtomValue(balanceSyncAtom)
-  const balanceErrors = useAtomValue(balanceErrorsAtom)
-  const preferredChainKey = useAtomValue(preferredChainKeyAtom)
-  const setPreferredChainKey = useSetAtom(preferredChainKeyAtom)
   const setDepositRecipientAddress = useSetAtom(depositRecipientAddressAtom)
   const depositFallbackSelection = useAtomValue(depositFallbackSelectionAtom)
   const setDepositFallbackSelection = useSetAtom(depositFallbackSelectionAtom)
@@ -68,7 +43,6 @@ export function Deposit() {
   const [toAddress, setToAddress] = useState('')
   const [recipientName, setRecipientName] = useState<string | null>(null)
   const [nameValidationError, setNameValidationError] = useState<string | null>(null)
-  const [selectedChain, setSelectedChain] = useState<string | undefined>(undefined)
   const [showConfirmationModal, setShowConfirmationModal] = useState(false)
   const [depositRecipientType, setDepositRecipientType] = useState<'transparent' | 'custom'>('transparent')
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false)
@@ -84,32 +58,15 @@ export function Deposit() {
   const errorState = txUiState.errorState
   const showSuccessState = txUiState.showSuccessState
 
-  // Noble forwarding registration status
-  const [registrationStatus, setRegistrationStatus] = useState<{
-    isLoading: boolean
-    isRegistered: boolean | null
-    forwardingAddress: string | null
-    error: string | null
-  }>({
-    isLoading: false,
-    isRegistered: null,
-    forwardingAddress: null,
-    error: null,
-  })
-
-  // Noble fallback derivation state
-  const [derivationState, setDerivationState] = useState<{
-    isLoading: boolean
-    stage: 'idle' | 'signing' | 'extracting' | 'deriving' | 'success' | 'error'
-    error: string | null
-  }>({
-    isLoading: false,
-    stage: 'idle',
-    error: null,
-  })
-
   // State for custom address override checkbox
   const [useCustomOverride, setUseCustomOverride] = useState(false)
+
+  // Custom hooks
+  const { selectedChain, chainName, setSelectedChain } = useDepositChain()
+  const { availableBalance, hasEvmError } = useDepositBalance(selectedChain)
+  const { derivationState, deriveFallback } = useNobleFallbackDerivation()
+  const registrationStatus = useNobleRegistrationStatus(toAddress)
+  const { submitDeposit } = useDepositTransaction()
 
   // Auto-load fallback addresses on mount and when account changes
   useEffect(() => {
@@ -189,104 +146,6 @@ export function Deposit() {
     }
   }, [depositRecipientType])
 
-  // Track the current address being checked to prevent race conditions
-  const checkingAddressRef = useRef<string | null>(null)
-
-  // Debounced check for Noble forwarding registration
-  useEffect(() => {
-    // Only check if address is valid
-    const addressValidation = validateNamadaAddress(toAddress)
-    if (!addressValidation.isValid || !addressValidation.value) {
-      // Reset status if address is invalid
-      checkingAddressRef.current = null
-      setRegistrationStatus({
-        isLoading: false,
-        isRegistered: null,
-        forwardingAddress: null,
-        error: null,
-      })
-      return
-    }
-
-    const addressToCheck = addressValidation.value
-    checkingAddressRef.current = addressToCheck
-
-    // Debounce the check
-    const timeoutId = setTimeout(async () => {
-      // Double-check that we're still checking the same address
-      if (checkingAddressRef.current !== addressToCheck) {
-        return
-      }
-
-      setRegistrationStatus({
-        isLoading: true,
-        isRegistered: null,
-        forwardingAddress: null,
-        error: null,
-      })
-
-      try {
-        const fallback = depositFallbackSelection.address || ''
-
-        // If fallback address is not available, we can't check registration status
-        // In this case, assume registration fee is needed
-        if (!fallback) {
-          if (checkingAddressRef.current === addressToCheck) {
-            setRegistrationStatus({
-              isLoading: false,
-              isRegistered: null, // Unknown status
-              forwardingAddress: null,
-              error: 'Fallback address not yet derived. Registration fee will be included.',
-            })
-          }
-          return
-        }
-
-        const status = await checkCurrentDepositRecipientRegistration(addressToCheck, undefined, fallback)
-
-        // Only update if we're still checking the same address
-        if (checkingAddressRef.current === addressToCheck) {
-          setRegistrationStatus({
-            isLoading: false,
-            isRegistered: status.error ? null : status.exists,
-            forwardingAddress: status.address || null,
-            error: status.error || null,
-          })
-        }
-      } catch (error) {
-        // Only update if we're still checking the same address
-        if (checkingAddressRef.current !== addressToCheck) {
-          return
-        }
-
-        // Don't show error if it's just that no address is available
-        const errorMessage = error instanceof Error ? error.message : String(error)
-        if (errorMessage.includes('No deposit recipient address')) {
-          setRegistrationStatus({
-            isLoading: false,
-            isRegistered: null,
-            forwardingAddress: null,
-            error: null,
-          })
-        } else {
-          setRegistrationStatus({
-            isLoading: false,
-            isRegistered: null,
-            forwardingAddress: null,
-            error: errorMessage,
-          })
-        }
-      }
-    }, 500) // 500ms debounce
-
-    return () => {
-      clearTimeout(timeoutId)
-      // Clear the ref if the effect is cleaning up due to address change
-      if (checkingAddressRef.current === addressToCheck) {
-        checkingAddressRef.current = null
-      }
-    }
-  }, [toAddress, depositFallbackSelection.address])
 
   // Get EVM address from wallet state
   const evmAddress = walletState.metaMask.account
@@ -312,140 +171,6 @@ export function Deposit() {
       : `${feeInfo.totalNative} ${feeInfo.nativeSymbol}`
     : '--'
 
-  // Track last refresh values to prevent unnecessary refreshes
-  const lastRefreshRef = useRef<{
-    account?: string
-    chainId?: number
-  }>({})
-
-  // Get live EVM balance from balance state
-  // Check for EVM balance error state
-  const hasEvmError = balanceSyncState.evmStatus === 'error' && balanceErrors.evm
-  const evmBalance = balanceState.evm.usdc
-  const availableBalance = hasEvmError ? '--' : (evmBalance !== '--' ? evmBalance : '--')
-
-  // Store refresh function in ref to avoid dependency issues
-  const refreshRef = useRef(refresh)
-  refreshRef.current = refresh
-
-  // Refresh balance when wallet connects or chain changes (only if values actually changed)
-  useEffect(() => {
-    const currentAccount = walletState.metaMask.account
-    const currentChainId = walletState.metaMask.chainId
-    const lastAccount = lastRefreshRef.current.account
-    const lastChainId = lastRefreshRef.current.chainId
-
-    // Only refresh if account or chainId actually changed
-    if (
-      walletState.metaMask.isConnected &&
-      currentAccount &&
-      (currentAccount !== lastAccount || currentChainId !== lastChainId)
-    ) {
-      lastRefreshRef.current = {
-        account: currentAccount,
-        chainId: currentChainId,
-      }
-      // Balance service will determine chain key from chainId automatically
-      // Only fetch EVM balance (not Namada balances)
-      void refreshRef.current({ balanceTypes: ['evm'] })
-    }
-  }, [
-    walletState.metaMask.isConnected,
-    walletState.metaMask.account,
-    walletState.metaMask.chainId,
-  ])
-
-  // Load chain: prefer preferredChainKeyAtom, then MetaMask chainId, then default from config
-  useEffect(() => {
-    let mounted = true
-
-    async function loadChain() {
-      try {
-        // Precedence order: atom -> metamask value -> default
-        let chainKey: string | undefined
-
-        // 1. First check if preferredChainKeyAtom has a value
-        if (preferredChainKey) {
-          chainKey = preferredChainKey
-        } else {
-          // 2. Try to derive from MetaMask chainId
-          const config = await fetchEvmChainsConfig()
-          if (walletState.metaMask.isConnected && walletState.metaMask.chainId && config) {
-            const chain = findChainByChainId(config, walletState.metaMask.chainId)
-            if (chain) {
-              chainKey = chain.key
-              // Set preferredChainKeyAtom when deriving from MetaMask
-              if (mounted) {
-                setPreferredChainKey(chainKey)
-              }
-            }
-          }
-
-          // 3. Fall back to default chain from config
-          if (!chainKey && config) {
-            chainKey = getDefaultChainKey(config)
-          }
-        }
-
-        // Set selectedChain if we have a chainKey
-        if (mounted && chainKey) {
-          setSelectedChain(chainKey)
-        }
-      } catch (error) {
-        console.error('[Deposit] Failed to load chain:', error)
-      }
-    }
-
-    void loadChain()
-
-    return () => {
-      mounted = false
-    }
-  }, [preferredChainKey, walletState.metaMask.isConnected, walletState.metaMask.chainId, setPreferredChainKey])
-
-
-  // Get chain name for display
-  const [chainName, setChainName] = useState('')
-  useEffect(() => {
-    let mounted = true
-
-    async function loadChainName() {
-      try {
-        const config = await fetchEvmChainsConfig()
-        if (mounted) {
-          const chain = config.chains.find((c) => c.key === selectedChain)
-          setChainName(chain?.name ?? selectedChain ?? '')
-        }
-      } catch (error) {
-        console.error('[Deposit] Failed to load chain name:', error)
-        if (mounted) {
-          setChainName(selectedChain ?? '')
-        }
-      }
-    }
-
-    void loadChainName()
-
-    return () => {
-      mounted = false
-    }
-  }, [selectedChain])
-
-  // Set preferred chain key when selectedChain changes (for polling to use)
-  useEffect(() => {
-    if (selectedChain) {
-      setPreferredChainKey(selectedChain)
-    }
-  }, [selectedChain, setPreferredChainKey])
-
-  // Refresh balance when selectedChain changes (for dropdown selection)
-  useEffect(() => {
-    if (walletState.metaMask.isConnected && walletState.metaMask.account && selectedChain) {
-      // Refresh balance with the selected chain key
-      // Only fetch EVM balance (not Namada balances)
-      void refreshRef.current({ chainKey: selectedChain, balanceTypes: ['evm'] })
-    }
-  }, [selectedChain, walletState.metaMask.isConnected, walletState.metaMask.account])
 
   // Don't render form until chain is loaded
   if (!selectedChain) {
@@ -487,19 +212,18 @@ export function Deposit() {
   const totalUsd = amountNum + feeUsd + nobleRegUsd
   const total = totalUsd.toFixed(4)
 
-  // Check if derivation is needed before submission
-  const needsDerivation =
-    walletState.metaMask.isConnected &&
-    walletState.metaMask.account &&
-    !useCustomOverride &&
-    depositFallbackSelection.source === 'none'
-
   // Shared function to handle deposit continuation (derivation, validation, show modal)
   async function handleDepositContinue(): Promise<void> {
     // Check if derivation is needed
+    const needsDerivation =
+      walletState.metaMask.isConnected &&
+      walletState.metaMask.account &&
+      !useCustomOverride &&
+      depositFallbackSelection.source === 'none'
+
     if (needsDerivation) {
       // Trigger derivation before proceeding
-      const derivationSuccess = await handleDeriveFallbackFromMetaMask()
+      const derivationSuccess = await deriveFallback()
       // If derivation failed, halt the flow
       if (!derivationSuccess) {
         return
@@ -538,292 +262,20 @@ export function Deposit() {
   async function handleConfirmDeposit(): Promise<void> {
     setShowConfirmationModal(false)
 
-    // Save address to address book immediately on initiation (non-blocking)
-    // This happens before transaction processing and does not depend on tx outcome
-    void saveAddressToBook()
-
-    setTxUiState({
-      ...txUiState,
-      isSubmitting: true,
-      phase: 'building',
-      errorState: null,
-      txHash: null,
-      explorerUrl: undefined,
-      showSuccessState: false,
-      transactionType: 'deposit',
+    await submitDeposit({
+      amount,
+      toAddress,
+      selectedChain: selectedChain!,
+      chainName,
+      estimatedFee,
+      total,
+      evmAddress,
+      onAddressBookSave: saveAddressToBook,
     })
-
-    // Track transaction state for error handling
-    let tx: Awaited<ReturnType<typeof buildDepositTransaction>> | undefined
-    let signedTx: Awaited<ReturnType<typeof signDepositTransaction>> | undefined
-    let currentTx: StoredTransaction | undefined
-
-    // Use a consistent toast ID for transaction status updates (moved outside try so it's accessible in catch)
-    const txToastId = `deposit-tx-${Date.now()}`
-
-    try {
-      // Build transaction details
-      const transactionDetails: DepositTransactionDetails = {
-        amount,
-        fee: estimatedFee,
-        total,
-        destinationAddress: toAddress,
-        chainName,
-        ...(evmAddress && { senderAddress: evmAddress }), // Store EVM sender address if available
-      }
-
-      // Build transaction
-      notify(buildTransactionStatusToast('building', 'deposit', txToastId))
-      tx = await buildDepositTransaction({
-        amount,
-        destinationAddress: toAddress,
-        sourceChain: selectedChain!, // Safe: guarded by check at line 177
-      })
-
-      // Save transaction immediately after build (for error tracking)
-      currentTx = {
-        ...tx,
-        depositDetails: transactionDetails,
-        updatedAt: Date.now(),
-      }
-      transactionStorageService.saveTransaction(currentTx)
-      upsertTransaction(tx)
-
-      // Sign transaction (no-op, actual signing happens during broadcast)
-      setTxUiState({ ...txUiState, phase: 'signing' })
-      updateToast(txToastId, buildTransactionStatusToast('signing', 'deposit'))
-      signedTx = await signDepositTransaction(tx)
-
-      // Update status to signing
-      currentTx = {
-        ...currentTx,
-        ...signedTx,
-        status: 'signing',
-        updatedAt: Date.now(),
-      }
-      transactionStorageService.saveTransaction(currentTx)
-      upsertTransaction(signedTx)
-
-      // Broadcast transaction (signing popup appears here, so keep showing "Signing transaction...")
-      // Update status to submitting after signing completes
-      currentTx = {
-        ...currentTx,
-        status: 'submitting',
-        updatedAt: Date.now(),
-      }
-      transactionStorageService.saveTransaction(currentTx)
-
-      const txHashResult = await broadcastDepositTransaction(signedTx, {
-        onSigningComplete: () => {
-          // Phase 3: Submitting (only after signing is complete)
-          setTxUiState({ ...txUiState, phase: 'submitting' })
-          updateToast(txToastId, buildTransactionStatusToast('submitting', 'deposit'))
-        },
-      })
-
-      const txHash = txHashResult
-
-      // Update transaction with hash
-      const txWithHash = {
-        ...signedTx,
-        hash: txHash,
-        status: 'broadcasted' as const,
-      }
-
-      // Save transaction to unified storage with deposit details
-      // Frontend polling handles all tracking (no backend registration needed)
-      const savedTx = await saveDepositTransaction(txWithHash, transactionDetails)
-
-      // Also update in-memory state for immediate UI updates
-      upsertTransaction(savedTx)
-
-      // Update the existing loading toast to success toast
-      const successToast = buildTransactionSuccessToast(savedTx, {
-        onViewTransaction: (id) => {
-          navigate(`/dashboard?tx=${id}`)
-        },
-        onCopyHash: () => {
-          notify(buildCopySuccessToast('Transaction hash'))
-        },
-      })
-      const { id: _, ...successToastArgs } = successToast
-      updateToast(txToastId, successToastArgs)
-
-      // Set success state and fetch explorer URL
-      setTxUiState({ ...txUiState, phase: null, txHash, showSuccessState: true })
-      if (selectedChain) {
-        getEvmTxExplorerUrl(selectedChain, txHash).then((url) => {
-          setTxUiState((prev) => ({ ...prev, explorerUrl: url }))
-        }).catch(() => {
-          // Silently fail if explorer URL can't be fetched
-        })
-      }
-    } catch (error) {
-      // Dismiss the loading toast if it exists
-      dismissToast(txToastId)
-
-      console.error('[Deposit] Deposit submission failed:', error)
-      const sanitized = sanitizeError(error)
-      const message = sanitized.message
-
-      // Save error transaction to storage for history tracking
-      try {
-        // Build transaction details for error case
-        const transactionDetails: DepositTransactionDetails = {
-          amount,
-          fee: estimatedFee,
-          total,
-          destinationAddress: toAddress,
-          chainName,
-        }
-
-        // Use current transaction state if available, otherwise create new error transaction
-        const errorTx: StoredTransaction = currentTx
-          ? {
-            ...currentTx,
-            status: 'error',
-            errorMessage: message,
-            updatedAt: Date.now(),
-          }
-          : {
-            id: tx?.id || crypto.randomUUID(),
-            createdAt: tx?.createdAt || Date.now(),
-            updatedAt: Date.now(),
-            chain: tx?.chain || selectedChain || '',
-            direction: 'deposit',
-            status: 'error',
-            errorMessage: message,
-            depositDetails: transactionDetails,
-          }
-
-        transactionStorageService.saveTransaction(errorTx)
-        upsertTransaction(errorTx)
-      } catch (saveError) {
-        console.error('[Deposit] Failed to save error transaction:', saveError)
-      }
-
-      // Show error toast with action to view transaction if available
-      const errorTxForToast = currentTx || (tx ? { id: tx.id, direction: 'deposit' as const } : undefined)
-      if (errorTxForToast) {
-        notify(
-          buildTransactionErrorToast(errorTxForToast, message, {
-            onViewTransaction: (id) => {
-              navigate(`/dashboard?tx=${id}`)
-            },
-          })
-        )
-      } else {
-        notify({
-          title: 'Deposit Failed',
-          description: message,
-          level: 'error',
-        })
-      }
-
-      // Set error state for enhanced error display
-      setTxUiState({ ...txUiState, errorState: { message }, phase: null, isSubmitting: false })
-    } finally {
-      // Reset isSubmitting in global state if not already reset
-      if (txUiState.isSubmitting) {
-        setTxUiState((prev) => ({ ...prev, isSubmitting: false }))
-      }
-    }
   }
 
   const handleRetry = () => {
     resetTxUiState(setTxUiState)
-  }
-
-  // Handle Auto Fill for Namada address
-  // Handle Noble fallback address derivation from MetaMask
-  // Returns true if derivation succeeded, false if it failed
-  async function handleDeriveFallbackFromMetaMask(): Promise<boolean> {
-    if (!walletState.metaMask.isConnected || !walletState.metaMask.account) {
-      notify({
-        title: 'MetaMask Not Connected',
-        description: 'Please connect your MetaMask wallet to derive a fallback address.',
-        level: 'error',
-      })
-      return false
-    }
-
-    setDerivationState({
-      isLoading: true,
-      stage: 'signing',
-      error: null,
-    })
-
-    try {
-      // Stage 1: Request signature
-      notify({
-        title: 'Requesting Signature',
-        description: 'Please sign the message in MetaMask to derive your Noble fallback address.',
-        level: 'info',
-      })
-
-      setDerivationState({
-        isLoading: true,
-        stage: 'extracting',
-        error: null,
-      })
-
-      setDerivationState({
-        isLoading: true,
-        stage: 'deriving',
-        error: null,
-      })
-
-      const result = await deriveNobleFallbackFromMetaMask({
-        evmAddress: walletState.metaMask.account,
-      })
-
-      // Save to derived storage (keyed by EVM address)
-      await saveDerivedFallbackToStorage(result)
-
-      // Update selection atom to use derived address
-      setDepositFallbackSelection({
-        source: 'derived',
-        address: result.nobleAddress,
-      })
-
-      setDerivationState({
-        isLoading: false,
-        stage: 'success',
-        error: null,
-      })
-
-      notify({
-        title: 'Address Derived Successfully',
-        description: `Noble fallback address: ${result.nobleAddress.slice(0, 16)}...`,
-        level: 'success',
-      })
-
-      return true
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to derive Noble fallback address'
-
-      setDerivationState({
-        isLoading: false,
-        stage: 'error',
-        error: errorMessage,
-      })
-
-      notify({
-        title: 'Derivation Failed',
-        description: errorMessage,
-        level: 'error',
-      })
-
-      return false
-    }
-  }
-
-  function handleAutoFill() {
-    // Get Namada address from wallet state
-    const namadaAddress = walletState.namada.account
-    if (namadaAddress) {
-      setToAddress(namadaAddress)
-    }
   }
 
   // Save address to address book if name was provided
@@ -907,26 +359,7 @@ export function Deposit() {
 
           {/* Enhanced Error State */}
           {errorState && (
-            <div className="rounded-lg border border-error/50 bg-error/10 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-error shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <h3 className="font-semibold text-error mb-1">
-                    Transaction Failed
-                  </h3>
-                  <p className="text-sm text-error/90 mb-3">
-                    {errorState.message}
-                  </p>
-                  <Button
-                    variant="secondary"
-                    onClick={handleRetry}
-                    className="h-8 text-sm"
-                  >
-                    Try Again
-                  </Button>
-                </div>
-              </div>
-            </div>
+            <DepositErrorDisplay error={errorState} onRetry={handleRetry} />
           )}
 
           {/* Transaction Display (replaces form when transaction is active or success state is shown) */}
@@ -965,415 +398,47 @@ export function Deposit() {
                   <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
 
                     {/* Step 1: Amount Section */}
-                    <div className="card card-xl">
-                      <div className="mb-4">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
-                            Step 1
-                          </span>
-                          <span className="text-sm font-semibold">Amount</span>
-                        </div>
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-muted-foreground">
-                              Available {availableBalance} USDC
-                            </span>
-                            {hasEvmError && (
-                              <Tooltip content="Could not query EVM balance from chain" side="top">
-                                <AlertCircle className="h-3.5 w-3.5 text-error" aria-label="EVM balance error" />
-                              </Tooltip>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (availableBalance !== '--') {
-                                const balanceNum = parseFloat(availableBalance)
-                                const feeUsd = feeInfo?.totalUsd ?? 0
-                                const nobleRegUsd = feeInfo?.nobleRegUsd ?? 0
-                                const totalFees = feeUsd + nobleRegUsd
-                                const maxAmount = Math.max(0, balanceNum - totalFees)
-                                // Format to 6 decimal places to match input handling
-                                setAmount(maxAmount.toFixed(6).replace(/\.?0+$/, ''))
-                              }
-                            }}
-                            disabled={availableBalance === '--'}
-                            className="text-sm font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Use Max
-                          </button>
-                        </div>
-                      </div>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-3xl font-bold text-muted-foreground">$</span>
-                        <input
-                          type="text"
-                          value={amount}
-                          onChange={(e) => handleAmountInputChange(e, setAmount, 6)}
-                          className="flex-1 border-none bg-transparent p-0 text-3xl font-bold focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30"
-                          placeholder="0.00"
-                          inputMode="decimal"
-                          disabled={false}
-                        />
-                        <div className="flex items-center gap-1.5">
-                          <img
-                            src="/assets/logos/usdc-logo.svg"
-                            alt="USDC"
-                            className="h-4 w-4"
-                          />
-                          <span className="text-sm text-muted-foreground">USDC</span>
-                        </div>
-                      </div>
-                      {/* Validation error for amount */}
-                      {validation.amountError && amount.trim() !== '' && (
-                        <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                          <span className="flex-1">{validation.amountError}</span>
-                        </div>
-                      )}
-                    </div>
+                    <DepositAmountInput
+                      amount={amount}
+                      onAmountChange={setAmount}
+                      availableBalance={availableBalance}
+                      hasEvmError={hasEvmError}
+                      validationError={validation.amountError}
+                      feeInfo={feeInfo}
+                    />
 
                     {/* Step 2 & 3: Recipient Address and Source Chain Sections */}
                     <div className="flex flex-col lg:flex-row gap-6">
                       {/* Step 2: Recipient Address Section */}
-                      <div className="flex-1 card card-xl">
-                        <div className="flex items-baseline justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
-                              Step 2
-                            </span>
-                            <label className="text-sm font-semibold">Deposit to</label>
-                          </div>
-                          <div className="flex items-center justify-end">
-                          <button
-                            type="button"
-                            onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
-                            className="text-xs text-warning hover:text-warning/80 transition-colors"
-                          >
-                            Advanced
-                          </button>
-                        </div>
-                        </div>
-                        <p className="text-sm text-muted-foreground mb-3">
-                          Namada address where your USDC will arrive
-                        </p>
-
-                        {/* Radio selector for recipient type */}
-                        <RadioGroup
-                          value={depositRecipientType}
-                          onValueChange={(value) => setDepositRecipientType(value as 'transparent' | 'custom')}
-                          className="flex flex-col gap-3 mb-3"
-                          disabled={isAnyTxActive}
-                        >
-                          <div className="flex items-center gap-2">
-                            <RadioGroupItem
-                              value="transparent"
-                              id="transparent"
-                              disabled={isAnyTxActive || !walletState.namada.isConnected}
-                              className="mt-0.5"
-                            />
-                            <label
-                              htmlFor="transparent"
-                              className="flex-1 cursor-pointer"
-                            >
-                              <div className="flex-1">
-                                <span className="text-sm font-medium">
-                                  My transparent balance
-                                  {walletState.namada.account && (
-                                    <span className="text-muted-foreground font-normal ml-2 font-mono">
-                                      ({walletState.namada.account.slice(0, 8)}...{walletState.namada.account.slice(-4)})
-                                    </span>
-                                  )}
-                                </span>
-                                {!walletState.namada.isConnected && (
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    Connect your Namada wallet to use this option
-                                  </p>
-                                )}
-                              </div>
-                            </label>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <RadioGroupItem
-                              value="custom"
-                              id="custom"
-                              disabled={isAnyTxActive}
-                              className="mt-0.5"
-                            />
-                            <label
-                              htmlFor="custom"
-                              className="flex-1 cursor-pointer"
-                            >
-                              <span className="text-sm font-medium">Set a custom recipient</span>
-                            </label>
-                          </div>
-                        </RadioGroup>
-
-                        {/* Show address input only when custom recipient is selected */}
-                        {depositRecipientType === 'custom' && (
-                          <RecipientAddressInput
-                            value={toAddress}
-                            onChange={setToAddress}
-                            onNameChange={setRecipientName}
-                            onNameValidationChange={(_isValid, error) => setNameValidationError(error)}
-                            addressType="namada"
-                            validationError={validation.addressError}
-                            autoFillAddress={walletState.namada.account}
-                            onAutoFill={handleAutoFill}
-                            disabled={isAnyTxActive}
-                          />
-                        )}
-
-                        {depositRecipientType === 'transparent' && !walletState.namada.isConnected && (
-                          <div className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2">
-                            <div className="flex items-start gap-2">
-                              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-warning" />
-                              <p className="text-sm text-foreground">
-                                Please connect your Namada wallet to deposit to your transparent balance, or select "Use a custom recipient" to enter an address manually.
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Validation error for transparent address */}
-                        {depositRecipientType === 'transparent' && validation.addressError && toAddress.trim() !== '' && (
-                          <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                            <span className="flex-1">{validation.addressError}</span>
-                          </div>
-                        )}
-                        
-                        {showAdvancedOptions && (
-                          <div className="mt-12 rounded-none border-t border-muted-foreground/20 p-3">
-                            <div className="space-y-2">
-                              <p className="text-sm font-semibold">Advanced Noble Forwarding Options</p>
-                              <div className="flex gap-1">
-                                <AlertCircle className="h-4 w-4 text-warning cursor-help" />
-                                <p className="text-xs text-warning/90">
-                                  Most users don't need to adjust these settings!
-                                </p>
-                              </div>
-                              <div className="mt-4 space-y-2">
-                              <div className="mt-6 flex items-center gap-1.5">
-                                <p className="text-xs font-semibold text-foreground">Fallback address</p>
-                                <Tooltip content="If automatic IBC forwarding from Noble to Namada fails, your funds are refunded to this Noble address.">
-                                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                                </Tooltip>
-                              </div>
-                              <p className="text-xs text-muted-foreground">
-                                Unless changed, your fallback address is derived from your MetaMask account when submitting the first deposit. You can also test derivation ahead of time or override with a custom address.
-                              </p>
-
-                              {/* Derivation status messages */}
-                              {derivationState.stage === 'signing' && (
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                  <span>Requesting signature...</span>
-                                </div>
-                              )}
-                              {derivationState.stage === 'extracting' && (
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                  <span>Extracting public key...</span>
-                                </div>
-                              )}
-                              {derivationState.stage === 'deriving' && (
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                  <span>Deriving Noble address...</span>
-                                </div>
-                              )}
-                              {derivationState.stage === 'success' && (
-                                <div className="flex items-center gap-2 text-xs text-success mt-2">
-                                  <CheckCircle2 className="h-3 w-3" />
-                                  <span>Address derived successfully</span>
-                                </div>
-                              )}
-                              {derivationState.stage === 'error' && derivationState.error && (
-                                <div className="flex flex-col gap-2 mt-2">
-                                  <div className="flex items-start gap-2 text-xs text-destructive">
-                                    <AlertCircle className="h-3 w-3 shrink-0 mt-0.5" />
-                                    <span className="flex-1">{derivationState.error}</span>
-                                  </div>
-                                  {walletState.metaMask.isConnected && walletState.metaMask.account && (
-                                    <Button
-                                      type="button"
-                                      variant="secondary"
-                                      onClick={handleDeriveFallbackFromMetaMask}
-                                      disabled={derivationState.isLoading || isAnyTxActive}
-                                      className="text-xs h-7 px-2 w-fit"
-                                    >
-                                      Try again
-                                    </Button>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Derive button - available as an option to derive ahead of time */}
-                              {walletState.metaMask.isConnected &&
-                                walletState.metaMask.account &&
-                                !useCustomOverride &&
-                                derivationState.stage === 'idle' && (
-                                  <Button
-                                    type="button"
-                                    variant="secondary"
-                                    onClick={handleDeriveFallbackFromMetaMask}
-                                    disabled={derivationState.isLoading || isAnyTxActive}
-                                    className="text-xs h-7 px-3 mt-2"
-                                  >
-                                    {derivationState.isLoading ? (
-                                      <>
-                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                        Deriving...
-                                      </>
-                                    ) : (
-                                      'Test Derivation now'
-                                    )}
-                                  </Button>
-                                )}
-
-                              {/* Checkbox for custom address override */}
-                              <div className="flex items-center gap-2 mt-4">
-                                <input
-                                  type="checkbox"
-                                  id="fallback-custom-override"
-                                  checked={useCustomOverride}
-                                  onChange={(e) => {
-                                    setUseCustomOverride(e.target.checked)
-                                  }}
-                                  disabled={!loadNobleFallbackAddress() || isAnyTxActive}
-                                  className="w-3.5 h-3.5 rounded border-input text-primary focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
-                                />
-                                <label
-                                  htmlFor="fallback-custom-override"
-                                  className={`text-xs cursor-pointer ${!loadNobleFallbackAddress() || isAnyTxActive ? 'text-muted-foreground' : ''}`}
-                                >
-                                  Use custom address from Settings instead
-                                  {!loadNobleFallbackAddress() && ' (not set)'}
-                                </label>
-                              </div>
-
-                              {/* Display selected address */}
-                              {depositFallbackSelection.address && (
-                                <div className="flex items-center gap-2 text-xs text-foreground/90 mt-3">
-                                  <span>Currently using</span>
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="font-mono">
-                                      {depositFallbackSelection.address.length > 10
-                                        ? `${depositFallbackSelection.address.slice(0, 8)}...${depositFallbackSelection.address.slice(-6)}`
-                                        : depositFallbackSelection.address}
-                                    </span>
-                                    <CopyButton
-                                      text={depositFallbackSelection.address}
-                                      label="Fallback address"
-                                      size="sm"
-                                    />
-                                  </div>
-                                  <span className="text-muted-foreground">
-                                    ({depositFallbackSelection.source === 'custom' ? 'custom' : 'derived'})
-                                  </span>
-                                </div>
-                              )}
-
-                              <div className="mt-6 flex items-center gap-1.5">
-                                <p className="text-xs font-semibold text-foreground">Forwarding address</p>
-                                <Tooltip content="A deterministic address derived from the tuple of channel/recipient/fallback. Any funds sent here will be automatically forwarded to the destination after registration.">
-                                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                                </Tooltip>
-                              </div>
-                              <p className="text-xs text-muted-foreground mt-2">
-                                Registration will be completed automatically during deposit, and a 0.02 USDC registration fee will be subtracted from the amount transferred. This only applies once per forwarding address.
-                              </p>
-
-                              {/* Noble forwarding registration status */}
-                              {!validation.addressError && toAddress.trim() !== '' && (
-                                <div className="mt-3">
-                                  {registrationStatus.isLoading && (
-                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                      <span>Checking registration status...</span>
-                                    </div>
-                                  )}
-                                  {!registrationStatus.isLoading && registrationStatus.isRegistered === true && (
-                                    <div className="flex items-center gap-3">
-                                      <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-success" />
-                                      <div className="flex-1 space-y-2">
-                                        <div className="flex justify-between items-center">
-                                          <p className="text-xs text-muted-foreground">Already registered</p>
-                                          {registrationStatus.forwardingAddress && (
-                                            <div className="flex items-center gap-2">
-                                              <span className="font-mono text-xs text-muted-foreground">
-                                                {registrationStatus.forwardingAddress.length > 10
-                                                  ? `${registrationStatus.forwardingAddress.slice(0, 8)}...${registrationStatus.forwardingAddress.slice(-6)}`
-                                                  : registrationStatus.forwardingAddress}
-                                              </span>
-                                              <CopyButton
-                                                text={registrationStatus.forwardingAddress!}
-                                                label="Forwarding address"
-                                                size="sm"
-                                                className="hover:bg-info/20"
-                                              />
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                  {!registrationStatus.isLoading && registrationStatus.isRegistered === false && (
-                                    <div className="flex items-center gap-3">
-                                      <Info className="h-4 w-4 shrink-0 mt-0.5 text-warning" />
-                                      <div className="flex-1 space-y-2">
-                                        <div className="flex justify-between items-center">
-                                          <p className="text-xs text-muted-foreground">Registration required</p>
-                                          {registrationStatus.forwardingAddress && (
-                                            <div className="flex items-center gap-2">
-                                              <span className="font-mono text-xs text-muted-foreground">
-                                                {registrationStatus.forwardingAddress.length > 10
-                                                  ? `${registrationStatus.forwardingAddress.slice(0, 8)}...${registrationStatus.forwardingAddress.slice(-6)}`
-                                                  : registrationStatus.forwardingAddress}
-                                              </span>
-                                              <CopyButton
-                                                text={registrationStatus.forwardingAddress!}
-                                                label="Forwarding address"
-                                                size="sm"
-                                                className="hover:bg-warning/20"
-                                              />
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                  {!registrationStatus.isLoading && registrationStatus.error && (
-                                    <div className="flex items-center gap-3">
-                                      {registrationStatus.error.includes('Fallback address not yet derived') ||
-                                        registrationStatus.error.includes('not yet derived') ? (
-                                        <Info className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />
-                                      ) : (
-                                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-error" />
-                                      )}
-                                      <div className="flex-1 space-y-1">
-                                        <p className={`text-xs ${
-                                          registrationStatus.error.includes('Fallback address not yet derived') ||
-                                          registrationStatus.error.includes('not yet derived')
-                                            ? 'text-muted-foreground'
-                                            : 'text-error'
-                                        }`}>
-                                          {registrationStatus.error.includes('Fallback address not yet derived') ||
-                                            registrationStatus.error.includes('not yet derived')
-                                            ? 'Derive a fallback address first to view forwarding registration status. You can use the \'Test Derivation now\' button above.'
-                                            : 'Unable to query Noble API'}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                      <DepositRecipientSection
+                        recipientType={depositRecipientType}
+                        onRecipientTypeChange={setDepositRecipientType}
+                        address={toAddress}
+                        onAddressChange={setToAddress}
+                        recipientName={recipientName}
+                        onRecipientNameChange={setRecipientName}
+                        onNameValidationChange={(_isValid, error) => setNameValidationError(error)}
+                        validationError={validation.addressError}
+                        showAdvanced={showAdvancedOptions}
+                        onShowAdvancedChange={setShowAdvancedOptions}
+                        fallbackSelection={depositFallbackSelection}
+                        useCustomOverride={useCustomOverride}
+                        onCustomOverrideChange={setUseCustomOverride}
+                        derivationState={derivationState}
+                        onDerive={deriveFallback}
+                        registrationStatus={registrationStatus}
+                        isAnyTxActive={isAnyTxActive}
+                        namadaConnected={walletState.namada.isConnected}
+                        namadaAccount={walletState.namada.account}
+                        metaMaskConnected={walletState.metaMask.isConnected}
+                        metaMaskAccount={walletState.metaMask.account}
+                        onAutoFill={() => {
+                          const namadaAddress = walletState.namada.account
+                          if (namadaAddress) {
+                            setToAddress(namadaAddress)
+                          }
+                        }}
+                      />
 
                       {/* Step 3: Source Chain Section */}
                       <div className="flex-1 card card-xl">
@@ -1397,25 +462,11 @@ export function Deposit() {
                     </div>
 
                     {/* Step 4: Fees & Review Section */}
-                    <div className="space-y-3 mx-auto my-8">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Network fee</span>
-                        {isEstimatingFee ? (
-                          <div className="flex items-center gap-1.5">
-                            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                            <span className="text-xs text-muted-foreground">Estimating...</span>
-                          </div>
-                        ) : feeInfo ? (
-                          <span className="text-sm font-semibold">{estimatedFee}</span>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">--</span>
-                        )}
-                      </div>
-                      <div className="flex items-center justify-between border-t border-border pt-3 space-x-24 ">
-                        <span className="text-base font-semibold">Total amount deducted</span>
-                        <span className="text-xl font-bold">${total}</span>
-                      </div>
-                    </div>
+                    <DepositFeeDisplay
+                      feeInfo={feeInfo}
+                      isEstimatingFee={isEstimatingFee}
+                      total={total}
+                    />
 
                     {/* Deposit Summary Card */}
                     <DepositSummaryCard
