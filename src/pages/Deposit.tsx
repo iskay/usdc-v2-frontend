@@ -20,12 +20,12 @@ import { depositRecipientAddressAtom, depositFallbackSelectionAtom, type Deposit
 import { txUiAtom, isAnyTransactionActiveAtom, resetTxUiState } from '@/atoms/txUiAtom'
 import { loadNobleFallbackAddress } from '@/services/storage/nobleFallbackStorage'
 import { loadDerivedFallbackAddress } from '@/services/storage/nobleFallbackDerivedStorage'
-import { useDepositChain } from '@/hooks/useDepositChain'
+import { useChainSelection } from '@/hooks/useChainSelection'
 import { useDepositBalance } from '@/hooks/useDepositBalance'
 import { useNobleFallbackDerivation } from '@/hooks/useNobleFallbackDerivation'
 import { useNobleRegistrationStatus } from '@/hooks/useNobleRegistrationStatus'
 import { useDepositTransaction } from '@/hooks/useDepositTransaction'
-import { DepositErrorDisplay } from '@/components/deposit/DepositErrorDisplay'
+import { TransactionErrorDisplay } from '@/components/common/TransactionErrorDisplay'
 import { DepositAmountInput } from '@/components/deposit/DepositAmountInput'
 import { DepositRecipientSection } from '@/components/deposit/DepositRecipientSection'
 import { DepositFeeDisplay } from '@/components/deposit/DepositFeeDisplay'
@@ -62,7 +62,11 @@ export function Deposit() {
   const [useCustomOverride, setUseCustomOverride] = useState(false)
 
   // Custom hooks
-  const { selectedChain, chainName, setSelectedChain } = useDepositChain()
+  const { selectedChain, chainName, setSelectedChain } = useChainSelection({
+    strategy: 'preferred',
+    updatePreferred: true,
+    useMetaMaskFallback: true,
+  })
   const { availableBalance, hasEvmError } = useDepositBalance(selectedChain)
   const { derivationState, deriveFallback } = useNobleFallbackDerivation()
   const registrationStatus = useNobleRegistrationStatus(toAddress)
@@ -342,7 +346,7 @@ export function Deposit() {
 
           {/* Enhanced Error State */}
           {errorState && (
-            <DepositErrorDisplay error={errorState} onRetry={handleRetry} />
+            <TransactionErrorDisplay error={errorState} onRetry={handleRetry} />
           )}
 
           {/* Transaction Display (replaces form when transaction is active or success state is shown) */}

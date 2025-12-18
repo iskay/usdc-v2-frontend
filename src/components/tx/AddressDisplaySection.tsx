@@ -1,3 +1,4 @@
+import { useAtomValue } from 'jotai'
 import { User, Ghost, Info } from 'lucide-react'
 import { ExplorerLink } from '@/components/common/ExplorerLink'
 import { CopyButton } from '@/components/common/CopyButton'
@@ -5,6 +6,7 @@ import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import { getAddressDisplay, isDisposableNamadaAddress } from '@/utils/addressDisplayUtils'
 import { Tooltip } from '@/components/common/Tooltip'
 import { formatAddress } from '@/utils/toastHelpers'
+import { addressBookAtom } from '@/atoms/addressBookAtom'
 
 export interface AddressDisplaySectionProps {
   address: string | undefined
@@ -27,7 +29,8 @@ export function AddressDisplaySection({
 }: AddressDisplaySectionProps) {
   if (!address) return null
 
-  const addressInfo = getAddressDisplay(address)
+  const addressBookEntries = useAtomValue(addressBookAtom)
+  const addressInfo = getAddressDisplay(address, addressBookEntries)
   const isDisposable = isSender && isDisposableNamadaAddress(address, transaction)
   const isFromAddressBook = addressInfo?.isFromAddressBook ?? false
 
@@ -74,7 +77,7 @@ export function AddressDisplaySection({
             <button
               type="button"
               onClick={onToggleShowAddress}
-              className="text-xs text-primary/80 hover:text-primary/60 p-0"
+              className="text-xs text-primary hover:text-primary/80 p-0"
             >
               Show address
             </button>
@@ -123,7 +126,7 @@ export function AddressDisplaySection({
             <button
               type="button"
               onClick={onToggleShowAddress}
-              className="text-xs text-primary/80 hover:text-primary/60 p-0"
+              className="text-xs text-primary hover:text-primary/80 p-0"
             >
               Show address
             </button>

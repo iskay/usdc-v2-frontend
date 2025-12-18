@@ -17,12 +17,12 @@ import { type PaymentTransactionDetails } from '@/services/payment/paymentServic
 import { triggerShieldedBalanceRefresh } from '@/services/balance/shieldedBalanceService'
 import { NAMADA_CHAIN_ID } from '@/config/constants'
 import { txUiAtom, isAnyTransactionActiveAtom, resetTxUiState } from '@/atoms/txUiAtom'
-import { useSendPaymentChain } from '@/hooks/useSendPaymentChain'
+import { useChainSelection } from '@/hooks/useChainSelection'
 import { useSendPaymentBalance } from '@/hooks/useSendPaymentBalance'
 import { usePaymentTransaction } from '@/hooks/usePaymentTransaction'
 import { useShieldedSync } from '@/hooks/useShieldedSync'
 import { saveAddressToBook } from '@/utils/addressBookUtils'
-import { DepositErrorDisplay } from '@/components/deposit/DepositErrorDisplay'
+import { TransactionErrorDisplay } from '@/components/common/TransactionErrorDisplay'
 import { SendPaymentAmountInput } from '@/components/payment/SendPaymentAmountInput'
 import { SendPaymentRecipientSection } from '@/components/payment/SendPaymentRecipientSection'
 import { SendPaymentFeeDisplay } from '@/components/payment/SendPaymentFeeDisplay'
@@ -51,7 +51,10 @@ export function SendPayment() {
   const showSuccessState = txUiState.showSuccessState
 
   // Custom hooks
-  const { selectedChain, chainName, setSelectedChain } = useSendPaymentChain()
+  const { selectedChain, chainName, setSelectedChain } = useChainSelection({
+    strategy: 'default',
+    updatePreferred: false,
+  })
   const { shieldedBalance, isShieldedBalanceLoading, hasBalanceError } = useSendPaymentBalance()
   const { state: shieldedState } = useShieldedSync()
   const { submitPayment } = usePaymentTransaction()
@@ -234,7 +237,7 @@ export function SendPayment() {
 
         {/* Enhanced Error State */}
         {errorState && (
-          <DepositErrorDisplay error={errorState} onRetry={handleRetry} />
+          <TransactionErrorDisplay error={errorState} onRetry={handleRetry} />
         )}
 
         {/* Transaction Display (replaces form when transaction is active or success state is shown) */}

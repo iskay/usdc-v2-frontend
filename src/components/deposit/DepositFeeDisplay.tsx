@@ -1,42 +1,41 @@
-import { Loader2 } from 'lucide-react'
+import { FeeDisplay } from '@/components/common/FeeDisplay'
+
+interface DepositFeeInfo {
+  totalNative: string
+  nativeSymbol: string
+  totalUsd?: number
+}
 
 interface DepositFeeDisplayProps {
-  feeInfo: {
-    totalNative: string
-    nativeSymbol: string
-    totalUsd?: number
-  } | null
+  feeInfo: DepositFeeInfo | null
   isEstimatingFee: boolean
   total: string
 }
 
+/**
+ * Deposit-specific fee display component.
+ * Wraps the generic FeeDisplay with deposit-specific formatting.
+ */
 export function DepositFeeDisplay({ feeInfo, isEstimatingFee, total }: DepositFeeDisplayProps) {
-  const estimatedFee = feeInfo
-    ? feeInfo.totalUsd !== undefined
-      ? `${feeInfo.totalNative} ${feeInfo.nativeSymbol} (~$${feeInfo.totalUsd.toFixed(4)})`
-      : `${feeInfo.totalNative} ${feeInfo.nativeSymbol}`
-    : '--'
+  const formatFee = (info: unknown): string => {
+    const depositFee = info as DepositFeeInfo
+    return depositFee.totalUsd !== undefined
+      ? `${depositFee.totalNative} ${depositFee.nativeSymbol} (~$${depositFee.totalUsd.toFixed(4)})`
+      : `${depositFee.totalNative} ${depositFee.nativeSymbol}`
+  }
+
+  const calculateTotal = (): string => {
+    return `$${total}`
+  }
 
   return (
-    <div className="space-y-3 mx-auto my-8">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">Network fee</span>
-        {isEstimatingFee ? (
-          <div className="flex items-center gap-1.5">
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">Estimating...</span>
-          </div>
-        ) : feeInfo ? (
-          <span className="text-sm font-semibold">{estimatedFee}</span>
-        ) : (
-          <span className="text-sm text-muted-foreground">--</span>
-        )}
-      </div>
-      <div className="flex items-center justify-between border-t border-border pt-3 space-x-24">
-        <span className="text-base font-semibold">Total amount deducted</span>
-        <span className="text-xl font-bold">${total}</span>
-      </div>
-    </div>
+    <FeeDisplay
+      feeInfo={feeInfo}
+      isEstimatingFee={isEstimatingFee}
+      total={total}
+      formatFee={formatFee}
+      calculateTotal={calculateTotal}
+    />
   )
 }
 

@@ -1,6 +1,6 @@
-import { getAllAddresses } from '@/services/addressBook/addressBookService'
 import { formatAddress } from '@/utils/toastHelpers'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
+import type { AddressBookEntry } from '@/services/addressBook/types'
 
 /**
  * Address display information
@@ -15,15 +15,21 @@ export interface AddressDisplayInfo {
  * Get address display information (name from address book or truncated address)
  * 
  * @param address - The address to display
+ * @param addressBookEntries - Optional array of address book entries (for reactive usage)
  * @returns Address display info or null if address is undefined
  */
-export function getAddressDisplay(address: string | undefined): AddressDisplayInfo | null {
+export function getAddressDisplay(
+  address: string | undefined,
+  addressBookEntries?: AddressBookEntry[]
+): AddressDisplayInfo | null {
   if (!address) return null
   
   // Check if address is in address book
-  const addressBookEntry = getAllAddresses().find(
-    (entry) => entry.address.toLowerCase() === address.toLowerCase().trim()
-  )
+  // If entries are provided, use them; otherwise fall back to service call
+  const entries = addressBookEntries
+  const addressBookEntry = entries
+    ? entries.find((entry) => entry.address.toLowerCase() === address.toLowerCase().trim())
+    : null
   
   if (addressBookEntry) {
     return { 

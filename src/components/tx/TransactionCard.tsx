@@ -1,4 +1,5 @@
 import { useState, memo, useEffect } from 'react'
+import { useAtomValue } from 'jotai'
 import { Trash2, MoreVertical } from 'lucide-react'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import {
@@ -25,6 +26,7 @@ import { TransactionProgressBar } from './TransactionProgressBar'
 import { TransactionAddressRow } from './TransactionAddressRow'
 import { TransactionAmountDisplay } from './TransactionAmountDisplay'
 import { TransactionTimeDisplay } from './TransactionTimeDisplay'
+import { addressBookAtom } from '@/atoms/addressBookAtom'
 
 export interface TransactionCardProps {
   transaction: StoredTransaction
@@ -55,6 +57,7 @@ export const TransactionCard = memo(function TransactionCard({
   
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [evmChainsConfig, setEvmChainsConfig] = useState<EvmChainsFile | null>(null)
+  const addressBookEntries = useAtomValue(addressBookAtom)
 
   // Load EVM chains config to resolve chain display names
   useEffect(() => {
@@ -83,7 +86,7 @@ export const TransactionCard = memo(function TransactionCard({
     ? transaction.depositDetails?.senderAddress
     : transaction.paymentDetails?.destinationAddress
   
-  const addressDisplayInfo = getAddressDisplay(displayAddress)
+  const addressDisplayInfo = getAddressDisplay(displayAddress, addressBookEntries)
 
   const handleClick = () => {
     if (onClick) {

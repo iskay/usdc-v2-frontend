@@ -4,8 +4,10 @@
  */
 
 import { useState, useEffect } from 'react'
+import { useAtomValue } from 'jotai'
 import { Check, AlertCircle } from 'lucide-react'
-import { getAllAddresses, addressExists } from '@/services/addressBook/addressBookService'
+import { validateAddressBookName } from '@/utils/addressBookValidation'
+import { addressBookAtom } from '@/atoms/addressBookAtom'
 import { cn } from '@/lib/utils'
 
 interface RecipientNameDisplayProps {
@@ -25,8 +27,11 @@ export function RecipientNameDisplay({
   const [nameInput, setNameInput] = useState('')
   const [nameError, setNameError] = useState<string | null>(null)
 
+  // Get address book entries reactively
+  const addressBookEntries = useAtomValue(addressBookAtom)
+  
   // Check if address exists in address book
-  const addressBookEntry = getAllAddresses().find(
+  const addressBookEntry = addressBookEntries.find(
     (entry) => entry.address.toLowerCase() === address.toLowerCase().trim()
   )
 
@@ -38,41 +43,11 @@ export function RecipientNameDisplay({
       return
     }
 
-    // If checkbox is checked but no name provided, set error
-    if (!nameInput.trim()) {
-      setNameError('Name is required')
-      onNameChange(null)
-      return
-    }
+    // Use validation utility
+    const validation = validateAddressBookName(nameInput, address)
 
-    // Check if name is empty (redundant but kept for clarity)
-    if (nameInput.trim() === '') {
-      setNameError('Name is required')
-      onNameChange(null)
-      return
-    }
-
-    // Check if name is unique
-    const existingEntries = getAllAddresses()
-    const duplicateName = existingEntries.find(
-      (entry) => entry.name.toLowerCase() === nameInput.trim().toLowerCase()
-    )
-
-    if (duplicateName) {
-      setNameError(`Name "${duplicateName.name}" already exists in address book`)
-      onNameChange(null)
-      return
-    }
-
-    // Check if address is valid (must not be empty and must not exist already)
-    if (!address || address.trim() === '') {
-      setNameError('Please enter a valid address first')
-      onNameChange(null)
-      return
-    }
-
-    if (addressExists(address)) {
-      setNameError('Address already exists in address book')
+    if (!validation.isValid) {
+      setNameError(validation.error)
       onNameChange(null)
       return
     }
