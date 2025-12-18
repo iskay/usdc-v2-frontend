@@ -192,7 +192,21 @@ export function Deposit() {
   // Form validation - for now, use 0 for fee validation since native token fees don't affect USDC amount
   // TODO: In Phase 2, we might want to convert native token fees to USD for validation
   const feeValueForValidation = '0.00' // Native token fees don't affect USDC amount validation
-  const validation = validateDepositForm(amount, availableBalance, feeValueForValidation, toAddress)
+  
+  // Validate that deposit amount exceeds Noble registration fee when applicable
+  // Only validate when Noble registration fee applies (nobleRegUsd > 0)
+  const nobleRegFeeApplies = feeInfo?.nobleRegUsd !== undefined && feeInfo.nobleRegUsd > 0
+  const validation = validateDepositForm(
+    amount,
+    availableBalance,
+    feeValueForValidation,
+    toAddress,
+    {
+      feeAmount: nobleRegFeeApplies ? feeInfo.nobleRegUsd : undefined,
+      feeToken: nobleRegFeeApplies ? 'USDC' : undefined,
+      amountToken: 'USDC',
+    }
+  )
 
   // Determine step completion for flow steps
   const amountComplete = amount.trim() !== '' && !validation.amountError

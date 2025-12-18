@@ -34,6 +34,9 @@ export function TransactionDisplay({
 }: TransactionDisplayProps) {
   const txUiState = useAtomValue(txUiAtom)
   const successTimestamp = txUiState.successTimestamp
+  
+  // Check if this is a MASP-related transaction (Shield or Send with IBC unshielding)
+  const isMaspTransaction = txUiState.transactionType === 'shield' || txUiState.transactionType === 'send'
 
   // Calculate countdown from timestamp
   const countdown = successTimestamp
@@ -126,7 +129,7 @@ export function TransactionDisplay({
           <Lock className="h-8 w-8 text-muted-foreground mx-auto animate-pulse" />
           <p className="text-sm text-muted-foreground">Transaction in progress...</p>
           <div className="flex justify-center">
-            <ProgressStepper currentPhase={phase} />
+            <ProgressStepper currentPhase={phase} isMaspTransaction={isMaspTransaction} />
           </div>
         </div>
       </div>

@@ -13,9 +13,19 @@ import { jotaiStore } from '@/store/jotaiStore'
 import { chainConfigAtom } from '@/atoms/appAtom'
 import { fetchNativeTokenPrice } from '@/services/deposit/nativeTokenPriceService'
 import { logger } from '@/utils/logger'
+import { env } from '@/config/env'
 
 // Cache for fee estimates (chainKey -> amount -> fee)
 const feeCache = new Map<string, Map<string, string>>()
+
+/**
+ * Convert uusdc (micro USDC) to USD
+ * @param uusdc - Amount in uusdc as string
+ * @returns Amount in USD as number
+ */
+function convertUusdcToUsd(uusdc: string): number {
+  return Number.parseInt(uusdc, 10) / 1_000_000
+}
 
 const USDC_ABI = [
   'function approve(address spender, uint256 amount) external returns (bool)',
@@ -134,8 +144,8 @@ export interface DepositFeeInfo {
   burnUsd?: number
   totalUsd?: number
   
-  // Noble registration (always in USD, it's a USDC fee)
-  nobleRegUsd: number // 0.02
+  // Noble registration (always in USD, it's a USDC fee, configurable via env.nobleRegFeeUusdc())
+  nobleRegUsd: number
   
   // Gas price for reference
   gasPrice: string
@@ -259,7 +269,7 @@ export async function estimateDepositFeeForDisplay(
       approveUsd,
       burnUsd,
       totalUsd,
-      nobleRegUsd: 0.02,
+      nobleRegUsd: convertUusdcToUsd(env.nobleRegFeeUusdc()),
       gasPrice: fallbackGasPrice.toString(),
     }
   }
@@ -408,8 +418,8 @@ export async function estimateDepositFeeForDisplay(
   const burnNativeDisplay = Number(burnGas * gasPrice) / nativeDecimalsDivisor
   const totalNativeDisplay = approveNativeDisplay + burnNativeDisplay
 
-  // 3) Noble registration flat fee: 20000 uusdc = $0.02 (always in USD)
-  const nobleRegUsd = 0.02
+  // 3) Noble registration flat fee (always in USD, converted from uusdc)
+  const nobleRegUsd = convertUusdcToUsd(env.nobleRegFeeUusdc())
 
   // Format native token amounts with appropriate precision
   // For very small amounts (< 0.000001), show more decimal places

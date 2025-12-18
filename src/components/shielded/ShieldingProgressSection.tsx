@@ -13,7 +13,7 @@ export function ShieldingProgressSection({ currentPhase }: ShieldingProgressSect
   return (
     <>
       {/* Progress Stepper */}
-      <ProgressStepper currentPhase={currentPhase} />
+      <ProgressStepper currentPhase={currentPhase} isMaspTransaction={true} />
 
       {/* Status Message */}
       {currentPhase && (

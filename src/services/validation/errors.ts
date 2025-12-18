@@ -18,7 +18,7 @@ export const ValidationErrors = {
   AMOUNT_EXCEEDS_BALANCE: (availableAfterFee: string) =>
     `Amount + fees exceeds available balance. Maximum send amount after fees: ${availableAfterFee}`,
   AMOUNT_LESS_THAN_FEE: (feeAmount: string, feeToken: string) =>
-    `Amount must be greater than the transaction fee (${feeAmount} ${feeToken})`,
+    `Amount must be greater than the Noble forwarding registration fee (${feeAmount} ${feeToken})`,
   AMOUNT_SCIENTIFIC_NOTATION: 'Scientific notation is not allowed. Please enter a decimal number',
 
   // Bech32 address validation errors
