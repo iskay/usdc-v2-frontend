@@ -4,7 +4,6 @@
  * Returns null when idle to allow form to render normally.
  */
 
-import { useEffect } from 'react'
 import { useAtomValue } from 'jotai'
 import { Lock, CheckCircle2 } from 'lucide-react'
 import { ExplorerLink } from '@/components/common/ExplorerLink'
@@ -12,6 +11,7 @@ import { ProgressStepper, type TransactionPhase } from './ProgressStepper'
 import { formatTxHash } from '@/utils/toastHelpers'
 import { cn } from '@/lib/utils'
 import { txUiAtom } from '@/atoms/txUiAtom'
+import { Button } from '@/components/common/Button'
 
 export interface TransactionDisplayProps {
   phase: TransactionPhase
@@ -19,7 +19,7 @@ export interface TransactionDisplayProps {
   txHash: string | null
   explorerUrl?: string
   onNavigate: () => void
-  countdownSeconds?: number
+  onStartNewTransaction: () => void
   className?: string
 }
 
@@ -29,48 +29,13 @@ export function TransactionDisplay({
   txHash,
   explorerUrl,
   onNavigate,
-  countdownSeconds = 3,
+  onStartNewTransaction,
   className,
 }: TransactionDisplayProps) {
   const txUiState = useAtomValue(txUiAtom)
-  const successTimestamp = txUiState.successTimestamp
   
   // Check if this is a MASP-related transaction (Shield or Send with IBC unshielding)
   const isMaspTransaction = txUiState.transactionType === 'shield' || txUiState.transactionType === 'send'
-
-  // Calculate countdown from timestamp
-  const countdown = successTimestamp
-    ? Math.max(0, countdownSeconds - Math.floor((Date.now() - successTimestamp) / 1000))
-    : countdownSeconds
-
-  // Handle countdown timer for success state
-  useEffect(() => {
-    if (!showSuccessState || !txHash || !successTimestamp) {
-      return
-    }
-
-    // Check if countdown has reached 0
-    const remainingSeconds = Math.max(0, countdownSeconds - Math.floor((Date.now() - successTimestamp) / 1000))
-    
-    if (remainingSeconds <= 0) {
-      // Navigate immediately when countdown reaches 0
-      onNavigate()
-      return
-    }
-
-    // Update countdown every second
-    const timer = setInterval(() => {
-      const currentRemaining = Math.max(0, countdownSeconds - Math.floor((Date.now() - successTimestamp) / 1000))
-      
-      if (currentRemaining <= 0) {
-        clearInterval(timer)
-        // Navigate immediately when countdown reaches 0
-        onNavigate()
-      }
-    }, 1000)
-
-    return () => clearInterval(timer)
-  }, [showSuccessState, txHash, successTimestamp, countdownSeconds, onNavigate])
 
   // Return null when idle (no transaction active)
   if (!phase && !showSuccessState) {
@@ -108,9 +73,21 @@ export function TransactionDisplay({
               )}
             </div>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Returning to dashboard in {countdown}...
-          </p>
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <Button
+              variant="outline"
+              onClick={onNavigate}
+              className="flex-1"
+            >
+              Return to Dashboard
+            </Button>
+            <Button
+              onClick={onStartNewTransaction}
+              className="flex-1"
+            >
+              Start Another Transaction
+            </Button>
+          </div>
         </div>
       </div>
     )

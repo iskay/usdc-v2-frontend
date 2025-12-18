@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useSetAtom, useAtomValue, useAtom } from 'jotai'
 import { jotaiStore } from '@/store/jotaiStore'
 import { Loader2 } from 'lucide-react'
@@ -32,7 +32,6 @@ import { DepositFeeDisplay } from '@/components/deposit/DepositFeeDisplay'
 
 export function Deposit() {
   const navigate = useNavigate()
-  const location = useLocation()
   const { notify } = useToast()
   const { state: walletState } = useWallet()
   const setDepositRecipientAddress = useSetAtom(depositRecipientAddressAtom)
@@ -61,6 +60,9 @@ export function Deposit() {
 
   // State for custom address override checkbox
   const [useCustomOverride, setUseCustomOverride] = useState(false)
+
+  // State to freeze UI during navigation transition
+  const [isExiting, setIsExiting] = useState(false)
 
   // Custom hooks
   const { selectedChain, chainName, setSelectedChain } = useChainSelection({
@@ -151,20 +153,18 @@ export function Deposit() {
     }
   }, [depositRecipientType])
 
-  // Reset transaction UI state when navigating away from this page
+  // Clear error state when component unmounts (navigating away)
+  // This prevents error state from persisting when navigating between pages
   useEffect(() => {
-    // Reset state if we're not on the deposit page
-    const isOnPage = location.pathname === '/deposit'
-    if (!isOnPage) {
-      resetTxUiState(setTxUiState)
-    }
-    
-    // Cleanup: reset state when component unmounts (navigating away)
     return () => {
-      resetTxUiState(setTxUiState)
+      setTxUiState((prev) => {
+        if (prev.errorState) {
+          return { ...prev, errorState: null }
+        }
+        return prev
+      })
     }
-  }, [location.pathname, setTxUiState])
-
+  }, [setTxUiState])
 
   // Get EVM address from wallet state
   const evmAddress = walletState.metaMask.account
@@ -367,14 +367,8 @@ export function Deposit() {
         <div className="flex flex-col gap-6 p-12 mx-auto w-full">
           {/* <BreadcrumbNav /> */}
 
-          <header className="space-y-2">
-            <p className="text-muted-foreground">
-              Deposit USDC from an EVM chain to your Namada address
-            </p>
-          </header>
-
-          {/* Transaction Display or Error Display (replaces form when transaction is active, success state, or error state) */}
-          {isAnyTxActive || showSuccessState || errorState ? (
+          {/* Transaction Display or Error Display (replaces form when transaction is active, success state, error state, or exiting) */}
+          {isAnyTxActive || showSuccessState || errorState || isExiting ? (
             errorState && !isAnyTxActive && !showSuccessState ? (
               <TransactionErrorDisplay error={errorState} onRetry={handleRetry} />
             ) : (
@@ -384,18 +378,34 @@ export function Deposit() {
                 txHash={txHash}
                 explorerUrl={explorerUrl}
                 onNavigate={() => {
-                  // Navigate first, then reset state after route transition completes
+                  // Freeze UI to prevent form flash during navigation
+                  setIsExiting(true)
                   navigate('/dashboard')
-                  // Delay state reset to allow route transition
-                  setTimeout(() => {
-                    resetTxUiState(setTxUiState)
-                  }, 350)
                 }}
-                countdownSeconds={3}
+                onStartNewTransaction={() => {
+                  // Reset form state
+                  setAmount('')
+                  setToAddress('')
+                  setRecipientName(null)
+                  setNameValidationError(null)
+                  setShowConfirmationModal(false)
+                  setDepositRecipientType('transparent')
+                  setShowAdvancedOptions(false)
+                  setUseCustomOverride(false)
+                  setIsExiting(false)
+                  // Reset transaction UI state
+                  resetTxUiState(setTxUiState)
+                }}
               />
             )
           ) : (
-            <div className="flex flex-col gap-6">
+            <>
+              <header className="space-y-2">
+                <p className="text-muted-foreground">
+                  Deposit USDC from an EVM chain to your Namada address
+                </p>
+              </header>
+              <div className="flex flex-col gap-6">
               {/* Two-column layout: Flow Steps Sidebar + Main Content */}
               <div className="flex flex-col lg:flex-row gap-8">
                 {/* Left Sidebar - Flow Steps */}
@@ -502,6 +512,7 @@ export function Deposit() {
                 </div>
               </div>
             </div>
+            </>
           )}
 
           {/* Confirmation Modal */}
