@@ -23,13 +23,18 @@ export function useTransactionStateCleanup(): void {
       location.pathname.startsWith(page)
     )
 
-    // Only cleanup if we're on a non-transaction page and success state is active
-    if (!isTransactionPage && txUiState.showSuccessState && txUiState.successTimestamp) {
-      const timeSinceSuccess = Date.now() - txUiState.successTimestamp
-      const countdownMs = COUNTDOWN_SECONDS * 1000
+    // Only cleanup if we're on a non-transaction page and (success state OR error state) is active
+    if (!isTransactionPage) {
+      if (txUiState.showSuccessState && txUiState.successTimestamp) {
+        const timeSinceSuccess = Date.now() - txUiState.successTimestamp
+        const countdownMs = COUNTDOWN_SECONDS * 1000
 
-      // Only clear if countdown has completed (3+ seconds since success)
-      if (timeSinceSuccess >= countdownMs) {
+        // Only clear if countdown has completed (3+ seconds since success)
+        if (timeSinceSuccess >= countdownMs) {
+          resetTxUiState(setTxUiState)
+        }
+      } else if (txUiState.errorState) {
+        // Reset error state immediately when navigating away (no countdown needed)
         resetTxUiState(setTxUiState)
       }
     }

@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { RequireNamadaConnection } from '@/components/wallet/RequireNamadaConnection'
 import { ChainSelect } from '@/components/common/ChainSelect'
@@ -29,6 +29,7 @@ import { SendPaymentFeeDisplay } from '@/components/payment/SendPaymentFeeDispla
 
 export function SendPayment() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { notify } = useToast()
   const { state: walletState } = useWallet()
 
@@ -90,6 +91,20 @@ export function SendPayment() {
       })
     }
   }, [walletState.namada.isConnected, shieldedAddress])
+
+  // Reset transaction UI state when navigating away from this page
+  useEffect(() => {
+    // Reset state if we're not on the send page
+    const isOnPage = location.pathname === '/send'
+    if (!isOnPage) {
+      resetTxUiState(setTxUiState)
+    }
+    
+    // Cleanup: reset state when component unmounts (navigating away)
+    return () => {
+      resetTxUiState(setTxUiState)
+    }
+  }, [location.pathname, setTxUiState])
 
   // Don't render form until chain is loaded
   if (!selectedChain) {
@@ -235,28 +250,27 @@ export function SendPayment() {
           </p>
         </header>
 
-        {/* Enhanced Error State */}
-        {errorState && (
-          <TransactionErrorDisplay error={errorState} onRetry={handleRetry} />
-        )}
-
-        {/* Transaction Display (replaces form when transaction is active or success state is shown) */}
-        {isAnyTxActive || showSuccessState ? (
-          <TransactionDisplay
-            phase={currentPhase}
-            showSuccessState={showSuccessState}
-            txHash={txHash}
-            explorerUrl={explorerUrl}
-            onNavigate={() => {
-              // Navigate first, then reset state after route transition completes
-              navigate('/dashboard')
-              // Delay state reset to allow route transition
-              setTimeout(() => {
-                resetTxUiState(setTxUiState)
-              }, 350)
-            }}
-            countdownSeconds={3}
-          />
+        {/* Transaction Display or Error Display (replaces form when transaction is active, success state, or error state) */}
+        {isAnyTxActive || showSuccessState || errorState ? (
+          errorState && !isAnyTxActive && !showSuccessState ? (
+            <TransactionErrorDisplay error={errorState} onRetry={handleRetry} />
+          ) : (
+            <TransactionDisplay
+              phase={currentPhase}
+              showSuccessState={showSuccessState}
+              txHash={txHash}
+              explorerUrl={explorerUrl}
+              onNavigate={() => {
+                // Navigate first, then reset state after route transition completes
+                navigate('/dashboard')
+                // Delay state reset to allow route transition
+                setTimeout(() => {
+                  resetTxUiState(setTxUiState)
+                }, 350)
+              }}
+              countdownSeconds={3}
+            />
+          )
         ) : (
           <div className="flex flex-col gap-6">
             {/* Two-column layout: Flow Steps Sidebar + Main Content */}
