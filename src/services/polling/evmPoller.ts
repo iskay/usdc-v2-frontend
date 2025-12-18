@@ -24,6 +24,7 @@ import { DEPOSIT_STAGES, PAYMENT_STAGES } from '@/shared/flowStages'
 import { extractMessageSent, pollIrisAttestation } from './irisAttestationService'
 import type { MessageSentExtractionResult, IrisPollingResult } from './irisAttestationService'
 import { extractEvmBlockMetadata } from './blockMetadataExtractor'
+import { updateChainStageIncremental } from './pollingStateManager'
 
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
 const DEFAULT_EVM_MAX_BLOCK_RANGE = 2000n
@@ -438,7 +439,10 @@ async function pollUsdcMintByNonce(
             occurredAt: stages[0]?.occurredAt || new Date().toISOString(), // Preserve original timestamp
           }
 
-          stages.push({
+          // Incrementally update: EVM_MINT_POLLING is now confirmed
+          updateChainStageIncremental(params.flowId, 'evm', stages[0])
+
+          const mintConfirmedStage: ChainStage = {
             stage: PAYMENT_STAGES.EVM_MINT_CONFIRMED,
             status: 'confirmed',
             source: 'poller',
@@ -446,7 +450,11 @@ async function pollUsdcMintByNonce(
             occurredAt: new Date().toISOString(),
             // Add block metadata to stage metadata
             metadata: Object.keys(blockMetadata).length > 0 ? blockMetadata : undefined,
-          })
+          }
+          stages.push(mintConfirmedStage)
+
+          // Incrementally update: EVM_MINT_CONFIRMED is confirmed
+          updateChainStageIncremental(params.flowId, 'evm', mintConfirmedStage)
 
           cleanup()
           return {
@@ -473,15 +481,30 @@ async function pollUsdcMintByNonce(
     cleanup()
 
     if (wasTimeout()) {
-      return createErrorResult('polling_timeout', 'EVM polling timed out')
+      // Include any metadata and stages that were discovered before timeout
+      return {
+        ...createErrorResult('polling_timeout', 'EVM polling timed out'),
+        metadata: params.metadata,
+        stages,
+      }
     }
 
-    return createErrorResult('polling_error', 'Polling aborted or timeout')
+    // Include any metadata and stages that were discovered before abort/timeout
+    return {
+      ...createErrorResult('polling_error', 'Polling aborted or timeout'),
+      metadata: params.metadata,
+      stages,
+    }
   } catch (error) {
     cleanup()
 
     if (isAborted(abortSignal)) {
-      return createErrorResult('polling_error', 'Polling cancelled')
+      // Include any metadata and stages that were discovered before abort
+      return {
+        ...createErrorResult('polling_error', 'Polling cancelled'),
+        metadata: params.metadata,
+        stages,
+      }
     }
 
     logger.error('[EvmPoller] EVM nonce-based poll error', {
@@ -489,10 +512,15 @@ async function pollUsdcMintByNonce(
       error: error instanceof Error ? error.message : String(error),
     })
 
-    return createErrorResult(
-      'polling_error',
-      error instanceof Error ? error.message : 'Unknown error',
-    )
+    // Include any metadata and stages that were discovered before error
+    return {
+      ...createErrorResult(
+        'polling_error',
+        error instanceof Error ? error.message : 'Unknown error',
+      ),
+      metadata: params.metadata,
+      stages,
+    }
   }
 }
 
@@ -634,7 +662,10 @@ async function pollUsdcMintByTransfer(
               occurredAt: stages[0]?.occurredAt || new Date().toISOString(), // Preserve original timestamp
             }
 
-            stages.push({
+            // Incrementally update: EVM_MINT_POLLING is now confirmed
+            updateChainStageIncremental(params.flowId, 'evm', stages[0])
+
+            const mintConfirmedStage: ChainStage = {
               stage: PAYMENT_STAGES.EVM_MINT_CONFIRMED,
               status: 'confirmed',
               source: 'poller',
@@ -642,7 +673,11 @@ async function pollUsdcMintByTransfer(
               occurredAt: new Date().toISOString(),
               // Add block metadata to stage metadata
               metadata: Object.keys(blockMetadata).length > 0 ? blockMetadata : undefined,
-            })
+            }
+            stages.push(mintConfirmedStage)
+
+            // Incrementally update: EVM_MINT_CONFIRMED is confirmed
+            updateChainStageIncremental(params.flowId, 'evm', mintConfirmedStage)
 
             cleanup()
             return {
@@ -670,15 +705,30 @@ async function pollUsdcMintByTransfer(
     cleanup()
 
     if (wasTimeout()) {
-      return createErrorResult('polling_timeout', 'EVM polling timed out')
+      // Include any metadata and stages that were discovered before timeout
+      return {
+        ...createErrorResult('polling_timeout', 'EVM polling timed out'),
+        metadata: params.metadata,
+        stages,
+      }
     }
 
-    return createErrorResult('polling_error', 'Polling aborted')
+    // Include any metadata and stages that were discovered before abort
+    return {
+      ...createErrorResult('polling_error', 'Polling aborted'),
+      metadata: params.metadata,
+      stages,
+    }
   } catch (error) {
     cleanup()
 
     if (isAborted(abortSignal)) {
-      return createErrorResult('polling_error', 'Polling cancelled')
+      // Include any metadata and stages that were discovered before abort
+      return {
+        ...createErrorResult('polling_error', 'Polling cancelled'),
+        metadata: params.metadata,
+        stages,
+      }
     }
 
     logger.error('[EvmPoller] EVM transfer-based poll error', {
@@ -686,10 +736,15 @@ async function pollUsdcMintByTransfer(
       error: error instanceof Error ? error.message : String(error),
     })
 
-    return createErrorResult(
-      'polling_error',
-      error instanceof Error ? error.message : 'Unknown error',
-    )
+    // Include any metadata and stages that were discovered before error
+    return {
+      ...createErrorResult(
+        'polling_error',
+        error instanceof Error ? error.message : 'Unknown error',
+      ),
+      metadata: params.metadata,
+      stages,
+    }
   }
 }
 
@@ -841,13 +896,27 @@ async function pollDepositWithIris(
       }
     }
 
+    // Incrementally update: EVM_BURN_CONFIRMED is now confirmed
+    updateChainStageIncremental(params.flowId, 'evm', {
+      stage: DEPOSIT_STAGES.EVM_BURN_CONFIRMED,
+      status: 'confirmed',
+      source: 'poller',
+      txHash: txHash,
+      occurredAt: new Date().toISOString(),
+      metadata: stages[0].metadata,
+    })
+
     // Add Iris attestation polling stage
-    stages.push({
+    const irisPollingStage: ChainStage = {
       stage: DEPOSIT_STAGES.IRIS_ATTESTATION_POLLING,
       status: 'pending',
       source: 'poller',
       occurredAt: new Date().toISOString(),
-    })
+    }
+    stages.push(irisPollingStage)
+
+    // Incrementally update: IRIS_ATTESTATION_POLLING has started
+    updateChainStageIncremental(params.flowId, 'evm', irisPollingStage)
 
     logger.info('[EvmPoller] MessageSent event extracted, starting Iris attestation polling', {
       flowId: params.flowId,
@@ -880,32 +949,56 @@ async function pollDepositWithIris(
 
     if (wasTimeout()) {
       cleanup()
-      return createErrorResult('polling_timeout', 'Iris attestation polling timed out')
+      // Include stages that were completed before timeout
+      return {
+        ...createErrorResult('polling_timeout', 'Iris attestation polling timed out'),
+        stages,
+      }
     }
 
     if (isAborted(abortSignal)) {
       cleanup()
-      return createErrorResult('polling_error', 'Polling aborted')
+      // Include stages that were completed before abort
+      return {
+        ...createErrorResult('polling_error', 'Polling aborted'),
+        stages,
+      }
     }
 
     if (!irisResult.success || !irisResult.attestation) {
       cleanup()
-      return createErrorResult(
-        'polling_error',
-        `Iris attestation polling failed: ${irisResult.error}`,
-      )
+      // Include stages that were completed before error
+      return {
+        ...createErrorResult(
+          'polling_error',
+          `Iris attestation polling failed: ${irisResult.error}`,
+        ),
+        stages,
+      }
     }
 
     // Mark Iris attestation as complete
     stages[1].status = 'confirmed'
     stages[1].occurredAt = new Date().toISOString()
 
-    stages.push({
-      stage: DEPOSIT_STAGES.IRIS_ATTESTATION_COMPLETE,
+    // Incrementally update: IRIS_ATTESTATION_POLLING is now confirmed
+    updateChainStageIncremental(params.flowId, 'evm', {
+      stage: DEPOSIT_STAGES.IRIS_ATTESTATION_POLLING,
       status: 'confirmed',
       source: 'poller',
       occurredAt: new Date().toISOString(),
     })
+
+    const irisCompleteStage: ChainStage = {
+      stage: DEPOSIT_STAGES.IRIS_ATTESTATION_COMPLETE,
+      status: 'confirmed',
+      source: 'poller',
+      occurredAt: new Date().toISOString(),
+    }
+    stages.push(irisCompleteStage)
+
+    // Incrementally update: IRIS_ATTESTATION_COMPLETE is confirmed
+    updateChainStageIncremental(params.flowId, 'evm', irisCompleteStage)
 
     logger.info('[EvmPoller] Iris attestation complete', {
       flowId: params.flowId,
@@ -931,7 +1024,12 @@ async function pollDepositWithIris(
     cleanup()
 
     if (isAborted(abortSignal)) {
-      return createErrorResult('polling_error', 'Polling cancelled')
+      // Include any metadata and stages that were discovered before abort
+      return {
+        ...createErrorResult('polling_error', 'Polling cancelled'),
+        metadata: params.metadata,
+        stages,
+      }
     }
 
     logger.error('[EvmPoller] EVM deposit poll with Iris error', {
@@ -940,10 +1038,15 @@ async function pollDepositWithIris(
       txHash,
     })
 
-    return createErrorResult(
-      'polling_error',
-      error instanceof Error ? error.message : 'Unknown error',
-    )
+    // Include any metadata and stages that were discovered before error
+    return {
+      ...createErrorResult(
+        'polling_error',
+        error instanceof Error ? error.message : 'Unknown error',
+      ),
+      metadata: params.metadata,
+      stages,
+    }
   }
 }
 

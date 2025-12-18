@@ -28,6 +28,7 @@ import { getEffectiveRpcUrl } from '@/services/config/customUrlResolver'
 import { DEPOSIT_STAGES, PAYMENT_STAGES } from '@/shared/flowStages'
 import { logger } from '@/utils/logger'
 import { extractTendermintBlockMetadata } from './blockMetadataExtractor'
+import { updateChainStageIncremental } from './pollingStateManager'
 
 /**
  * Sleep utility
@@ -68,6 +69,9 @@ async function pollForDeposit(
       occurredAt: new Date().toISOString(),
     },
   ]
+
+  // Incrementally update: NAMADA_POLLING has started (pending)
+  updateChainStageIncremental(params.flowId, 'namada', stages[0])
 
   const deadline = Date.now() + timeoutMs
   let nextHeight = params.metadata.startHeight || 0
@@ -168,10 +172,19 @@ async function pollForDeposit(
                 packetAck,
               })
               cleanup()
-              return createErrorResult(
-                'tx_error',
-                `Packet acknowledgement indicates failure: ${packetAck}`,
-              )
+              // Include metadata and stages that were discovered before error (write_acknowledgement was found)
+              return {
+                ...createErrorResult(
+                  'tx_error',
+                  `Packet acknowledgement indicates failure: ${packetAck}`,
+                ),
+                metadata: {
+                  ...params.metadata,
+                  namadaTxHash,
+                  foundAt: nextHeight,
+                },
+                stages,
+              }
             }
 
             // Extract inner-tx-hash from write_acknowledgement event
@@ -221,7 +234,10 @@ async function pollForDeposit(
               occurredAt: new Date().toISOString(),
             }
 
-            stages.push({
+            // Incrementally update: NAMADA_POLLING is now confirmed
+            updateChainStageIncremental(params.flowId, 'namada', stages[0])
+
+            const namadaReceivedStage: ChainStage = {
               stage: DEPOSIT_STAGES.NAMADA_RECEIVED,
               status: 'confirmed',
               source: 'poller',
@@ -229,7 +245,11 @@ async function pollForDeposit(
               occurredAt: new Date().toISOString(),
               // Add block metadata to stage metadata
               metadata: Object.keys(blockMetadata).length > 0 ? blockMetadata : undefined,
-            })
+            }
+            stages.push(namadaReceivedStage)
+
+            // Incrementally update: NAMADA_RECEIVED is confirmed
+            updateChainStageIncremental(params.flowId, 'namada', namadaReceivedStage)
             break
           }
         } catch (error) {
@@ -254,11 +274,21 @@ async function pollForDeposit(
     cleanup()
 
     if (wasTimeout()) {
-      return createErrorResult('polling_timeout', 'Namada deposit polling timed out')
+      // Include any metadata and stages that were discovered before timeout
+      return {
+        ...createErrorResult('polling_timeout', 'Namada deposit polling timed out'),
+        metadata: params.metadata,
+        stages,
+      }
     }
 
     if (!ackFound) {
-      return createErrorResult('polling_timeout', 'Namada write_acknowledgement not found')
+      // Include any metadata and stages that were discovered before timeout
+      return {
+        ...createErrorResult('polling_timeout', 'Namada write_acknowledgement not found'),
+        metadata: params.metadata,
+        stages,
+      }
     }
 
     logger.info('[NamadaPoller] Namada deposit poll completed', {
@@ -283,7 +313,12 @@ async function pollForDeposit(
     cleanup()
 
     if (isAborted(abortSignal)) {
-      return createErrorResult('polling_error', 'Polling cancelled')
+      // Include any metadata and stages that were discovered before abort
+      return {
+        ...createErrorResult('polling_error', 'Polling cancelled'),
+        metadata: params.metadata,
+        stages,
+      }
     }
 
     logger.error('[NamadaPoller] Namada deposit poll error', {
@@ -291,10 +326,15 @@ async function pollForDeposit(
       error: error instanceof Error ? error.message : String(error),
     })
 
-    return createErrorResult(
-      'polling_error',
-      error instanceof Error ? error.message : 'Unknown error',
-    )
+    // Include any metadata and stages that were discovered before error
+    return {
+      ...createErrorResult(
+        'polling_error',
+        error instanceof Error ? error.message : 'Unknown error',
+      ),
+      metadata: params.metadata,
+      stages,
+    }
   }
 }
 
@@ -365,6 +405,9 @@ async function pollForPaymentIbcSend(
     },
   ]
 
+  // Incrementally update: NAMADA_IBC_SENT has started (pending)
+  updateChainStageIncremental(params.flowId, 'namada', stages[0])
+
   try {
     // Fetch block_results at the provided height
     const blockResults = await retryWithBackoff(
@@ -380,10 +423,15 @@ async function pollForPaymentIbcSend(
         flowId: params.flowId,
         blockHeight: namadaBlockHeight,
       })
-      return createErrorResult(
-        'polling_error',
-        `Block results not found at height ${namadaBlockHeight}`,
-      )
+      // Include metadata and stages that were discovered before error
+      return {
+        ...createErrorResult(
+          'polling_error',
+          `Block results not found at height ${namadaBlockHeight}`,
+        ),
+        metadata: params.metadata,
+        stages,
+      }
     }
 
     // Access end_block_events
@@ -431,7 +479,12 @@ async function pollForPaymentIbcSend(
               blockHeight: namadaBlockHeight,
               packetSeqStr,
             })
-            return createErrorResult('polling_error', `Invalid packet_sequence: ${packetSeqStr}`)
+            // Include metadata and stages that were discovered before error (send_packet event was found)
+            return {
+              ...createErrorResult('polling_error', `Invalid packet_sequence: ${packetSeqStr}`),
+              metadata: params.metadata,
+              stages,
+            }
           }
 
           logger.info('[NamadaPoller] Namada payment IBC send event found and packet_sequence extracted', {
@@ -460,7 +513,7 @@ async function pollForPaymentIbcSend(
             })
           }
 
-          stages.push({
+          const namadaIbcSentStage: ChainStage = {
             stage: PAYMENT_STAGES.NAMADA_IBC_SENT,
             status: 'confirmed',
             source: 'poller',
@@ -468,7 +521,11 @@ async function pollForPaymentIbcSend(
             occurredAt: new Date().toISOString(),
             // Add block metadata to stage metadata
             metadata: Object.keys(blockMetadata).length > 0 ? blockMetadata : undefined,
-          })
+          }
+          stages.push(namadaIbcSentStage)
+
+          // Incrementally update: NAMADA_IBC_SENT is confirmed
+          updateChainStageIncremental(params.flowId, 'namada', namadaIbcSentStage)
 
           return {
             success: true,
@@ -487,10 +544,15 @@ async function pollForPaymentIbcSend(
             blockHeight: namadaBlockHeight,
             txHash: namadaIbcTxHash,
           })
-          return createErrorResult(
-            'polling_error',
-            'packet_sequence attribute not found in send_packet event',
-          )
+          // Include metadata and stages that were discovered before error (send_packet event was found)
+          return {
+            ...createErrorResult(
+              'polling_error',
+              'packet_sequence attribute not found in send_packet event',
+            ),
+            metadata: params.metadata,
+            stages,
+          }
         }
       }
     }
@@ -502,10 +564,15 @@ async function pollForPaymentIbcSend(
       eventCount: endEvents.length,
     })
 
-    return createErrorResult(
-      'polling_error',
-      `No send_packet event found with matching inner-tx-hash ${namadaIbcTxHash} at height ${namadaBlockHeight}`,
-    )
+    // Include metadata and stages that were discovered before error
+    return {
+      ...createErrorResult(
+        'polling_error',
+        `No send_packet event found with matching inner-tx-hash ${namadaIbcTxHash} at height ${namadaBlockHeight}`,
+      ),
+      metadata: params.metadata,
+      stages,
+    }
   } catch (error) {
     logger.error('[NamadaPoller] Namada payment IBC send lookup error', {
       flowId: params.flowId,
@@ -513,10 +580,15 @@ async function pollForPaymentIbcSend(
       error: error instanceof Error ? error.message : String(error),
     })
 
-    return createErrorResult(
-      'polling_error',
-      error instanceof Error ? error.message : 'Unknown error',
-    )
+    // Include any metadata and stages that were discovered before error
+    return {
+      ...createErrorResult(
+        'polling_error',
+        error instanceof Error ? error.message : 'Unknown error',
+      ),
+      metadata: params.metadata,
+      stages,
+    }
   }
 }
 

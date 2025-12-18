@@ -26,6 +26,7 @@ import {
   updatePollingState,
   updateChainStatus,
   getPollingState,
+  mergeStagesIntelligently,
 } from './pollingStateManager'
 import { getChainTimeout, calculateGlobalTimeout } from './timeoutConfig'
 import { createEvmPoller } from './evmPoller'
@@ -35,7 +36,6 @@ import { getStartHeightFromTimestamp } from './blockHeightLookup'
 import { logger } from '@/utils/logger'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import { transactionStorageService } from '@/services/tx/transactionStorageService'
-import type { ChainStage } from '@/types/flow'
 import { fetchTendermintChainsConfig } from '@/services/config/tendermintChainConfigService'
 import { getDefaultNobleChainKey, getDefaultNamadaChainKey } from '@/config/chains'
 
@@ -1484,47 +1484,6 @@ export class FlowOrchestrator {
     )
   }
 
-  /**
-   * Merge stages intelligently: check if stage exists and overwrite instead of duplicating
-   * Preserves original timestamp but updates status/metadata if changed
-   * 
-   * @param existingStages - Existing stages for the chain
-   * @param newStages - New stages from poller result
-   * @returns Merged stages array without duplicates
-   */
-  private mergeStagesIntelligently(
-    existingStages: ChainStage[],
-    newStages: ChainStage[],
-  ): ChainStage[] {
-    const merged: ChainStage[] = [...existingStages]
-    
-    for (const newStage of newStages) {
-      // Find existing stage with same name
-      const existingIndex = merged.findIndex((s) => s.stage === newStage.stage)
-      
-      if (existingIndex >= 0) {
-        // Stage exists - overwrite but preserve original timestamp
-        const existingStage = merged[existingIndex]
-        merged[existingIndex] = {
-          ...newStage,
-          // Preserve original timestamp (first occurrence)
-          occurredAt: existingStage.occurredAt || newStage.occurredAt,
-          // Update status if it changed (e.g., pending -> confirmed)
-          status: newStage.status || existingStage.status,
-          // Merge metadata (new takes precedence)
-          metadata: {
-            ...existingStage.metadata,
-            ...newStage.metadata,
-          },
-        }
-      } else {
-        // New stage - add it
-        merged.push(newStage)
-      }
-    }
-    
-    return merged
-  }
 
   /**
    * Process chain polling result
@@ -1544,7 +1503,7 @@ export class FlowOrchestrator {
       // Merge new stages with existing stages (intelligently - overwrite duplicates)
       const existingStages = state.chainStatus[chain]?.stages || []
       const newStages = result.stages || []
-      const mergedStages = this.mergeStagesIntelligently(existingStages, newStages)
+      const mergedStages = mergeStagesIntelligently(existingStages, newStages)
 
       updateChainStatus(this.txId, chain, {
         status: 'success',
@@ -1630,7 +1589,7 @@ export class FlowOrchestrator {
       const resultStages = result.stages || []
       // Merge intelligently - overwrite duplicates instead of appending
       const mergedStages = resultStages.length > 0 
-        ? this.mergeStagesIntelligently(existingStages, resultStages)
+        ? mergeStagesIntelligently(existingStages, resultStages)
         : existingStages
 
       // Extract confirmed stages to add to completedStages

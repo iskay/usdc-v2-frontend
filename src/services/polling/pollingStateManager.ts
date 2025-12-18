@@ -409,6 +409,64 @@ export function initializePollingState(
 }
 
 /**
+ * Merge stages intelligently: check if stage exists and overwrite instead of duplicating
+ * Preserves original timestamp but updates status/metadata if changed
+ * 
+ * @param existingStages - Existing stages for the chain
+ * @param newStages - New stages to merge (can be single stage or array)
+ * @returns Merged stages array without duplicates
+ */
+export function mergeStagesIntelligently(
+  existingStages: ChainStage[],
+  newStages: ChainStage | ChainStage[],
+): ChainStage[] {
+  const stagesToMerge = Array.isArray(newStages) ? newStages : [newStages]
+  const merged: ChainStage[] = [...existingStages]
+  
+  for (const newStage of stagesToMerge) {
+    // Find existing stage with same name
+    const existingIndex = merged.findIndex((s) => s.stage === newStage.stage)
+    
+    if (existingIndex >= 0) {
+      // Stage exists - update in place but preserve original timestamp
+      const existingStage = merged[existingIndex]
+      
+      // Filter out undefined values from newStage to avoid overwriting with undefined
+      const filteredNewStage: Partial<ChainStage> = {}
+      for (const key in newStage) {
+        const value = (newStage as any)[key]
+        if (value !== undefined) {
+          filteredNewStage[key as keyof ChainStage] = value
+        }
+      }
+      
+      merged[existingIndex] = {
+        ...existingStage,
+        ...filteredNewStage,
+        // Preserve original timestamp (first occurrence)
+        occurredAt: existingStage.occurredAt || newStage.occurredAt,
+        // Update status if provided (e.g., pending -> confirmed)
+        status: filteredNewStage.status ?? existingStage.status,
+        // Merge metadata (existing preserved, new merged in)
+        metadata: {
+          ...existingStage.metadata,
+          ...filteredNewStage.metadata,
+        },
+        // Preserve other fields if not explicitly updated
+        txHash: filteredNewStage.txHash ?? existingStage.txHash,
+        source: filteredNewStage.source ?? existingStage.source,
+        message: filteredNewStage.message ?? existingStage.message,
+      }
+    } else {
+      // New stage - add it
+      merged.push(newStage)
+    }
+  }
+  
+  return merged
+}
+
+/**
  * Add a stage to a chain's stages array (unified storage)
  * 
  * @param txId - Transaction ID
@@ -417,6 +475,7 @@ export function initializePollingState(
  */
 export function addChainStage(txId: string, chain: ChainKey, stage: ChainStage): void {
   try {
+    // Read fresh state to avoid race conditions
     const tx = transactionStorageService.getTransaction(txId)
     if (!tx || !tx.pollingState) {
       logger.warn('[PollingStateManager] Transaction or polling state not found for adding stage', {
@@ -433,7 +492,8 @@ export function addChainStage(txId: string, chain: ChainKey, stage: ChainStage):
     }
 
     const existingStages = currentChainStatus.stages || []
-    const updatedStages = [...existingStages, stage]
+    // Use intelligent merging to avoid duplicates
+    const updatedStages = mergeStagesIntelligently(existingStages, stage)
 
     updateChainStatus(txId, chain, {
       stages: updatedStages,
@@ -444,11 +504,97 @@ export function addChainStage(txId: string, chain: ChainKey, stage: ChainStage):
       chain,
       stage: stage.stage,
       totalStages: updatedStages.length,
+      wasNew: !existingStages.some((s) => s.stage === stage.stage),
     })
   } catch (error) {
     logger.error('[PollingStateManager] Failed to add chain stage', {
       txId,
       chain,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+/**
+ * Update chain stage incrementally during polling
+ * This function is designed for pollers to update stages as they complete,
+ * ensuring stages appear in the event log immediately rather than waiting for polling completion.
+ * 
+ * Features:
+ * - Uses intelligent merging to avoid duplicates
+ * - Updates completedStages array when status is 'confirmed'
+ * - Updates latestCompletedStage in polling state if applicable
+ * - Handles metadata updates safely (preserves existing, merges new)
+ * 
+ * @param txId - Transaction ID
+ * @param chain - Chain key
+ * @param stage - Stage to update/add
+ */
+export function updateChainStageIncremental(
+  txId: string,
+  chain: ChainKey,
+  stage: ChainStage,
+): void {
+  try {
+    // Read fresh state to avoid race conditions
+    const tx = transactionStorageService.getTransaction(txId)
+    if (!tx || !tx.pollingState) {
+      logger.warn('[PollingStateManager] Transaction or polling state not found for incremental stage update', {
+        txId,
+        chain,
+        stage: stage.stage,
+      })
+      return
+    }
+
+    const currentChainStatus = tx.pollingState.chainStatus[chain] ?? {
+      status: 'pending',
+      completedStages: [],
+      stages: [],
+    }
+
+    const existingStages = currentChainStatus.stages || []
+    
+    // Check if this is an update to an existing stage or a new stage
+    const existingStageIndex = existingStages.findIndex((s) => s.stage === stage.stage)
+    const isNewStage = existingStageIndex < 0
+    
+    // Merge stages intelligently
+    const updatedStages = mergeStagesIntelligently(existingStages, stage)
+    
+    // Update completedStages array if status is 'confirmed'
+    let updatedCompletedStages = [...(currentChainStatus.completedStages || [])]
+    if (stage.status === 'confirmed' && !updatedCompletedStages.includes(stage.stage)) {
+      updatedCompletedStages.push(stage.stage)
+    }
+    
+    // Update chain status with merged stages
+    updateChainStatus(txId, chain, {
+      stages: updatedStages,
+      completedStages: updatedCompletedStages.length > 0 ? updatedCompletedStages : undefined,
+    })
+    
+    // Update latestCompletedStage in polling state if this is a confirmed stage
+    if (stage.status === 'confirmed') {
+      updatePollingState(txId, {
+        latestCompletedStage: stage.stage,
+      })
+    }
+    
+    logger.debug('[PollingStateManager] Updated chain stage incrementally', {
+      txId,
+      chain,
+      stage: stage.stage,
+      status: stage.status,
+      isNewStage,
+      totalStages: updatedStages.length,
+      completedStagesCount: updatedCompletedStages.length,
+    })
+  } catch (error) {
+    logger.error('[PollingStateManager] Failed to update chain stage incrementally', {
+      txId,
+      chain,
+      stage: stage.stage,
       error: error instanceof Error ? error.message : String(error),
     })
   }

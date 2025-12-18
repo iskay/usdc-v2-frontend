@@ -112,7 +112,7 @@ export function AddressDisplaySection({
         <>
           <dd>
             <Tooltip
-              content="An unlinked address created only for sending a single shielded transaction."
+              content="An unlinked address created only for sending a single shielded transaction"
               side="top"
             >
               <div className="flex items-center gap-2 text-md font-medium">

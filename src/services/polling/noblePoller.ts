@@ -28,6 +28,7 @@ import {
   createTendermintRpcClient,
   type TendermintTx,
 } from './tendermintRpcClient'
+import { updateChainStageIncremental, updatePollingState } from './pollingStateManager'
 import { getEffectiveRpcUrl } from '@/services/config/customUrlResolver'
 import { DEPOSIT_STAGES, PAYMENT_STAGES } from '@/shared/flowStages'
 import { logger } from '@/utils/logger'
@@ -177,7 +178,10 @@ async function pollForDepositWithNonce(
               occurredAt: new Date().toISOString(),
             }
 
-            stages.push({
+            // Incrementally update: NOBLE_POLLING is now confirmed
+            updateChainStageIncremental(params.flowId, 'noble', stages[0])
+
+            const cctpMintedStage: ChainStage = {
               stage: DEPOSIT_STAGES.NOBLE_CCTP_MINTED,
               status: 'confirmed',
               source: 'poller',
@@ -185,16 +189,34 @@ async function pollForDepositWithNonce(
               occurredAt: new Date().toISOString(),
               // Add block metadata to stage metadata
               metadata: Object.keys(blockMetadata).length > 0 ? blockMetadata : undefined,
-            })
+            }
+            stages.push(cctpMintedStage)
+
+            // Incrementally update: NOBLE_CCTP_MINTED is confirmed
+            updateChainStageIncremental(params.flowId, 'noble', cctpMintedStage)
 
             // After CCTP minted, add forwarding registration stage (pending - will be confirmed when registration completes)
-            stages.push({
+            const forwardingRegStage: ChainStage = {
               stage: DEPOSIT_STAGES.NOBLE_FORWARDING_REGISTRATION,
               status: 'pending',
               source: 'poller',
               occurredAt: new Date().toISOString(),
               message: 'Waiting for Noble forwarding registration',
+            }
+            stages.push(forwardingRegStage)
+
+            // Incrementally update: NOBLE_FORWARDING_REGISTRATION has started (pending)
+            updateChainStageIncremental(params.flowId, 'noble', forwardingRegStage)
+            
+            // Update polling state metadata immediately with cctpBlockHeight so it's available during polling
+            updatePollingState(params.flowId, {
+              metadata: {
+                ...params.metadata,
+                cctpBlockHeight: cctpBlockHeight,
+              },
             })
+            
+            // Break out of the while loop since we found the CCTP mint event
             break
           }
         }
@@ -264,10 +286,15 @@ async function pollForDepositWithNonce(
     // For now, if we have blockHeight, we'll proceed (the block_results query will verify)
     if (!cctpBlockHeight) {
       cleanup()
-      return createErrorResult(
-        'polling_timeout',
-        `CCTP mint event not found for nonce ${params.metadata.cctpNonce} within ${txSearchTimeoutMs}ms`,
-      )
+      // Include any metadata and stages that were discovered before timeout
+      return {
+        ...createErrorResult(
+          'polling_timeout',
+          `CCTP mint event not found for nonce ${params.metadata.cctpNonce} within ${txSearchTimeoutMs}ms`,
+        ),
+        metadata: params.metadata, // Preserve input metadata
+        stages, // Include any stages that were added (e.g., NOBLE_POLLING pending)
+      }
     }
     
     // If we have blockHeight but no tx (from metadata), log a warning but continue
@@ -369,13 +396,17 @@ async function pollForDepositWithNonce(
     if (registrationResult.success) {
       // Registration succeeded (either already registered or newly registered)
       if (regStageIndex >= 0) {
-        stages[regStageIndex] = {
+        const updatedRegStage: ChainStage = {
           stage: DEPOSIT_STAGES.NOBLE_FORWARDING_REGISTRATION,
           status: 'confirmed',
           source: 'poller',
           txHash: registrationResult.registrationTx.txHash,
           occurredAt: stages[regStageIndex]?.occurredAt || new Date().toISOString(), // Preserve original timestamp
         }
+        stages[regStageIndex] = updatedRegStage
+
+        // Incrementally update: NOBLE_FORWARDING_REGISTRATION is now confirmed
+        updateChainStageIncremental(params.flowId, 'noble', updatedRegStage)
       }
       
       logger.info('[NoblePoller] Noble forwarding registration completed', {
@@ -489,10 +520,18 @@ async function pollForDepositWithNonce(
         cctpBlockHeightFromMetadata: params.metadata.cctpBlockHeight,
       })
       cleanup()
-      return createErrorResult(
-        'polling_error',
-        `Block results not found for height ${blockHeightForPacketExtraction}`,
-      )
+      // Include metadata and stages that were discovered before error (CCTP mint was found)
+      return {
+        ...createErrorResult(
+          'polling_error',
+          `Block results not found for height ${blockHeightForPacketExtraction}`,
+        ),
+        metadata: {
+          ...params.metadata,
+          cctpBlockHeight: cctpBlockHeight,
+        },
+        stages,
+      }
     }
 
     // Extract packet sequence from send_packet events (even if packet_data doesn't match exactly)
@@ -654,14 +693,18 @@ async function pollForDepositWithNonce(
               })
             }
 
-            stages.push({
+            const ibcForwardedStage1: ChainStage = {
               stage: DEPOSIT_STAGES.NOBLE_IBC_FORWARDED,
               status: 'confirmed',
               source: 'poller',
               occurredAt: new Date().toISOString(),
               // Add block metadata to stage metadata
               metadata: Object.keys(blockMetadata).length > 0 ? blockMetadata : undefined,
-            })
+            }
+            stages.push(ibcForwardedStage1)
+
+            // Incrementally update: NOBLE_IBC_FORWARDED is confirmed
+            updateChainStageIncremental(params.flowId, 'noble', ibcForwardedStage1)
             break
           }
         }
@@ -854,14 +897,18 @@ async function pollForDepositWithNonce(
                           })
                         }
                         
-                        stages.push({
+                        const ibcForwardedStage3: ChainStage = {
                           stage: DEPOSIT_STAGES.NOBLE_IBC_FORWARDED,
                           status: 'confirmed',
                           source: 'poller',
                           occurredAt: new Date().toISOString(),
                           // Add block metadata to stage metadata
                           metadata: Object.keys(blockMetadata).length > 0 ? blockMetadata : undefined,
-                        })
+                        }
+                        stages.push(ibcForwardedStage3)
+
+                        // Incrementally update: NOBLE_IBC_FORWARDED is confirmed
+                        updateChainStageIncremental(params.flowId, 'noble', ibcForwardedStage3)
                         break
                       }
                     }
@@ -905,14 +952,18 @@ async function pollForDepositWithNonce(
                           })
                         }
 
-                        stages.push({
+                        const ibcForwardedStage4: ChainStage = {
                           stage: DEPOSIT_STAGES.NOBLE_IBC_FORWARDED,
                           status: 'confirmed',
                           source: 'poller',
                           occurredAt: new Date().toISOString(),
                           // Add block metadata to stage metadata
                           metadata: Object.keys(blockMetadata).length > 0 ? blockMetadata : undefined,
-                        })
+                        }
+                        stages.push(ibcForwardedStage4)
+
+                        // Incrementally update: NOBLE_IBC_FORWARDED is confirmed
+                        updateChainStageIncremental(params.flowId, 'noble', ibcForwardedStage4)
                         break
                       }
                     }
@@ -994,7 +1045,12 @@ async function pollForDepositWithNonce(
     cleanup()
 
     if (isAborted(abortSignal)) {
-      return createErrorResult('polling_error', 'Polling cancelled')
+      // Include any metadata and stages that were discovered before abort
+      return {
+        ...createErrorResult('polling_error', 'Polling cancelled'),
+        metadata: params.metadata,
+        stages,
+      }
     }
 
     logger.error('[NoblePoller] Noble deposit poll with nonce error', {
@@ -1003,10 +1059,15 @@ async function pollForDepositWithNonce(
       cctpNonce: params.metadata.cctpNonce,
     })
 
-    return createErrorResult(
-      'polling_error',
-      error instanceof Error ? error.message : 'Unknown error',
-    )
+    // Include any metadata and stages that were discovered before error
+    return {
+      ...createErrorResult(
+        'polling_error',
+        error instanceof Error ? error.message : 'Unknown error',
+      ),
+      metadata: params.metadata,
+      stages,
+    }
   }
 }
 
@@ -1093,6 +1154,9 @@ async function pollForPaymentWithPacketSequence(
           }
 
           if (packetSeqMatched) {
+            // Extract block height before packet_ack check (needed for error return)
+            const txBlockHeight = Number.parseInt(tx.height, 10)
+            
             // Verify packet_ack is success code
             if (packetAck !== '{"result":"AQ=="}') {
               logger.error('[NoblePoller] Packet acknowledgement indicates failure', {
@@ -1101,14 +1165,22 @@ async function pollForPaymentWithPacketSequence(
                 packetAck,
               })
               cleanup()
-              return createErrorResult(
-                'tx_error',
-                `Packet acknowledgement indicates failure: ${packetAck}`,
-              )
+              // Include metadata and stages that were discovered before error (write_acknowledgement was found)
+              return {
+                ...createErrorResult(
+                  'tx_error',
+                  `Packet acknowledgement indicates failure: ${packetAck}`,
+                ),
+                metadata: {
+                  ...params.metadata,
+                  ackBlockHeight: txBlockHeight,
+                },
+                stages,
+              }
             }
 
             ackTx = tx
-            ackBlockHeight = Number.parseInt(tx.height, 10)
+            ackBlockHeight = txBlockHeight
             logger.info('[NoblePoller] write_acknowledgement event found via tx_search', {
               flowId: params.flowId,
               packetSequence: params.metadata.packetSequence,
@@ -1143,7 +1215,10 @@ async function pollForPaymentWithPacketSequence(
               occurredAt: stages[0]?.occurredAt || new Date().toISOString(), // Preserve original timestamp
             }
 
-            stages.push({
+            // Incrementally update: NOBLE_POLLING is now confirmed
+            updateChainStageIncremental(params.flowId, 'noble', stages[0])
+
+            const nobleReceivedStage: ChainStage = {
               stage: PAYMENT_STAGES.NOBLE_RECEIVED,
               status: 'confirmed',
               source: 'poller',
@@ -1151,7 +1226,20 @@ async function pollForPaymentWithPacketSequence(
               occurredAt: new Date().toISOString(),
               // Add block metadata to stage metadata
               metadata: Object.keys(blockMetadata).length > 0 ? blockMetadata : undefined,
+            }
+            stages.push(nobleReceivedStage)
+
+            // Incrementally update: NOBLE_RECEIVED is confirmed
+            updateChainStageIncremental(params.flowId, 'noble', nobleReceivedStage)
+            
+            // Update polling state metadata immediately with ackBlockHeight for consistency
+            updatePollingState(params.flowId, {
+              metadata: {
+                ...params.metadata,
+                ackBlockHeight: ackBlockHeight,
+              },
             })
+            
             break
           }
         }
@@ -1218,10 +1306,15 @@ async function pollForPaymentWithPacketSequence(
 
     if (!ackTx || !ackBlockHeight) {
       cleanup()
-      return createErrorResult(
-        'polling_timeout',
-        `write_acknowledgement event not found for packet_sequence ${params.metadata.packetSequence} within ${txSearchTimeoutMs}ms`,
-      )
+      // Include any metadata and stages that were discovered before timeout
+      return {
+        ...createErrorResult(
+          'polling_timeout',
+          `write_acknowledgement event not found for packet_sequence ${params.metadata.packetSequence} within ${txSearchTimeoutMs}ms`,
+        ),
+        metadata: params.metadata, // Preserve input metadata
+        stages, // Include any stages that were added (e.g., NOBLE_POLLING pending)
+      }
     }
 
     // Step 2: Search for DepositForBurn event in the same transaction
@@ -1259,12 +1352,16 @@ async function pollForPaymentWithPacketSequence(
             cctpNonce,
           })
 
-          stages.push({
+          const cctpBurnedStage: ChainStage = {
             stage: PAYMENT_STAGES.NOBLE_CCTP_BURNED,
             status: 'confirmed',
             source: 'poller',
             occurredAt: new Date().toISOString(),
-          })
+          }
+          stages.push(cctpBurnedStage)
+
+          // Incrementally update: NOBLE_CCTP_BURNED is confirmed
+          updateChainStageIncremental(params.flowId, 'noble', cctpBurnedStage)
           break
         }
       }
@@ -1294,7 +1391,12 @@ async function pollForPaymentWithPacketSequence(
     cleanup()
 
     if (isAborted(abortSignal)) {
-      return createErrorResult('polling_error', 'Polling cancelled')
+      // Include any metadata and stages that were discovered before abort
+      return {
+        ...createErrorResult('polling_error', 'Polling cancelled'),
+        metadata: params.metadata,
+        stages,
+      }
     }
 
     logger.error('[NoblePoller] Noble payment poll with packet_sequence error', {
@@ -1303,10 +1405,15 @@ async function pollForPaymentWithPacketSequence(
       packetSequence: params.metadata.packetSequence,
     })
 
-    return createErrorResult(
-      'polling_error',
-      error instanceof Error ? error.message : 'Unknown error',
-    )
+    // Include any metadata and stages that were discovered before error
+    return {
+      ...createErrorResult(
+        'polling_error',
+        error instanceof Error ? error.message : 'Unknown error',
+      ),
+      metadata: params.metadata,
+      stages,
+    }
   }
 }
 
