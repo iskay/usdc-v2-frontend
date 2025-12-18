@@ -3,6 +3,7 @@ import { AlertTriangle, Download } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { Tooltip } from '@/components/common/Tooltip'
 import { TransactionCard } from '@/components/tx/TransactionCard'
+import { TransactionDetailModal } from '@/components/tx/TransactionDetailModal'
 import { Spinner } from '@/components/common/Spinner'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
 import { useDeleteTransaction } from '@/hooks/useDeleteTransaction'
@@ -17,6 +18,7 @@ export function History() {
   const [error, setError] = useState<string | null>(null)
   const { deleteTransaction } = useDeleteTransaction()
   const [openModalTxId, setOpenModalTxId] = useState<string | null>(null)
+  const [modalTransaction, setModalTransaction] = useState<StoredTransaction | null>(null)
 
   const loadTransactions = useCallback(() => {
     try {
@@ -41,6 +43,37 @@ export function History() {
     const interval = setInterval(loadTransactions, 5000)
     return () => clearInterval(interval)
   }, [loadTransactions])
+
+  // Fetch transaction directly from storage when modal should be open
+  // This ensures the modal persists even when transaction moves between lists during animation
+  useEffect(() => {
+    if (openModalTxId) {
+      // Fetch transaction directly from storage (not from list)
+      const tx = transactionStorageService.getTransaction(openModalTxId)
+      setModalTransaction(tx || null)
+    } else {
+      setModalTransaction(null)
+    }
+  }, [openModalTxId])
+
+  // Also update transaction when it changes in storage (e.g., status updates)
+  useEffect(() => {
+    if (!openModalTxId) return
+
+    const checkTransaction = () => {
+      const tx = transactionStorageService.getTransaction(openModalTxId)
+      if (tx) {
+        setModalTransaction(tx)
+      }
+    }
+
+    // Check immediately
+    checkTransaction()
+
+    // Check periodically to catch status updates
+    const interval = setInterval(checkTransaction, 1000)
+    return () => clearInterval(interval)
+  }, [openModalTxId])
 
   const handleDelete = useCallback(
     (txId: string) => {
@@ -196,6 +229,15 @@ export function History() {
         </div>
       )}
       <div className='min-h-12' />
+
+      {/* Render modal at page level so it persists during list transitions */}
+      {modalTransaction && (
+        <TransactionDetailModal
+          transaction={modalTransaction}
+          open={!!openModalTxId}
+          onClose={() => setOpenModalTxId(null)}
+        />
+      )}
     </div>
   )
 }
