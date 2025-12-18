@@ -31,13 +31,11 @@ export function TransactionDisplay({
   className,
 }: TransactionDisplayProps) {
   const [countdown, setCountdown] = useState(countdownSeconds)
-  const [isFadingOut, setIsFadingOut] = useState(false)
 
   // Reset countdown when success state becomes active
   useEffect(() => {
     if (showSuccessState) {
       setCountdown(countdownSeconds)
-      setIsFadingOut(false)
     }
   }, [showSuccessState, countdownSeconds])
 
@@ -48,25 +46,17 @@ export function TransactionDisplay({
     }
 
     if (countdown <= 0) {
-      // Start fade-out animation before navigation
-      setIsFadingOut(true)
-      // Wait for fade-out to complete (500ms) before navigating
-      const navigateTimer = setTimeout(() => {
-        onNavigate()
-      }, 500)
-      return () => clearTimeout(navigateTimer)
+      // Navigate immediately when countdown reaches 0
+      onNavigate()
+      return
     }
 
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timer)
-          // Start fade-out animation before navigation
-          setIsFadingOut(true)
-          // Wait for fade-out to complete (500ms) before navigating
-          setTimeout(() => {
-            onNavigate()
-          }, 500)
+          // Navigate immediately when countdown reaches 0
+          onNavigate()
           return 0
         }
         return prev - 1
@@ -87,7 +77,6 @@ export function TransactionDisplay({
       <div
         className={cn(
           "flex items-center justify-center min-h-[400px] w-full animate-in fade-in duration-300",
-          isFadingOut && "animate-out fade-out duration-500",
           className
         )}
       >

@@ -359,10 +359,10 @@ export function Deposit() {
               onNavigate={() => {
                 // Navigate first, then reset state after route transition completes
                 navigate('/dashboard')
-                // Delay state reset to allow fade-out and route transition (500ms fade + 350ms route transition)
+                // Delay state reset to allow route transition
                 setTimeout(() => {
                   resetTxUiState(setTxUiState)
-                }, 600)
+                }, 350)
               }}
               countdownSeconds={3}
             />
