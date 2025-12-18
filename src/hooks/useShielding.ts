@@ -231,6 +231,7 @@ export function useShielding(): UseShieldingReturn {
           phase: null,
           txHash: result.txHash,
           showSuccessState: true,
+          successTimestamp: Date.now(),
         })
 
         // Fetch explorer URL

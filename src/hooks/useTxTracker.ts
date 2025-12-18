@@ -4,7 +4,6 @@ import { txAtom } from '@/atoms/txAtom'
 import type { TrackedTransaction, TxStatusMessage } from '@/types/tx'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
 import { logger } from '@/utils/logger'
-import { pauseAllOrchestrators, resumeAllOrchestrators } from '@/services/polling/orchestratorRegistry'
 
 export function useTxTracker(options?: { enablePolling?: boolean }) {
   const { enablePolling = true } = options || {}
@@ -405,35 +404,6 @@ export function useTxTracker(options?: { enablePolling?: boolean }) {
     },
     [],
   )
-
-  // Handle page visibility changes (pause/resume polling)
-  useEffect(() => {
-    if (!enablePolling) {
-      return
-    }
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        // Tab became hidden - pause all polling
-        logger.info('[useTxTracker] Tab hidden, pausing polling')
-        pauseAllOrchestrators()
-      } else {
-        // Tab became visible - resume all polling
-        logger.info('[useTxTracker] Tab visible, resuming polling')
-        resumeAllOrchestrators().catch((error) => {
-          logger.error('[useTxTracker] Error resuming orchestrators', {
-            error: error instanceof Error ? error.message : String(error),
-          })
-        })
-      }
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [enablePolling])
 
   return {
     state: txState,

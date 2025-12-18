@@ -7,6 +7,7 @@ import { Footer } from '@/components/layout/Footer'
 import { ToastContainer } from '@/components/layout/ToastContainer'
 import { Spinner } from '@/components/common/Spinner'
 import { useTxTracker } from '@/hooks/useTxTracker'
+import { useTransactionStateCleanup } from '@/hooks/useTransactionStateCleanup'
 // import { useSidebarState } from '@/hooks/useSidebarState'
 
 const slideFromLeft: Variants = {
@@ -44,6 +45,9 @@ export function App() {
   // Initialize global transaction tracking and polling
   // This runs on app startup and handles hydration from localStorage + polling for in-progress transactions
   const { state: _txState } = useTxTracker({ enablePolling: true })
+
+  // Clean up transaction state when navigating to non-transaction pages
+  useTransactionStateCleanup()
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">

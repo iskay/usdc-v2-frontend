@@ -1,8 +1,7 @@
 /**
  * Orchestrator Registry
  * 
- * Tracks active FlowOrchestrator instances for pause/resume operations.
- * Used for page visibility handling and tab throttling.
+ * Tracks active FlowOrchestrator instances for lifecycle management.
  */
 
 import type { FlowOrchestrator } from './flowOrchestrator'
@@ -49,60 +48,6 @@ export function getOrchestrator(txId: string): FlowOrchestrator | undefined {
  */
 export function getAllOrchestrators(): FlowOrchestrator[] {
   return Array.from(orchestratorRegistry.values())
-}
-
-/**
- * Pause all active orchestrators
- */
-export function pauseAllOrchestrators(): void {
-  const count = orchestratorRegistry.size
-  logger.info('[OrchestratorRegistry] Pausing all orchestrators', {
-    count,
-  })
-
-  for (const orchestrator of orchestratorRegistry.values()) {
-    try {
-      orchestrator.pauseFlow()
-    } catch (error) {
-      logger.error('[OrchestratorRegistry] Error pausing orchestrator', {
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }
-}
-
-/**
- * Resume all paused orchestrators
- * Note: Since paused orchestrators have aborted controllers, we recreate them via chainPollingService
- */
-export async function resumeAllOrchestrators(): Promise<void> {
-  const count = orchestratorRegistry.size
-  logger.info('[OrchestratorRegistry] Resuming all paused orchestrators', {
-    count,
-  })
-
-  // Get list of paused transaction IDs
-  const pausedTxIds: string[] = []
-  for (const [txId, orchestrator] of orchestratorRegistry.entries()) {
-    if (orchestrator.getIsPaused()) {
-      pausedTxIds.push(txId)
-      // Unregister old orchestrator (will be replaced by new one)
-      unregisterOrchestrator(txId)
-    }
-  }
-
-  // Resume each paused transaction by creating new orchestrator
-  const { resumePolling } = await import('./chainPollingService')
-  const resumePromises = pausedTxIds.map((txId) =>
-    resumePolling(txId).catch((error) => {
-      logger.error('[OrchestratorRegistry] Error resuming orchestrator', {
-        txId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }),
-  )
-
-  await Promise.all(resumePromises)
 }
 
 /**

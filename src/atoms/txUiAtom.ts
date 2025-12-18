@@ -13,6 +13,7 @@ export interface TransactionUIState {
   explorerUrl: string | undefined
   errorState: { message: string } | null
   showSuccessState: boolean
+  successTimestamp?: number
   transactionType: 'deposit' | 'send' | 'shield' | null
 }
 
@@ -46,6 +47,7 @@ export function resetTxUiState(setTxUiState: (state: TransactionUIState) => void
     explorerUrl: undefined,
     errorState: null,
     showSuccessState: false,
+    successTimestamp: undefined,
     transactionType: null,
   })
 }

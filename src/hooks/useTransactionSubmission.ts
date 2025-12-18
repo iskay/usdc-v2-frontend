@@ -175,7 +175,7 @@ export function useTransactionSubmission<TParams extends Record<string, unknown>
         updateToast(txToastId, successToastArgs)
 
         // Set success state and fetch explorer URL
-        setTxUiState({ ...txUiState, phase: null, txHash, showSuccessState: true })
+        setTxUiState({ ...txUiState, phase: null, txHash, showSuccessState: true, successTimestamp: Date.now() })
         const selectedChain = (txParams as { selectedChain?: string }).selectedChain
         await fetchAndSetExplorerUrl(selectedChain, txHash, setTxUiState, getExplorerUrl)
       } catch (error) {

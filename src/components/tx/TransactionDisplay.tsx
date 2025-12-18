@@ -4,12 +4,14 @@
  * Returns null when idle to allow form to render normally.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { useAtomValue } from 'jotai'
 import { Lock, CheckCircle2 } from 'lucide-react'
 import { ExplorerLink } from '@/components/common/ExplorerLink'
 import { ProgressStepper, type TransactionPhase } from './ProgressStepper'
 import { formatTxHash } from '@/utils/toastHelpers'
 import { cn } from '@/lib/utils'
+import { txUiAtom } from '@/atoms/txUiAtom'
 
 export interface TransactionDisplayProps {
   phase: TransactionPhase
@@ -30,41 +32,42 @@ export function TransactionDisplay({
   countdownSeconds = 3,
   className,
 }: TransactionDisplayProps) {
-  const [countdown, setCountdown] = useState(countdownSeconds)
+  const txUiState = useAtomValue(txUiAtom)
+  const successTimestamp = txUiState.successTimestamp
 
-  // Reset countdown when success state becomes active
-  useEffect(() => {
-    if (showSuccessState) {
-      setCountdown(countdownSeconds)
-    }
-  }, [showSuccessState, countdownSeconds])
+  // Calculate countdown from timestamp
+  const countdown = successTimestamp
+    ? Math.max(0, countdownSeconds - Math.floor((Date.now() - successTimestamp) / 1000))
+    : countdownSeconds
 
   // Handle countdown timer for success state
   useEffect(() => {
-    if (!showSuccessState || !txHash) {
+    if (!showSuccessState || !txHash || !successTimestamp) {
       return
     }
 
-    if (countdown <= 0) {
+    // Check if countdown has reached 0
+    const remainingSeconds = Math.max(0, countdownSeconds - Math.floor((Date.now() - successTimestamp) / 1000))
+    
+    if (remainingSeconds <= 0) {
       // Navigate immediately when countdown reaches 0
       onNavigate()
       return
     }
 
+    // Update countdown every second
     const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer)
-          // Navigate immediately when countdown reaches 0
-          onNavigate()
-          return 0
-        }
-        return prev - 1
-      })
+      const currentRemaining = Math.max(0, countdownSeconds - Math.floor((Date.now() - successTimestamp) / 1000))
+      
+      if (currentRemaining <= 0) {
+        clearInterval(timer)
+        // Navigate immediately when countdown reaches 0
+        onNavigate()
+      }
     }, 1000)
 
     return () => clearInterval(timer)
-  }, [showSuccessState, txHash, countdown, onNavigate])
+  }, [showSuccessState, txHash, successTimestamp, countdownSeconds, onNavigate])
 
   // Return null when idle (no transaction active)
   if (!phase && !showSuccessState) {

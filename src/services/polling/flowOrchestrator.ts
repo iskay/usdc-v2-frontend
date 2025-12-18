@@ -65,7 +65,6 @@ export class FlowOrchestrator {
   private readonly abortController: AbortController
   private readonly pollers: Map<ChainKey, ChainPoller>
   private isRunning: boolean = false
-  private isPaused: boolean = false
   private globalTimeoutTimer: NodeJS.Timeout | null = null
 
   constructor(options: FlowOrchestratorOptions) {
@@ -158,7 +157,6 @@ export class FlowOrchestrator {
 
     // Abort the controller - this will propagate to all pollers via abortSignal
     this.abortController.abort()
-    this.isPaused = false
 
     logger.debug('[FlowOrchestrator] AbortController aborted', {
       txId: this.txId,
@@ -181,55 +179,6 @@ export class FlowOrchestrator {
         status: 'cancelled',
       })
     }
-  }
-
-  /**
-   * Pause flow (stop polling but preserve state for resume)
-   */
-  pauseFlow(): void {
-    if (this.isPaused || this.abortController.signal.aborted) {
-      return
-    }
-
-    logger.info('[FlowOrchestrator] Pausing flow', {
-      txId: this.txId,
-      flowType: this.flowType,
-    })
-
-    this.isPaused = true
-    this.abortController.abort()
-
-    // Store last active timestamp
-    updatePollingState(this.txId, {
-      lastActiveAt: Date.now(),
-    })
-  }
-
-  /**
-   * Resume flow from pause
-   * Note: Since abort controller was aborted, we need to recreate orchestrator
-   * This method just marks as not paused - actual resume is handled by chainPollingService.resumePolling()
-   */
-  resumeFromPause(): void {
-    if (!this.isPaused) {
-      return
-    }
-
-    logger.info('[FlowOrchestrator] Marking flow as resumed from pause', {
-      txId: this.txId,
-      flowType: this.flowType,
-    })
-
-    // Mark as not paused
-    // Note: Actual resume will be handled by recreating orchestrator via chainPollingService.resumePolling()
-    this.isPaused = false
-  }
-
-  /**
-   * Check if flow is paused
-   */
-  getIsPaused(): boolean {
-    return this.isPaused
   }
 
   /**

@@ -107,7 +107,7 @@ export async function startDepositPolling(
       transaction: tx,
     })
 
-    // Register orchestrator for visibility handling
+    // Register orchestrator for lifecycle management
     registerOrchestrator(txId, orchestrator)
 
     // Start flow (non-blocking)
@@ -212,7 +212,7 @@ export async function startPaymentPolling(
       transaction: tx,
     })
 
-    // Register orchestrator for visibility handling
+    // Register orchestrator for lifecycle management
     registerOrchestrator(txId, orchestrator)
 
     // Start flow (non-blocking)
@@ -271,7 +271,7 @@ export async function resumePolling(txId: string): Promise<void> {
       transaction: tx,
     })
 
-    // Register orchestrator for visibility handling
+    // Register orchestrator for lifecycle management
     registerOrchestrator(txId, orchestrator)
 
     // Resume flow (non-blocking)
@@ -314,7 +314,7 @@ export function cancelPolling(txId: string): void {
       })
       
       // If no active orchestrator, still update the state to cancelled
-      // in case polling was paused or stopped
+      // in case polling was stopped
       const tx = transactionStorageService.getTransaction(txId)
       if (tx?.pollingState) {
         updatePollingState(txId, {
