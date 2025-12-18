@@ -7,6 +7,7 @@ import { DEPOSIT_STAGES } from '@/shared/flowStages'
 import type { EvmChainsFile, TendermintChainsFile } from '@/config/chains'
 import { buildExplorerUrlSync } from '@/utils/explorerUtils'
 import { getChainDisplayName } from '@/utils/chainUtils'
+import { env } from '@/config/env'
 
 export interface StageTimelineItemProps {
   timing: StageTiming
@@ -170,6 +171,35 @@ export function StageTimelineItem({
                   )}
                 </p>
               ) : null
+            })()
+          )}
+          {/* Iris lookup ID for IRIS_ATTESTATION_POLLING and IRIS_ATTESTATION_COMPLETE stages */}
+          {(timing.stage === DEPOSIT_STAGES.IRIS_ATTESTATION_POLLING || timing.stage === DEPOSIT_STAGES.IRIS_ATTESTATION_COMPLETE) && (
+            (() => {
+              const irisLookupID = transaction.pollingState?.metadata?.irisLookupID as string | undefined
+              if (!irisLookupID) return null
+
+              // Build Iris API URL
+              // Ensure baseUrl ends with / and lookupID has 0x prefix if needed
+              const baseUrl = env.irisAttestationBaseUrl()
+              const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
+              const normalizedLookupID = irisLookupID.startsWith('0x') ? irisLookupID : `0x${irisLookupID}`
+              const irisApiUrl = `${normalizedBaseUrl}${normalizedLookupID}`
+
+              return (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  Event lookup ID:{' '}
+                  <ExplorerLink
+                    url={irisApiUrl}
+                    size="sm"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span className="font-mono">
+                      {irisLookupID.slice(0, 10)}...{irisLookupID.slice(-8)}
+                    </span>
+                  </ExplorerLink>
+                </p>
+              )
             })()
           )}
         </div>
