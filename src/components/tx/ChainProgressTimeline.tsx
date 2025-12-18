@@ -449,7 +449,7 @@ export function ChainProgressTimeline({
 
           const elements = [
             // Step
-            <div key={`step-${stepState.step.key}`} className="flex flex-col w-5 items-center">
+            <div key={`step-${stepState.step.key}`} className="flex flex-col w-10 items-center">
               {/* Step Circle */}
               <div
                 className={cn(
