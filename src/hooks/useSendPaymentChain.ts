@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react'
-import { fetchEvmChainsConfig } from '@/services/config/chainConfigService'
+import { useChainSelection } from '@/hooks/useChainSelection'
 
 export interface UseSendPaymentChainReturn {
   selectedChain: string | undefined
@@ -12,63 +11,9 @@ export interface UseSendPaymentChainReturn {
  * Handles loading default chain from config and chain name for display
  */
 export function useSendPaymentChain(): UseSendPaymentChainReturn {
-  const [selectedChain, setSelectedChain] = useState<string | undefined>(undefined)
-  const [chainName, setChainName] = useState('')
-
-  // Load default chain from config
-  useEffect(() => {
-    let mounted = true
-
-    async function loadDefaultChain() {
-      try {
-        const config = await fetchEvmChainsConfig()
-        if (mounted && config.defaults?.selectedChainKey) {
-          setSelectedChain(config.defaults.selectedChainKey)
-        }
-      } catch (error) {
-        console.error('[useSendPaymentChain] Failed to load default chain:', error)
-      }
-    }
-
-    void loadDefaultChain()
-
-    return () => {
-      mounted = false
-    }
-  }, [])
-
-  // Get chain name for display
-  useEffect(() => {
-    let mounted = true
-
-    async function loadChainName() {
-      try {
-        const config = await fetchEvmChainsConfig()
-        if (mounted) {
-          const chain = config.chains.find((c) => c.key === selectedChain)
-          setChainName(chain?.name ?? selectedChain ?? '')
-        }
-      } catch (error) {
-        console.error('[useSendPaymentChain] Failed to load chain name:', error)
-        if (mounted) {
-          setChainName(selectedChain ?? '')
-        }
-      }
-    }
-
-    if (selectedChain) {
-      void loadChainName()
-    }
-
-    return () => {
-      mounted = false
-    }
-  }, [selectedChain])
-
-  return {
-    selectedChain,
-    chainName,
-    setSelectedChain,
-  }
+  return useChainSelection({
+    strategy: 'default',
+    updatePreferred: false,
+  })
 }
 

@@ -1,7 +1,8 @@
 import { useAtomValue } from 'jotai'
 import { useBalance } from '@/hooks/useBalance'
 import { useShieldedSync } from '@/hooks/useShieldedSync'
-import { balanceSyncAtom, balanceErrorAtom } from '@/atoms/balanceAtom'
+import { balanceSyncAtom, balanceErrorsAtom } from '@/atoms/balanceAtom'
+import { checkBalanceError, formatBalanceForDisplay, isBalanceLoading } from '@/utils/balanceHelpers'
 
 export interface UseSendPaymentBalanceReturn {
   shieldedBalance: string
@@ -16,13 +17,17 @@ export function useSendPaymentBalance(): UseSendPaymentBalanceReturn {
   const { state: balanceState } = useBalance()
   const { state: shieldedState } = useShieldedSync()
   const balanceSyncState = useAtomValue(balanceSyncAtom)
-  const balanceError = useAtomValue(balanceErrorAtom)
+  const balanceErrors = useAtomValue(balanceErrorsAtom)
 
   // Check for balance calculation error state
-  const hasBalanceError = balanceSyncState.shieldedStatus === 'error' && !!balanceError
-  const shieldedBalance = hasBalanceError ? '--' : (balanceState.namada.usdcShielded || '--')
-  const isShieldedBalanceLoading =
-    shieldedState.isSyncing || balanceSyncState.shieldedStatus === 'calculating'
+  const hasBalanceError = checkBalanceError(balanceSyncState, balanceErrors, 'shielded')
+  const shieldedBalanceValue = balanceState.namada.usdcShielded
+  const shieldedBalance = formatBalanceForDisplay(shieldedBalanceValue, hasBalanceError)
+  const isShieldedBalanceLoading = isBalanceLoading(
+    balanceSyncState,
+    'shielded',
+    shieldedState.isSyncing
+  )
 
   return {
     shieldedBalance,

@@ -3,6 +3,7 @@ import { useAtomValue } from 'jotai'
 import { useWallet } from '@/hooks/useWallet'
 import { useBalance } from '@/hooks/useBalance'
 import { balanceSyncAtom, balanceErrorsAtom } from '@/atoms/balanceAtom'
+import { checkBalanceError, formatBalanceForDisplay } from '@/utils/balanceHelpers'
 import type { BalanceRefreshOptions } from '@/services/balance/balanceService'
 
 export interface UseDepositBalanceReturn {
@@ -68,9 +69,9 @@ export function useDepositBalance(selectedChain: string | undefined): UseDeposit
 
   // Get live EVM balance from balance state
   // Check for EVM balance error state
-  const hasEvmError = balanceSyncState.evmStatus === 'error' && !!balanceErrors.evm
+  const hasEvmError = checkBalanceError(balanceSyncState, balanceErrors, 'evm')
   const evmBalance = balanceState.evm.usdc
-  const availableBalance = hasEvmError ? '--' : (evmBalance !== '--' ? evmBalance : '--')
+  const availableBalance = formatBalanceForDisplay(evmBalance, hasEvmError)
 
   return {
     availableBalance,
