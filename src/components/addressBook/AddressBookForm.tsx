@@ -7,6 +7,7 @@ import { AlertCircle } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { AddressTypeBadge } from './AddressTypeBadge'
 import { detectAddressType } from '@/services/addressBook/addressTypeDetector'
+import { validateAddressBookName, validateAddressBookMemo } from '@/utils/addressBookValidation'
 import type { AddressBookEntry, AddressType } from '@/services/addressBook/types'
 
 interface AddressBookFormProps {
@@ -22,6 +23,7 @@ export function AddressBookForm({ entry, onSubmit, onCancel }: AddressBookFormPr
   const [detectedType, setDetectedType] = useState<AddressType | null>(entry?.type ?? null)
   const [addressError, setAddressError] = useState<string | null>(null)
   const [nameError, setNameError] = useState<string | null>(null)
+  const [memoError, setMemoError] = useState<string | null>(null)
 
   const isEditMode = !!entry
 
@@ -46,26 +48,54 @@ export function AddressBookForm({ entry, onSubmit, onCancel }: AddressBookFormPr
     }
   }, [address])
 
-  // Validate name
+  // Validate name using validation utility
   useEffect(() => {
-    if (name.trim() === '' && name.length > 0) {
-      setNameError('Name is required')
+    if (!address.trim()) {
+      // Don't validate name if address is empty (will be caught in submit)
+      setNameError(null)
+      return
+    }
+
+    // Skip address existence check in edit mode (exclude current entry)
+    const validation = validateAddressBookName(name, address, entry?.id)
+    
+    if (!validation.isValid) {
+      setNameError(validation.error)
     } else {
       setNameError(null)
     }
-  }, [name])
+  }, [name, address, entry?.id])
+
+  // Validate memo
+  useEffect(() => {
+    const validation = validateAddressBookMemo(notes)
+    
+    if (!validation.isValid) {
+      setMemoError(validation.error)
+    } else {
+      setMemoError(null)
+    }
+  }, [notes])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Validate
-    if (!name.trim()) {
-      setNameError('Name is required')
+    // Validate name
+    if (!address.trim()) {
+      setAddressError('Address is required')
       return
     }
 
-    if (!address.trim()) {
-      setAddressError('Address is required')
+    const nameValidation = validateAddressBookName(name, address, entry?.id)
+    if (!nameValidation.isValid) {
+      setNameError(nameValidation.error)
+      return
+    }
+
+    // Validate memo
+    const memoValidation = validateAddressBookMemo(notes)
+    if (!memoValidation.isValid) {
+      setMemoError(memoValidation.error)
       return
     }
 
@@ -94,6 +124,7 @@ export function AddressBookForm({ entry, onSubmit, onCancel }: AddressBookFormPr
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          maxLength={24}
           className={`w-full rounded-md border px-3 py-2 text-sm ${
             nameError
               ? 'border-destructive focus:border-destructive focus:ring-destructive'
@@ -149,10 +180,21 @@ export function AddressBookForm({ entry, onSubmit, onCancel }: AddressBookFormPr
           id="address-notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="w-full rounded-md border border-input px-3 py-2 text-sm bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:border-ring focus:ring-ring resize-none"
+          maxLength={200}
+          className={`w-full rounded-md border px-3 py-2 text-sm bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 resize-none ${
+            memoError
+              ? 'border-destructive focus:border-destructive focus:ring-destructive'
+              : 'border-input focus:border-ring focus:ring-ring'
+          }`}
           placeholder="Additional notes about this address..."
           rows={2}
         />
+        {memoError && (
+          <p className="mt-1 text-sm text-destructive flex items-center gap-1">
+            <AlertCircle className="h-3.5 w-3.5" />
+            {memoError}
+          </p>
+        )}
       </div>
 
       <div className="flex items-center justify-end gap-2 pt-2">
@@ -162,7 +204,7 @@ export function AddressBookForm({ entry, onSubmit, onCancel }: AddressBookFormPr
         <Button
           type="submit"
           variant="primary"
-          disabled={!!nameError || !!addressError || !detectedType}
+          disabled={!!nameError || !!addressError || !!memoError || !detectedType}
         >
           {isEditMode ? 'Update Address' : 'Add Address'}
         </Button>

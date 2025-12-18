@@ -128,6 +128,7 @@ export function RecipientNameDisplay({
             type="text"
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
+            maxLength={24}
             placeholder="Enter a name for this address"
             className={cn(
               'flex-1 rounded-md border bg-background px-3 py-2 text-sm shadow-sm',
