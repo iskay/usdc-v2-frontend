@@ -19,7 +19,7 @@
         "paymentTimeoutMs": 120000
       },
       "pollingConfig": {
-        "blockWindowBackscan": 20
+        "blockWindowBackscan": 10
       },
       "testnet": true
     },

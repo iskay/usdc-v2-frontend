@@ -429,11 +429,10 @@ export function ChainProgressTimeline({
             evmChainsConfig
           )
           
-          // Determine line fill percentage based on step state
-          const lineFillWidth = 
-            stepState.state === 'completed' ? '100%' :
-            stepState.state === 'in_progress' ? '50%' :
-            '0%'
+          // Determine line fill percentage based on progress reaching this connector
+          // Connectors should be filled if we've reached the next step (completed or in progress)
+          const nextStepState = !isLast ? stepStates[index + 1]?.state : null
+          const lineFillWidth = (nextStepState === 'completed' || nextStepState === 'in_progress') ? '100%' : '0%'
 
           // Determine if step circle should have filled background
           const hasFilledBackground = 
@@ -444,6 +443,9 @@ export function ChainProgressTimeline({
           // Check if this is a logo step (first 3 steps when completed) vs checkmark step (4th step)
           const isLogoStep = stepState.state === 'completed' && index < 3
           const isCheckmarkStep = stepState.state === 'completed' && index === 3
+          
+          // Add pulse animation for in_progress state
+          const isActive = stepState.state === 'in_progress'
 
           const elements = [
             // Step
@@ -460,7 +462,9 @@ export function ChainProgressTimeline({
                   // Error/timeout: filled background
                   (stepState.state === 'error' || stepState.state === 'timeout') && colors.background,
                   // Pending/in-progress: transparent
-                  !hasFilledBackground && 'bg-transparent'
+                  !hasFilledBackground && 'bg-transparent',
+                  // Add pulse animation for active step
+                  isActive && 'animate-pulse'
                 )}
               >
                 {icon && (

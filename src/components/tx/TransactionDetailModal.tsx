@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Clock, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { logger } from '@/utils/logger'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import {
   getStatusLabel,
@@ -359,16 +360,28 @@ export function TransactionDetailModal({
           {transaction.pollingState && (
             <div className="space-y-4 -mt-2">
               {/* Noble Forwarding Registration Status */}
-              {transaction.pollingState.chainStatus.noble?.metadata?.nobleForwardingRegistration ? (
-                <NobleForwardingRegistrationStatus
-                  reg={transaction.pollingState.chainStatus.noble.metadata.nobleForwardingRegistration as any}
-                  forwardingAddress={transaction.pollingState.metadata?.forwardingAddress as string | undefined}
-                  recipientAddress={transaction.depositDetails?.destinationAddress || transaction.pollingState.metadata?.namadaReceiver as string | undefined}
-                  channelId={transaction.pollingState.chainStatus.noble?.metadata?.channelId as string | undefined}
-                  fallback={transaction.pollingState.chainStatus.noble?.metadata?.fallback as string | undefined}
-                  txId={transaction.id}
-                />
-              ) : null}
+              {transaction.pollingState.chainStatus.noble?.metadata?.nobleForwardingRegistration ? (() => {
+                const reg = transaction.pollingState.chainStatus.noble.metadata.nobleForwardingRegistration as any
+                // Hide the box if already registered, but log to console
+                if (reg.alreadyRegistered) {
+                  logger.info('[TransactionDetailModal] Noble forwarding address is already registered', {
+                    txId: transaction.id,
+                    forwardingAddress: transaction.pollingState.metadata?.forwardingAddress,
+                    recipientAddress: transaction.depositDetails?.destinationAddress || transaction.pollingState.metadata?.namadaReceiver,
+                  })
+                  return null
+                }
+                return (
+                  <NobleForwardingRegistrationStatus
+                    reg={reg}
+                    forwardingAddress={transaction.pollingState.metadata?.forwardingAddress as string | undefined}
+                    recipientAddress={transaction.depositDetails?.destinationAddress || transaction.pollingState.metadata?.namadaReceiver as string | undefined}
+                    channelId={transaction.pollingState.chainStatus.noble?.metadata?.channelId as string | undefined}
+                    fallback={transaction.pollingState.chainStatus.noble?.metadata?.fallback as string | undefined}
+                    txId={transaction.id}
+                  />
+                )
+              })() : null}
             </div>
           )}
 
