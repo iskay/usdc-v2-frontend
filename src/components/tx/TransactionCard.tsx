@@ -287,7 +287,8 @@ export const TransactionCard = memo(function TransactionCard({
       </div>
 
       {/* Detail Modal */}
-      {showExpandButton && (
+      {/* Only render modal if not controlled externally (external control renders modal at higher level) */}
+      {showExpandButton && externalIsModalOpen === undefined && (
         <TransactionDetailModal
           transaction={transaction}
           open={isModalOpen}

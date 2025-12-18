@@ -1,9 +1,13 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useAtomValue } from 'jotai'
 import { transactionStorageService, type StoredTransaction } from '@/services/tx/transactionStorageService'
+import { isCompleted } from '@/services/tx/transactionStatusService'
 import { TransactionCard } from './TransactionCard'
 import { Spinner } from '@/components/common/Spinner'
 import { useDeleteTransaction } from '@/hooks/useDeleteTransaction'
-import { cn } from '@/lib/utils'
+import { useTxAnimationState } from '@/hooks/useTxAnimationState'
+import { txAnimationAtom } from '@/atoms/txAnimationAtom'
 
 export interface TxHistoryListProps {
   openModalTxId?: string | null
@@ -12,68 +16,72 @@ export interface TxHistoryListProps {
   hideActions?: boolean // Hide the actions column (dropdown menu)
 }
 
-// Duration for fade-in animation (in milliseconds)
-const FADE_IN_DURATION = 500 // 500ms
-// Delay before starting fade-in (wait for fade-out to complete in In Progress list)
-const FADE_OUT_DURATION = 500 // 500ms (should match COMPLETION_DISPLAY_DURATION in TxInProgressList)
+// Helper component to render a transaction with animation
+function TxHistoryItem({
+  tx,
+  index,
+  totalCount,
+  onDelete,
+  hideActions,
+  isModalOpen,
+  onModalOpenChange,
+}: {
+  tx: StoredTransaction
+  index: number
+  totalCount: number
+  onDelete: (txId: string) => void
+  hideActions: boolean
+  isModalOpen: boolean
+  onModalOpenChange: (open: boolean) => void
+}) {
+  const animationMap = useAtomValue(txAnimationAtom)
+  const animationState = animationMap.get(tx.id)
+  
+  // Drive opacity purely from phase - let Framer Motion animate the transition
+  // When phase is 'enteringHistory', opacity = 0 (starting state)
+  // When phase changes to 'inHistory', Framer Motion animates 0 → 1 (fade-in)
+  // The fade-in animation happens when enteringHistory ends (transitions to inHistory)
+  const targetOpacity = animationState?.phase === 'enteringHistory' ? 0 : 1
+
+  return (
+    <motion.div
+      initial={false}
+      animate={{ opacity: targetOpacity }}
+      transition={{ duration: 0.5, ease: 'easeOut' }}
+    >
+      <TransactionCard
+        transaction={tx}
+        variant="compact"
+        showExpandButton={true}
+        onDelete={onDelete}
+        hideActions={hideActions}
+        isModalOpen={isModalOpen}
+        onModalOpenChange={onModalOpenChange}
+      />
+      {/* Add divider between items, but not after the last one */}
+      {index < totalCount - 1 && (
+        <div className="border-b border-border/60 my-2" />
+      )}
+    </motion.div>
+  )
+}
 
 export function TxHistoryList({ openModalTxId, onModalOpenChange, reloadTrigger, hideActions = false }: TxHistoryListProps = {}) {
+  // Initialize animation state management
+  useTxAnimationState()
+  
   const [completedTxs, setCompletedTxs] = useState<StoredTransaction[]>([])
-  const [newlyAddedTxs, setNewlyAddedTxs] = useState<Map<string, { addedAt: number }>>(new Map())
-  const [_fadeTick, setFadeTick] = useState(0) // Force re-render for fade animation
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const { deleteTransaction } = useDeleteTransaction()
-  const previousTxIdsRef = useRef<Set<string>>(new Set())
-  const isInitialLoadRef = useRef(true) // Track if this is the initial load
+  const animationMap = useAtomValue(txAnimationAtom)
 
   const loadTransactions = useCallback(() => {
     try {
-      const txs = transactionStorageService.getCompletedTransactions(5)
-      const currentTxIds = new Set(txs.map(tx => tx.id))
-      
-      // Find newly added transactions (only track after initial load)
-      const newIds = Array.from(currentTxIds).filter(
-        id => !previousTxIdsRef.current.has(id)
-      )
-      
-      // Track newly added transactions for fade-in
-      // Only track if this is NOT the initial load (skip fade-in for transactions present on page load)
-      if (!isInitialLoadRef.current && newIds.length > 0) {
-        setNewlyAddedTxs(prev => {
-          const updated = new Map(prev)
-          const now = Date.now()
-          newIds.forEach(id => {
-            // Only add if not already tracking it
-            if (!updated.has(id)) {
-              // Store when it appeared, fade-in will start after FADE_OUT_DURATION
-              updated.set(id, { addedAt: now })
-            }
-          })
-          return updated
-        })
-      }
-      
-      // Mark initial load as complete after first load
-      if (isInitialLoadRef.current) {
-        isInitialLoadRef.current = false
-      }
-      
-      // Remove old entries that are no longer in the list
-      setNewlyAddedTxs(prev => {
-        const updated = new Map(prev)
-        prev.forEach((_, id) => {
-          if (!currentTxIds.has(id)) {
-            updated.delete(id)
-          }
-        })
-        return updated
-      })
-      
-      // Update previous IDs for next comparison
-      previousTxIdsRef.current = currentTxIds
-      
-      setCompletedTxs(txs)
+      // Load ALL transactions, not just completed ones
+      // We'll filter by animation phase to determine which ones to show
+      const allTxs = transactionStorageService.getAllTransactions()
+      setCompletedTxs(allTxs)
       setIsLoading(false)
       setError(null)
     } catch (err) {
@@ -94,33 +102,6 @@ export function TxHistoryList({ openModalTxId, onModalOpenChange, reloadTrigger,
     return () => clearInterval(interval)
   }, [loadTransactions])
 
-  // Trigger fade-in animation updates
-  useEffect(() => {
-    if (newlyAddedTxs.size === 0) return
-
-    // Set up interval to update fade animation
-    const interval = setInterval(() => {
-      const now = Date.now()
-      
-      // Update fade tick to trigger re-render for smooth opacity transition
-      setFadeTick(prev => prev + 1)
-      
-      // Remove entries that have finished fading in (after fade-out delay + fade-in duration)
-      setNewlyAddedTxs(prev => {
-        const updated = new Map(prev)
-        prev.forEach(({ addedAt }, txId) => {
-          const totalDuration = FADE_OUT_DURATION + FADE_IN_DURATION
-          if (now - addedAt >= totalDuration) {
-            updated.delete(txId)
-          }
-        })
-        return updated
-      })
-    }, 10) // Update every 10ms for smooth fade animation (100fps)
-
-    return () => clearInterval(interval)
-  }, [newlyAddedTxs])
-
   // Trigger immediate reload when reloadTrigger changes (for coordination with In Progress)
   useEffect(() => {
     if (reloadTrigger !== undefined && reloadTrigger > 0) {
@@ -132,12 +113,6 @@ export function TxHistoryList({ openModalTxId, onModalOpenChange, reloadTrigger,
     (txId: string) => {
       try {
         deleteTransaction(txId)
-        // Remove from newly added if present
-        setNewlyAddedTxs(prev => {
-          const updated = new Map(prev)
-          updated.delete(txId)
-          return updated
-        })
         // Refresh the list after deletion
         loadTransactions()
       } catch (err) {
@@ -172,55 +147,39 @@ export function TxHistoryList({ openModalTxId, onModalOpenChange, reloadTrigger,
     )
   }
 
+  // Filter transactions to show only those in enteringHistory or inHistory phases
+  // This allows transactions to appear in the list during the enter animation
+  // even if they're still transitioning from in-progress status
+  const displayTxs = completedTxs.filter(tx => {
+    const animationState = animationMap.get(tx.id)
+    if (!animationState) {
+      // If no animation state, check if transaction is actually completed
+      // This handles initial load before animation state is initialized
+      return isCompleted(tx)
+    }
+    return animationState.phase === 'enteringHistory' || animationState.phase === 'inHistory'
+  }).slice(0, 5) // Limit to 5 most recent for history display
+
   return (
     <div className="space-y-0">
-      {completedTxs.map((tx, index) => {
-        const isNewlyAdded = newlyAddedTxs.has(tx.id)
-        const { addedAt } = newlyAddedTxs.get(tx.id) || { addedAt: 0 }
-        const now = Date.now()
-        const elapsed = now - addedAt
-        
-        // Calculate opacity: wait for fade-out duration, then fade in over FADE_IN_DURATION
-        let opacity = 1
-        if (isNewlyAdded) {
-          if (elapsed < FADE_OUT_DURATION) {
-            // Still waiting for fade-out to complete, keep invisible
-            opacity = 0
-          } else {
-            // Fade-out complete, start fading in
-            const fadeInElapsed = elapsed - FADE_OUT_DURATION
-            opacity = Math.min(1, fadeInElapsed / FADE_IN_DURATION)
-          }
-        }
-
-        return (
-          <div
+      <AnimatePresence>
+        {displayTxs.map((tx, index) => (
+          <TxHistoryItem
             key={tx.id}
-            className={cn(
-              isNewlyAdded && 'transition-opacity duration-500 ease-out'
-            )}
-            style={isNewlyAdded ? { opacity, transition: 'opacity 500ms ease-out' } : undefined}
-          >
-            <TransactionCard
-              transaction={tx}
-              variant="compact"
-              showExpandButton={true}
-              onDelete={handleDelete}
-              hideActions={hideActions}
-              isModalOpen={openModalTxId === tx.id}
-              onModalOpenChange={(open) => {
-                if (onModalOpenChange) {
-                  onModalOpenChange(open ? tx.id : null)
-                }
-              }}
-            />
-            {/* Add divider between items, but not after the last one */}
-            {index < completedTxs.length - 1 && (
-              <div className="border-b border-border/60 my-2" />
-            )}
-          </div>
-        )
-      })}
+            tx={tx}
+            index={index}
+            totalCount={displayTxs.length}
+            onDelete={handleDelete}
+            hideActions={hideActions}
+            isModalOpen={openModalTxId === tx.id}
+            onModalOpenChange={(open) => {
+              if (onModalOpenChange) {
+                onModalOpenChange(open ? tx.id : null)
+              }
+            }}
+          />
+        ))}
+      </AnimatePresence>
     </div>
   )
 }

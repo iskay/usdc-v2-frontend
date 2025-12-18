@@ -11,6 +11,7 @@ import { useSyncIconState } from '@/hooks/useSyncIconState'
 import { useTransactionQueryParam } from '@/hooks/useTransactionQueryParam'
 import { useTransactionCompletionMonitor } from '@/hooks/useTransactionCompletionMonitor'
 import { useBalanceDisplay } from '@/hooks/useBalanceDisplay'
+import { useTxAnimationState } from '@/hooks/useTxAnimationState'
 import { BalanceCard } from '@/components/dashboard/BalanceCard'
 import { ShieldButton } from '@/components/dashboard/ShieldButton'
 import { ActionStepButton } from '@/components/dashboard/ActionStepButton'
@@ -43,6 +44,9 @@ export function Dashboard() {
       setOpenModalTxId(txId)
     }, []),
   )
+
+  // Initialize animation state management
+  useTxAnimationState()
 
   // Monitor transaction completion
   useTransactionCompletionMonitor({
