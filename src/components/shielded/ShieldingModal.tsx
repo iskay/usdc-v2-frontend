@@ -186,9 +186,14 @@ export function ShieldingModal({ open, onClose }: ShieldingModalProps) {
             />
           )}
 
-          {/* Progress Section - Only show during submitting state */}
-          {modalState === 'submitting' && (
-            <ShieldingProgressSection currentPhase={txUiState.phase as TransactionPhase} />
+          {/* Progress Section - Show during submitting state and while waiting for success state */}
+          {(modalState === 'submitting' || (txHash && !txUiState.showSuccessState)) && (
+            <ShieldingProgressSection 
+              currentPhase={
+                // If phase is null but we have txHash, show 'submitting' to display all completed steps
+                (txUiState.phase as TransactionPhase) ?? 'submitting'
+              } 
+            />
           )}
 
           {/* Enhanced Success State */}
