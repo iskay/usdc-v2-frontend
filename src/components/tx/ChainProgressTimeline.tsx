@@ -8,7 +8,7 @@
  */
 
 import React from 'react'
-import { Check, XCircle, Clock, Loader2, CheckCircle2, Radar, AlertCircle } from 'lucide-react'
+import { Check, XCircle, Clock, Loader2, CheckCircle2, Radar, AlertCircle, Pause } from 'lucide-react'
 import { motion } from 'framer-motion'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import { getAllChainStatuses } from '@/services/polling/pollingStatusUtils'
@@ -30,7 +30,7 @@ export interface ChainProgressTimelineProps {
 /**
  * Timeline step state type
  */
-type StepState = 'completed' | 'in_progress' | 'pending' | 'error' | 'timeout'
+type StepState = 'completed' | 'in_progress' | 'pending' | 'error' | 'timeout' | 'cancelled'
 
 /**
  * Determine step state based on chain status and previous steps
@@ -67,6 +67,11 @@ function getStepState(
   // Check for errors first
   if (step.hasError(chainStatus)) {
     return 'error'
+  }
+
+  // Check for cancelled (similar to timeout - shows on specific step)
+  if (step.hasCancelled(chainStatus, flowStatus, currentChain)) {
+    return 'cancelled'
   }
 
   // Check for timeout
@@ -170,6 +175,8 @@ function getStepIcon(
       return <Clock className="h-4 w-4" />
     case 'in_progress':
       return <Loader2 className="h-4 w-4 animate-spin" />
+    case 'cancelled':
+      return <Pause className="h-4 w-4" />
     case 'pending':
     default:
       return null
@@ -293,6 +300,14 @@ function getStepColorClasses(state: StepState): {
         icon: 'text-white',
         line: 'bg-warning',
       }
+    case 'cancelled':
+      return {
+        border: 'border-warning',
+        background: 'bg-warning',
+        text: 'text-warning',
+        icon: 'text-white',
+        line: 'bg-warning',
+      }
     case 'in_progress':
       return {
         border: 'border-primary',
@@ -393,12 +408,12 @@ export function ChainProgressTimeline({
     const errorMsg = getTxErrorMessage(transaction)
     statusMessage = errorMsg || 'Transaction failed'
   } else if (statusBoxState === 'cancelled') {
-    statusSubheading = `${flowTypeCapitalized} not completed.`
+    statusSubheading = `Tracking was cancelled before we could determine the outcome`
     const errorMsg = getTxErrorMessage(transaction)
     if (errorMsg) {
       statusMessage = errorMsg
     } else {
-      statusMessage = `Tracking was cancelled before we could determine the outcome of this ${flowTypeForMessages}.`
+      statusMessage = `Your funds are not at risk, but the status may be out of date. You can retry tracing from the beginning.`
     }
   } else if (statusBoxState === 'polling_error' || statusBoxState === 'polling_timeout') {
     statusSubheading = `We're having trouble tracking this ${flowTypeForMessages} in real time.`
@@ -448,7 +463,8 @@ export function ChainProgressTimeline({
           const hasFilledBackground = 
             stepState.state === 'completed' || 
             stepState.state === 'error' || 
-            stepState.state === 'timeout'
+            stepState.state === 'timeout' ||
+            stepState.state === 'cancelled'
 
           // Check if this is a logo step (first 3 steps when completed) vs checkmark step (4th step)
           const isLogoStep = stepState.state === 'completed' && index < 3
@@ -469,8 +485,8 @@ export function ChainProgressTimeline({
                   isLogoStep && 'bg-transparent',
                   // Checkmark step: filled background
                   isCheckmarkStep && colors.background,
-                  // Error/timeout: filled background
-                  (stepState.state === 'error' || stepState.state === 'timeout') && colors.background,
+                  // Error/timeout/cancelled: filled background
+                  (stepState.state === 'error' || stepState.state === 'timeout' || stepState.state === 'cancelled') && colors.background,
                   // Pending/in-progress: transparent
                   !hasFilledBackground && 'bg-transparent',
                   // Add pulse animation for active step
@@ -531,7 +547,7 @@ export function ChainProgressTimeline({
           'rounded-2xl p-4',
           statusBoxState === 'success' && 'bg-success/80',
           statusBoxState === 'tx_error' && 'bg-error/80',
-          statusBoxState === 'cancelled' && 'bg-muted/50',
+          statusBoxState === 'cancelled' && 'bg-muted-foreground/80',
           (statusBoxState === 'polling_error' || statusBoxState === 'polling_timeout') && 'bg-warning/80',
           statusBoxState === 'user_action_required' && 'bg-warning/80',
           statusBoxState === 'in_progress' && 'bg-muted/50'
@@ -545,7 +561,7 @@ export function ChainProgressTimeline({
               <XCircle className="h-6 w-6 text-error-foreground flex-shrink-0 mt-0.5" />
             )}
             {statusBoxState === 'cancelled' && (
-              <XCircle className="h-6 w-6 text-muted-foreground flex-shrink-0 mt-0.5" />
+              <Radar className="h-6 w-6 text-warning-foreground flex-shrink-0 mt-0.5" />
             )}
             {(statusBoxState === 'polling_error' || statusBoxState === 'polling_timeout') && (
               <Radar className="h-6 w-6 text-warning-foreground flex-shrink-0 mt-0.5" />
@@ -566,7 +582,7 @@ export function ChainProgressTimeline({
                     'text-md font-medium mb-1',
                     statusBoxState === 'success' && 'text-success-foreground',
                     statusBoxState === 'tx_error' && 'text-error-foreground',
-                    statusBoxState === 'cancelled' && 'text-muted-foreground',
+                    statusBoxState === 'cancelled' && 'text-warning-foreground',
                     (statusBoxState === 'polling_error' || statusBoxState === 'polling_timeout') && 'text-warning-foreground',
                     statusBoxState === 'user_action_required' && 'text-warning-foreground',
                     statusBoxState === 'in_progress' && 'text-foreground'
@@ -579,7 +595,7 @@ export function ChainProgressTimeline({
                   'text-sm',
                   statusBoxState === 'success' && 'text-success-foreground',
                   statusBoxState === 'tx_error' && 'text-error-foreground',
-                  statusBoxState === 'cancelled' && 'text-error-foreground',
+                  statusBoxState === 'cancelled' && 'text-warning-foreground',
                   (statusBoxState === 'polling_error' || statusBoxState === 'polling_timeout') && 'text-warning-foreground',
                   statusBoxState === 'user_action_required' && 'text-warning-foreground',
                   statusBoxState === 'in_progress' && 'text-foreground-foreground'
@@ -614,8 +630,8 @@ export function ChainProgressTimeline({
                 return null
               })()}
               
-              {/* Retry button for polling errors/timeouts */}
-              {(statusBoxState === 'polling_error' || statusBoxState === 'polling_timeout') && (
+              {/* Retry button for polling errors/timeouts/cancelled */}
+              {(statusBoxState === 'polling_error' || statusBoxState === 'polling_timeout' || statusBoxState === 'cancelled') && (
                 <RetryPollingButton 
                   transaction={transaction} 
                   size="md" 

@@ -69,7 +69,7 @@ export function RetryPollingButton({
   }
 
   const variantClasses = {
-    default: 'bg-transparent text-muted hover:bg-warning/90 font-semibold',
+    default: 'bg-transparent text-muted hover:bg-muted/10 font-semibold transition-colors',
     outline: 'border border-border bg-background hover:bg-muted',
     ghost: 'hover:bg-muted',
   }

@@ -151,6 +151,49 @@ export function useTxTracker(options?: { enablePolling?: boolean }) {
     [],
   )
 
+  // Helper function to cleanup stale polling state
+  // Detects transactions where retry was started (pending flowStatus) but page was refreshed (no orchestrator)
+  // Sets them to 'cancelled' to fix GUI desync and show retry button
+  const cleanupStalePollingState = useCallback(async () => {
+    const { getOrchestrator } = await import('@/services/polling/orchestratorRegistry')
+    const allTxs = transactionStorageService.getAllTransactions()
+    
+    let cleanedCount = 0
+    
+    for (const tx of allTxs) {
+      if (!tx.pollingState) continue
+      
+      // Detect stale state: pending flowStatus but no active orchestrator
+      const hasActiveOrchestrator = !!getOrchestrator(tx.id)
+      const isPending = tx.pollingState.flowStatus === 'pending'
+      const isUndetermined = tx.status === 'undetermined'
+      
+      // Stale state: retry was started (pending) but page refreshed (no orchestrator)
+      if (isPending && !hasActiveOrchestrator && isUndetermined) {
+        logger.info('[useTxTracker] Cleaning up stale polling state', {
+          txId: tx.id,
+          previousFlowStatus: tx.pollingState.flowStatus,
+        })
+        
+        // Set to cancelled (user effectively cancelled by refreshing)
+        transactionStorageService.updateTransaction(tx.id, {
+          pollingState: {
+            ...tx.pollingState,
+            flowStatus: 'cancelled',
+          }
+        })
+        
+        cleanedCount++
+      }
+    }
+    
+    if (cleanedCount > 0) {
+      logger.info('[useTxTracker] Cleaned up stale polling states', {
+        count: cleanedCount,
+      })
+    }
+  }, [])
+
   // Helper function to start polling for in-progress transactions
   const startPollingForTransactions = useCallback(async () => {
     logger.debug('[useTxTracker] startPollingForTransactions called', {
@@ -307,11 +350,20 @@ export function useTxTracker(options?: { enablePolling?: boolean }) {
     // Reset cleanup functions for this effect run
     cleanupFunctionsRef.current = []
 
-    // Handle async startPollingForTransactions
-    startPollingForTransactions()
+    // Cleanup stale polling states first (before starting new polling)
+    // Then start polling for in-progress transactions
+    Promise.resolve()
+      .then(() => cleanupStalePollingState())
+      .catch((error) => {
+        logger.error('[useTxTracker] Failed to cleanup stale polling state', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+        // Continue even if cleanup fails
+      })
+      .then(() => startPollingForTransactions())
       .then((functions) => {
         cleanupFunctionsRef.current = functions || []
-    logger.debug('[useTxTracker] Polling effect completed', {
+        logger.debug('[useTxTracker] Polling effect completed', {
           cleanupFunctionsCount: cleanupFunctionsRef.current.length,
         })
       })
@@ -320,7 +372,7 @@ export function useTxTracker(options?: { enablePolling?: boolean }) {
           error: error instanceof Error ? error.message : String(error),
         })
         cleanupFunctionsRef.current = []
-    })
+      })
 
     // Cleanup: stop all polling jobs on unmount or when enablePolling changes
     return () => {
@@ -349,7 +401,7 @@ export function useTxTracker(options?: { enablePolling?: boolean }) {
       // Clear cleanup functions after running them
       cleanupFunctionsRef.current = []
     }
-  }, [enablePolling, startPollingForTransactions]) // Removed txState.history dependency to prevent re-runs on status updates
+  }, [enablePolling, startPollingForTransactions, cleanupStalePollingState]) // Removed txState.history dependency to prevent re-runs on status updates
   // Note: This effect reads directly from storage to resume polling for in-progress transactions
 
   const clearActive = useCallback(() => {

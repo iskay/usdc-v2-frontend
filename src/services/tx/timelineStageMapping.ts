@@ -31,6 +31,8 @@ export interface TimelineStepConfig {
   hasError: (chainStatus: ChainStatus | null) => boolean
   /** Function to determine if this step has timed out */
   hasTimeout: (chainStatus: ChainStatus | null) => boolean
+  /** Function to determine if this step is cancelled */
+  hasCancelled: (chainStatus: ChainStatus | null, flowStatus?: string, currentChain?: ChainKey) => boolean
   /** Function to get status message for this step */
   getStatusMessage: (chainDisplayName: string) => string
 }
@@ -51,6 +53,8 @@ export function getTimelineSteps(flowType: FlowType): TimelineStepConfig[] {
         hasError: (status) => 
           status?.status === 'tx_error' || status?.status === 'polling_error',
         hasTimeout: (status) => status?.status === 'polling_timeout',
+        hasCancelled: (status, flowStatus, currentChain) => 
+          status?.status === 'cancelled' || (flowStatus === 'cancelled' && currentChain === 'evm'),
         getStatusMessage: (chainDisplayName) => `CCTP burn submitted on ${chainDisplayName}`,
       },
       {
@@ -63,6 +67,8 @@ export function getTimelineSteps(flowType: FlowType): TimelineStepConfig[] {
         hasError: (status) => 
           status?.status === 'tx_error' || status?.status === 'polling_error',
         hasTimeout: (status) => status?.status === 'polling_timeout',
+        hasCancelled: (status, flowStatus, currentChain) => 
+          status?.status === 'cancelled' || (flowStatus === 'cancelled' && currentChain === 'noble'),
         getStatusMessage: () => 'Waiting for confirmation of IBC forwarding on Noble...',
       },
       {
@@ -75,6 +81,8 @@ export function getTimelineSteps(flowType: FlowType): TimelineStepConfig[] {
         hasError: (status) => 
           status?.status === 'tx_error' || status?.status === 'polling_error',
         hasTimeout: (status) => status?.status === 'polling_timeout',
+        hasCancelled: (status, flowStatus, currentChain) => 
+          status?.status === 'cancelled' || (flowStatus === 'cancelled' && currentChain === 'namada'),
         getStatusMessage: () => 'Waiting for confirmation of receipt on Namada...',
       },
       {
@@ -86,6 +94,8 @@ export function getTimelineSteps(flowType: FlowType): TimelineStepConfig[] {
         hasError: (status) => 
           status?.status === 'tx_error' || status?.status === 'polling_error',
         hasTimeout: (status) => status?.status === 'polling_timeout',
+        hasCancelled: (status, flowStatus) => 
+          status?.status === 'cancelled' || flowStatus === 'cancelled',
         getStatusMessage: () => 'Funds confirmed on Namada',
       },
     ]
@@ -102,6 +112,8 @@ export function getTimelineSteps(flowType: FlowType): TimelineStepConfig[] {
         hasError: (status) => 
           status?.status === 'tx_error' || status?.status === 'polling_error',
         hasTimeout: (status) => status?.status === 'polling_timeout',
+        hasCancelled: (status, flowStatus, currentChain) => 
+          status?.status === 'cancelled' || (flowStatus === 'cancelled' && currentChain === 'namada'),
         getStatusMessage: () => 'Shielded IBC transaction submitted on Namada',
       },
       {
@@ -114,6 +126,8 @@ export function getTimelineSteps(flowType: FlowType): TimelineStepConfig[] {
         hasError: (status) => 
           status?.status === 'tx_error' || status?.status === 'polling_error',
         hasTimeout: (status) => status?.status === 'polling_timeout',
+        hasCancelled: (status, flowStatus, currentChain) => 
+          status?.status === 'cancelled' || (flowStatus === 'cancelled' && currentChain === 'noble'),
         getStatusMessage: () => 'Waiting for confirmation of forwarding on Noble...',
       },
       {
@@ -126,6 +140,8 @@ export function getTimelineSteps(flowType: FlowType): TimelineStepConfig[] {
         hasError: (status) => 
           status?.status === 'tx_error' || status?.status === 'polling_error',
         hasTimeout: (status) => status?.status === 'polling_timeout',
+        hasCancelled: (status, flowStatus, currentChain) => 
+          status?.status === 'cancelled' || (flowStatus === 'cancelled' && currentChain === 'evm'),
         getStatusMessage: (chainDisplayName) => `Waiting for confirmation of receipt on ${chainDisplayName}...`,
       },
       {
@@ -137,6 +153,8 @@ export function getTimelineSteps(flowType: FlowType): TimelineStepConfig[] {
         hasError: (status) => 
           status?.status === 'tx_error' || status?.status === 'polling_error',
         hasTimeout: (status) => status?.status === 'polling_timeout',
+        hasCancelled: (status, flowStatus) => 
+          status?.status === 'cancelled' || flowStatus === 'cancelled',
         getStatusMessage: (chainDisplayName) => `Funds confirmed on ${chainDisplayName}`,
       },
     ]
