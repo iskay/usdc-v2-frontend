@@ -549,7 +549,11 @@ export function getProgressPercentage(
     if (tx.pollingState.flowStatus === 'tx_error' || tx.pollingState.flowStatus === 'polling_error') {
       return 0
     }
-    // For pending/cancelled flows, calculate progress from stages
+    // Add early returns for timeout and cancelled - these don't need stage reading
+    if (tx.pollingState.flowStatus === 'polling_timeout' || tx.pollingState.flowStatus === 'cancelled') {
+      return 0
+    }
+    // For pending flows only, calculate progress from stages
     // Fall through to stage-based calculation below
   }
 
@@ -569,6 +573,7 @@ export function getProgressPercentage(
   }
 
   // Get all stage timings (includes client stages and polling stages)
+  // Only reached for pending flows with pollingState
   const timings = getStageTimings(tx, flowType)
   
   // Get expected backend stages for the flow from progression model

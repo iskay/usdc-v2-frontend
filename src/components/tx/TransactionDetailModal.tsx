@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Clock, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import {
@@ -97,16 +97,32 @@ export function TransactionDetailModal({
     }
   }, [open])
 
+  // Memoize expensive stage calculations to avoid recalculating on every render
+  // Must be called before early return to follow Rules of Hooks
+  const flowType: FlowType = useMemo(() => 
+    transaction.direction === 'deposit' ? 'deposit' : 'payment',
+    [transaction.direction]
+  )
+
+  // Memoize stage calculations - only recalculate when transaction or flowType changes
+  // Only calculate when modal is open to avoid unnecessary work
+  const actualStageTimings = useMemo(() => {
+    if (!open) return []
+    return getStageTimings(transaction, flowType)
+  }, [transaction, flowType, open])
+  
+  // Get full stages with metadata for block information
+  const allStages = useMemo(() => {
+    if (!open) return []
+    return getAllStagesFromTransaction(transaction, flowType)
+  }, [transaction, flowType, open])
+
   if (!open) {
     return null
   }
 
-  const flowType: FlowType = transaction.direction === 'deposit' ? 'deposit' : 'payment'
   const statusLabel = getStatusLabel(transaction)
   const totalDuration = getTotalDurationLabel(transaction)
-  const actualStageTimings = getStageTimings(transaction, flowType)
-  // Get full stages with metadata for block information
-  const allStages = getAllStagesFromTransaction(transaction, flowType)
   
   // Merge expected stages with actual stages to show all expected stages
   const stageTimings: StageTiming[] = []

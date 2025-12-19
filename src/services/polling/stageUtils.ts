@@ -54,13 +54,16 @@ export function getAllStagesFromTransaction(
         }))
         stages.push(...stagesWithChain)
         
-        // Debug logging to trace stage reading
-        console.debug('[StageUtils] Read stages from pollingState', {
-          chain,
-          stageCount: chainStatus.stages.length,
-          stageNames: chainStatus.stages.map((s) => s.stage),
-          stagesWithOccurredAt: chainStatus.stages.filter((s) => s.occurredAt).map((s) => s.stage),
-        })
+        // Debug logging removed - was causing excessive console output
+        // Uncomment only when debugging stage reading issues:
+        // if (process.env.NODE_ENV === 'development') {
+        //   console.debug('[StageUtils] Read stages from pollingState', {
+        //     chain,
+        //     stageCount: chainStatus.stages.length,
+        //     stageNames: chainStatus.stages.map((s) => s.stage),
+        //     stagesWithOccurredAt: chainStatus.stages.filter((s) => s.occurredAt).map((s) => s.stage),
+        //   })
+        // }
       }
     }
   }

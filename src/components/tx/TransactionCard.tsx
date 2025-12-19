@@ -105,7 +105,11 @@ export const TransactionCard = memo(function TransactionCard({
 
   const flowType = transaction.direction === 'deposit' ? 'deposit' : 'payment'
   const statusLabel = getStatusLabel(transaction)
-  const progress = getProgressPercentage(transaction, flowType)
+  
+  // Only calculate progress if transaction is in progress (when progress bar will be shown)
+  const progress = isInProgress(transaction) 
+    ? getProgressPercentage(transaction, flowType)
+    : 0
   
   // Show duration for in-progress transactions, "time ago" for others
   const timeDisplay = isInProgress(transaction)

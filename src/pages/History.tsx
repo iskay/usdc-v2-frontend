@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, startTransition } from 'react'
 import { AlertTriangle, Download } from 'lucide-react'
 import { Button } from '@/components/common/Button'
 import { Tooltip } from '@/components/common/Tooltip'
@@ -87,6 +87,14 @@ export function History() {
     },
     [deleteTransaction, loadTransactions],
   )
+
+  // Memoize the modal change handler to prevent unnecessary re-renders
+  // Use startTransition to defer state update and avoid blocking the click handler
+  const handleModalOpenChange = useCallback((txId: string | null) => {
+    startTransition(() => {
+      setOpenModalTxId(txId)
+    })
+  }, [])
 
   // Filter transactions based on active filter
   const filteredTransactions = allTransactions.filter((tx) => {
@@ -215,7 +223,7 @@ export function History() {
                     onDelete={handleDelete}
                     isModalOpen={openModalTxId === tx.id}
                     onModalOpenChange={(open) => {
-                      setOpenModalTxId(open ? tx.id : null)
+                      handleModalOpenChange(open ? tx.id : null)
                     }}
                   />
                   {/* Add divider between completed items */}
@@ -235,7 +243,7 @@ export function History() {
         <TransactionDetailModal
           transaction={modalTransaction}
           open={!!openModalTxId}
-          onClose={() => setOpenModalTxId(null)}
+          onClose={() => handleModalOpenChange(null)}
         />
       )}
     </div>
