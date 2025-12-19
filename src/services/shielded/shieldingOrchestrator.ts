@@ -116,19 +116,22 @@ export async function executeShielding(
       )
     }
 
-    // Trigger balance refresh after successful shield
-    try {
-      logger.debug('[ShieldingOrchestrator] Triggering shielded balance refresh...')
-      await triggerShieldedBalanceRefresh({
-        chainId: updatedTransaction.shieldingData?.chainId,
-      })
-      logger.info('[ShieldingOrchestrator] ✅ Shielded balance refresh triggered')
-    } catch (error) {
-      // Don't fail the whole operation if balance refresh fails
-      logger.warn('[ShieldingOrchestrator] Failed to trigger balance refresh', {
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
+    // Trigger balance refresh after successful shield (with delay to allow for chain/indexer updates)
+    // Fire-and-forget: don't await to avoid blocking the return
+    setTimeout(async () => {
+      try {
+        logger.debug('[ShieldingOrchestrator] Triggering shielded balance refresh (after 10s delay)...')
+        await triggerShieldedBalanceRefresh({
+          chainId: updatedTransaction.shieldingData?.chainId,
+        })
+        logger.info('[ShieldingOrchestrator] ✅ Shielded balance refresh triggered')
+      } catch (error) {
+        // Don't fail the whole operation if balance refresh fails
+        logger.warn('[ShieldingOrchestrator] Failed to trigger balance refresh', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }, 10000) // 10 second delay
 
     return {
       txId: updatedTransaction.id,
