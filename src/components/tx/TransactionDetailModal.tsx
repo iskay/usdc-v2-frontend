@@ -303,19 +303,17 @@ export function TransactionDetailModal({
                 </div>
               </div>
             )}
-            {totalDuration && (
-              <div className="bg-muted p-4 rounded-md">
-                <div className="space-y-1">
-                  <dt className="text-sm capitalize text-muted-foreground">{transaction.direction} Duration</dt>
-                  <dd>
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                      <span className="text-md font-medium">{totalDuration}</span>
-                    </div>
-                  </dd>
-                </div>
+            <div className="bg-muted p-4 rounded-md">
+              <div className="space-y-1">
+                <dt className="text-sm capitalize text-muted-foreground">{transaction.direction} Duration</dt>
+                <dd>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                    <span className="text-md font-medium">{totalDuration}</span>
+                  </div>
+                </dd>
               </div>
-            )}
+            </div>
           </div>
 
           {/* Chain Progress Timeline */}

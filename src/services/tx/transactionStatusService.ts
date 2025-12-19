@@ -6,7 +6,7 @@
  */
 
 import type { StoredTransaction } from './transactionStorageService'
-import { getChainOrder, getExpectedStages } from '@/shared/flowStages'
+import { getChainOrder, getExpectedStages, DEPOSIT_STAGES, PAYMENT_STAGES } from '@/shared/flowStages'
 import { getAllStagesFromTransaction } from '@/services/polling/stageUtils'
 
 /**
@@ -384,27 +384,57 @@ export function getStageTimings(
 }
 
 /**
- * Get total duration of a transaction.
+ * Get total duration of a transaction (on-chain duration only).
  * 
- * Uses the on-chain block timestamp of the final event when available,
- * otherwise falls back to updatedAt or current time.
+ * Uses the first confirmed on-chain stage's block timestamp as the start time,
+ * and the on-chain block timestamp of the final event when available.
  * 
  * @param tx - Transaction to get duration for
- * @returns Total duration in milliseconds, or undefined if transaction hasn't started
+ * @returns 
+ *   - number: Duration in milliseconds (valid duration calculated from on-chain start time)
+ *   - null: On-chain start time unavailable (transaction exists but never confirmed on chain)
+ *   - undefined: Transaction hasn't started
  */
-export function getTotalDuration(tx: StoredTransaction): number | undefined {
+export function getTotalDuration(tx: StoredTransaction): number | null | undefined {
   if (!tx.createdAt) {
-    return undefined
+    return undefined // Transaction not started
   }
 
   const effectiveStatus = getEffectiveStatus(tx)
   
-  // Try to get the on-chain timestamp of the final event
-  // This is more accurate than using poller detection time, especially if polling is rerun later
+  // If status is undetermined, we can't rely on polling data for accurate duration
+  if (effectiveStatus === 'undetermined') {
+    return null // Return null to show "N/A"
+  }
+
   const flowType = tx.direction === 'deposit' ? 'deposit' : 'payment'
   const allStages = getAllStagesFromTransaction(tx, flowType)
   
-  // Find the final confirmed stage with block timestamp
+  // Find first confirmed on-chain stage with block timestamp
+  // For deposits: EVM_BURN_CONFIRMED (when burn transaction is confirmed on EVM)
+  // For payments: NAMADA_IBC_SENT (when IBC transaction is confirmed on Namada)
+  const firstOnChainStage = flowType === 'deposit'
+    ? allStages.find(
+        (s) => s.stage === DEPOSIT_STAGES.EVM_BURN_CONFIRMED && 
+               s.status === 'confirmed' &&
+               s.metadata?.blockTimestamp
+      )
+    : allStages.find(
+        (s) => s.stage === PAYMENT_STAGES.NAMADA_IBC_SENT && 
+               s.status === 'confirmed' &&
+               s.metadata?.blockTimestamp
+      )
+  
+  // If no on-chain start time available, return null to indicate "N/A"
+  if (!firstOnChainStage?.metadata?.blockTimestamp) {
+    return null // On-chain start time unavailable
+  }
+  
+  // blockTimestamp is in seconds (Unix timestamp), convert to milliseconds
+  const startTime = (firstOnChainStage.metadata.blockTimestamp as number) * 1000
+  
+  // Try to get the on-chain timestamp of the final event
+  // This is more accurate than using poller detection time, especially if polling is rerun later
   let finalBlockTimestamp: number | undefined
   for (let i = allStages.length - 1; i >= 0; i--) {
     const stage = allStages[i]
@@ -422,30 +452,41 @@ export function getTotalDuration(tx: StoredTransaction): number | undefined {
   
   // Use final block timestamp if available, otherwise fall back to previous logic
   let endTime: number
-  if (finalBlockTimestamp) {
+  if (isInProgress(tx)) {
+    // For in-progress transactions, always use current time to show running duration
+    endTime = Date.now()
+  } else if (finalBlockTimestamp) {
+    // For completed transactions, use the final on-chain block timestamp
     endTime = finalBlockTimestamp
-  } else if (effectiveStatus === 'finalized' || effectiveStatus === 'error' || effectiveStatus === 'undetermined') {
+  } else if (effectiveStatus === 'finalized' || effectiveStatus === 'error') {
+    // Fallback to updatedAt for completed transactions without block timestamp
     endTime = tx.updatedAt
   } else {
+    // Shouldn't reach here, but use current time as fallback
     endTime = Date.now()
   }
 
-  return endTime - tx.createdAt
+  return endTime - startTime
 }
 
 /**
  * Get human-readable total duration of a transaction.
  * 
  * @param tx - Transaction to get duration for
- * @returns Human-readable duration (e.g., "2 minutes", "1 hour 30 minutes")
+ * @returns Human-readable duration, "N/A" if on-chain start time unavailable, or "Not started" if not started
  */
 export function getTotalDurationLabel(tx: StoredTransaction): string {
-  const durationMs = getTotalDuration(tx)
-  if (durationMs === undefined) {
+  const duration = getTotalDuration(tx)
+  
+  if (duration === undefined) {
     return 'Not started'
   }
-
-  return formatDuration(durationMs)
+  
+  if (duration === null) {
+    return 'N/A'
+  }
+  
+  return formatDuration(duration)
 }
 
 /**

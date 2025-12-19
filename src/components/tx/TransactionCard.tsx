@@ -5,7 +5,7 @@ import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import {
   isInProgress,
   getStatusLabel,
-  getTimeElapsed,
+  getTotalDurationLabel,
   getProgressPercentage,
   hasClientTimeout,
   getTimeoutMessage,
@@ -104,7 +104,7 @@ export const TransactionCard = memo(function TransactionCard({
 
   const flowType = transaction.direction === 'deposit' ? 'deposit' : 'payment'
   const statusLabel = getStatusLabel(transaction)
-  const timeElapsed = getTimeElapsed(transaction)
+  const duration = getTotalDurationLabel(transaction)
   const progress = getProgressPercentage(transaction, flowType)
 
   // Extract amount using utility function
@@ -174,7 +174,7 @@ export const TransactionCard = memo(function TransactionCard({
               />
               
               <TransactionTimeDisplay
-                timeElapsed={timeElapsed}
+                timeElapsed={duration}
                 size="sm"
               />
               
@@ -245,7 +245,7 @@ export const TransactionCard = memo(function TransactionCard({
             {/* Column 3: Time - Only shown in detailed view when actions are visible */}
             {!hideActions && (
               <TransactionTimeDisplay
-                timeElapsed={timeElapsed}
+                timeElapsed={duration}
                 size="md"
               />
             )}
