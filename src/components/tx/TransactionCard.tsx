@@ -6,6 +6,7 @@ import {
   isInProgress,
   getStatusLabel,
   getTotalDurationLabel,
+  getTimeElapsed,
   getProgressPercentage,
   hasClientTimeout,
   getTimeoutMessage,
@@ -104,8 +105,12 @@ export const TransactionCard = memo(function TransactionCard({
 
   const flowType = transaction.direction === 'deposit' ? 'deposit' : 'payment'
   const statusLabel = getStatusLabel(transaction)
-  const duration = getTotalDurationLabel(transaction)
   const progress = getProgressPercentage(transaction, flowType)
+  
+  // Show duration for in-progress transactions, "time ago" for others
+  const timeDisplay = isInProgress(transaction)
+    ? getTotalDurationLabel(transaction)
+    : getTimeElapsed(transaction)
 
   // Extract amount using utility function
   const amount = extractTransactionAmount(transaction)
@@ -174,7 +179,7 @@ export const TransactionCard = memo(function TransactionCard({
               />
               
               <TransactionTimeDisplay
-                timeElapsed={duration}
+                timeElapsed={timeDisplay}
                 size="sm"
               />
               
@@ -245,7 +250,7 @@ export const TransactionCard = memo(function TransactionCard({
             {/* Column 3: Time - Only shown in detailed view when actions are visible */}
             {!hideActions && (
               <TransactionTimeDisplay
-                timeElapsed={duration}
+                timeElapsed={timeDisplay}
                 size="md"
               />
             )}
