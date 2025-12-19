@@ -8,12 +8,13 @@
  */
 
 import React from 'react'
-import { Check, XCircle, Clock, Loader2, CheckCircle2, Radar } from 'lucide-react'
+import { Check, XCircle, Clock, Loader2, CheckCircle2, Radar, AlertCircle } from 'lucide-react'
 import { motion } from 'framer-motion'
 import type { StoredTransaction } from '@/services/tx/transactionStorageService'
 import { getAllChainStatuses } from '@/services/polling/pollingStatusUtils'
 import { getTimelineSteps, getStatusMessage } from '@/services/tx/timelineStageMapping'
 import { RetryPollingButton } from '@/components/polling/RetryPollingButton'
+import { RegisterNobleForwardingButton } from '@/components/polling/RegisterNobleForwardingButton'
 import { cn } from '@/lib/utils'
 import type { ChainKey } from '@/shared/flowStages'
 import type { ChainStatus } from '@/services/polling/types'
@@ -178,7 +179,7 @@ function getStepIcon(
 /**
  * Status box state type
  */
-type StatusBoxState = 'success' | 'tx_error' | 'polling_error' | 'polling_timeout' | 'cancelled' | 'in_progress' | null
+type StatusBoxState = 'success' | 'tx_error' | 'polling_error' | 'polling_timeout' | 'cancelled' | 'in_progress' | 'user_action_required' | null
 
 /**
  * Determine status box state based on transaction flow status and chain statuses
@@ -194,6 +195,7 @@ function getStatusBoxState(
   if (flowStatus === 'tx_error') return 'tx_error'
   if (flowStatus === 'polling_error') return 'polling_error'
   if (flowStatus === 'polling_timeout') return 'polling_timeout'
+  if (flowStatus === 'user_action_required') return 'user_action_required'
   if (flowStatus === 'cancelled') return 'cancelled'
   
   // Check for transaction.errorMessage (transaction-level error)
@@ -209,6 +211,9 @@ function getStatusBoxState(
   
   // Check individual chain statuses for errors
   const chainStatuses = getAllChainStatuses(transaction)
+  const hasUserActionRequired = Object.values(chainStatuses).some(
+    cs => cs?.status === 'user_action_required'
+  )
   const hasTxError = Object.values(chainStatuses).some(
     cs => cs?.status === 'tx_error'
   )
@@ -219,6 +224,8 @@ function getStatusBoxState(
     cs => cs?.status === 'polling_timeout'
   )
   
+  // user_action_required takes precedence over other error states
+  if (hasUserActionRequired) return 'user_action_required'
   if (hasTxError) return 'tx_error'
   if (hasPollingError) return 'polling_error'
   if (hasPollingTimeout) return 'polling_timeout'
@@ -378,6 +385,9 @@ export function ChainProgressTimeline({
     statusMessage = completedStep 
       ? getStatusMessage(completedStep.step, activeChainDisplayName)
       : 'Funds delivered successfully'
+  } else if (statusBoxState === 'user_action_required') {
+    statusSubheading = 'Action required to continue'
+    statusMessage = 'Noble forwarding address registration is required to complete this transaction.'
   } else if (statusBoxState === 'tx_error') {
     statusSubheading = `${flowTypeCapitalized} not completed.`
     const errorMsg = getTxErrorMessage(transaction)
@@ -523,6 +533,7 @@ export function ChainProgressTimeline({
           statusBoxState === 'tx_error' && 'bg-error/80',
           statusBoxState === 'cancelled' && 'bg-muted/50',
           (statusBoxState === 'polling_error' || statusBoxState === 'polling_timeout') && 'bg-warning/80',
+          statusBoxState === 'user_action_required' && 'bg-warning/80',
           statusBoxState === 'in_progress' && 'bg-muted/50'
         )}>
           <div className="flex items-center gap-4">
@@ -539,6 +550,9 @@ export function ChainProgressTimeline({
             {(statusBoxState === 'polling_error' || statusBoxState === 'polling_timeout') && (
               <Radar className="h-6 w-6 text-warning-foreground flex-shrink-0 mt-0.5" />
             )}
+            {statusBoxState === 'user_action_required' && (
+              <AlertCircle className="h-6 w-6 text-warning-foreground flex-shrink-0 mt-0.5" />
+            )}
             {statusBoxState === 'in_progress' && (
               <Loader2 className="h-6 w-6 text-primary animate-spin flex-shrink-0 mt-0.5" />
             )}
@@ -554,6 +568,7 @@ export function ChainProgressTimeline({
                     statusBoxState === 'tx_error' && 'text-error-foreground',
                     statusBoxState === 'cancelled' && 'text-muted-foreground',
                     (statusBoxState === 'polling_error' || statusBoxState === 'polling_timeout') && 'text-warning-foreground',
+                    statusBoxState === 'user_action_required' && 'text-warning-foreground',
                     statusBoxState === 'in_progress' && 'text-foreground'
                   )}>
                     {statusSubheading}
@@ -566,11 +581,38 @@ export function ChainProgressTimeline({
                   statusBoxState === 'tx_error' && 'text-error-foreground',
                   statusBoxState === 'cancelled' && 'text-error-foreground',
                   (statusBoxState === 'polling_error' || statusBoxState === 'polling_timeout') && 'text-warning-foreground',
+                  statusBoxState === 'user_action_required' && 'text-warning-foreground',
                   statusBoxState === 'in_progress' && 'text-foreground-foreground'
                 )}>
                   {statusMessage}
                 </span>
               </div>
+              
+              {/* Register button for user action required */}
+              {statusBoxState === 'user_action_required' && (() => {
+                const forwardingAddress = transaction.pollingState?.metadata?.forwardingAddress as string | undefined
+                const recipientAddress = transaction.depositDetails?.destinationAddress || 
+                  transaction.pollingState?.metadata?.namadaReceiver as string | undefined
+                const channelId = transaction.pollingState?.chainStatus.noble?.metadata?.channelId as string | undefined
+                const fallback = transaction.pollingState?.metadata?.fallback as string | undefined
+                
+                // Only show button if required addresses are available
+                if (forwardingAddress && recipientAddress) {
+                  return (
+                    <RegisterNobleForwardingButton
+                      txId={transaction.id}
+                      forwardingAddress={forwardingAddress}
+                      recipientAddress={recipientAddress}
+                      channelId={channelId}
+                      fallback={fallback}
+                      size="md"
+                      variant="default"
+                      className="flex-shrink-0"
+                    />
+                  )
+                }
+                return null
+              })()}
               
               {/* Retry button for polling errors/timeouts */}
               {(statusBoxState === 'polling_error' || statusBoxState === 'polling_timeout') && (

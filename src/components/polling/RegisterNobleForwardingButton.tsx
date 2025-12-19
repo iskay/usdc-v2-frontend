@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { Loader2, Forward } from 'lucide-react'
 import { useToast } from '@/hooks/useToast'
 import { logger } from '@/utils/logger'
 import { cn } from '@/lib/utils'
@@ -140,19 +140,23 @@ export function RegisterNobleForwardingButton({
     lg: 'px-4 py-2 text-base',
   }
 
+  const variantClasses = {
+    default: 'bg-transparent text-muted hover:bg-warning/90 font-semibold',
+    outline: 'border border-border bg-background hover:bg-muted',
+    ghost: 'hover:bg-muted',
+  }
+
   return (
     <button
       type="button"
       onClick={handleClick}
       disabled={isRegistering}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-md font-medium transition-colors',
+        'inline-flex items-center gap-1.5 font-medium transition-colors rounded-md',
         'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
         'disabled:opacity-50 disabled:cursor-not-allowed',
         sizeClasses[size],
-        variant === 'default' && 'bg-primary text-primary-foreground hover:bg-primary/90',
-        variant === 'outline' && 'border border-border bg-background hover:bg-muted',
-        variant === 'ghost' && 'hover:bg-muted',
+        variantClasses[variant],
         className,
       )}
       aria-label="Register Noble forwarding address"
@@ -160,7 +164,7 @@ export function RegisterNobleForwardingButton({
       {isRegistering ? (
         <>
           <Loader2 className={cn(
-            'h-3 w-3',
+            'h-4 w-4 font-semibold',
             size === 'lg' && 'h-4 w-4',
             'animate-spin',
           )} />
@@ -168,8 +172,8 @@ export function RegisterNobleForwardingButton({
         </>
       ) : (
         <>
-          <RefreshCw className={cn(
-            'h-3 w-3',
+          <Forward className={cn(
+            'h-4 w-4 font-semibold',
             size === 'lg' && 'h-4 w-4',
           )} />
           <span>Register Forwarding Address</span>
