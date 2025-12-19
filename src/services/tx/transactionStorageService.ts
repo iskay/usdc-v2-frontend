@@ -138,18 +138,17 @@ class TransactionStorageService {
   }
 
   /**
-   * Get all transactions, ordered by most recent first (updatedAt descending).
+   * Get all transactions, ordered by most recent first (createdAt descending).
+   * Uses createdAt to maintain chronological order regardless of status updates.
    */
   getAllTransactions(): StoredTransaction[] {
     try {
       const stored = loadItem<StoredTransaction[]>(STORAGE_KEY)
       if (!stored) return []
       
-      // Sort by updatedAt descending (most recent first)
+      // Sort by createdAt descending (most recent first) to maintain chronological order
       return stored.sort((a, b) => {
-        const aTime = a.updatedAt || a.createdAt
-        const bTime = b.updatedAt || b.createdAt
-        return bTime - aTime
+        return b.createdAt - a.createdAt
       })
     } catch (error) {
       logger.error('[TransactionStorageService] Failed to load transactions', {
